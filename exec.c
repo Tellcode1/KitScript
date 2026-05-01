@@ -112,7 +112,7 @@ call(const e_exec_info* info, u32 hash, u32 nargs)
     if (info->funcs[f].name_hash != hash) continue;
 
     e_stack stack = { 0 };
-    e_stack_init(32, 4, 8, &stack);
+    if (e_stack_init(32, 4, 8, &stack)) goto pop_and_ret;
 
     e_exec_info fi = {
       .code            = info->funcs[f].code,
@@ -263,7 +263,7 @@ e_exec(const e_exec_info* info)
         e_var v;
         // e_var_acquire(e_stack_top(info->stack)); // Don't acquire! Stack_push already does that
         TRY_V(e_var_shallow_cpy(e_stack_top(info->stack), &v));
-        e_stack_push(info->stack, &v);
+        TRY_V(e_stack_push(info->stack, &v));
         break;
       }
 
@@ -697,7 +697,7 @@ e_exec(const e_exec_info* info)
         e_stack_pop(info->stack); // pop index
         e_stack_pop(info->stack); // pop base
 
-        e_stack_push(info->stack, &push);
+        TRY_V(e_stack_push(info->stack, &push));
 
         e_var_release(&push);
         break;
@@ -839,7 +839,7 @@ e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs)
         return (e_var){ .type = E_VARTYPE_NULL };
       }
 
-      e_stack_push_frame(info.stack);
+      if ((e_stack_push_frame(info.stack))) { return (e_var){ .type = E_VARTYPE_NULL }; }
       e_var r = e_exec(&info);
       e_stack_pop_frame(info.stack);
 
