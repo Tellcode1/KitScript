@@ -8,7 +8,7 @@
 int
 e_stackemu_init(e_stackemu* emu)
 {
-  const u32 new_capacity = 32;
+  const u32 new_capacity = 32; // Atleast 1
 
   memset(emu, 0, sizeof *emu);
 
@@ -21,8 +21,8 @@ e_stackemu_init(e_stackemu* emu)
     return -1;
   }
 
-  emu->frames = new_frames;
-  emu->vars   = new_vars;
+  emu->frame_var_counts = new_frames;
+  emu->vars             = new_vars;
 
   emu->vars_count    = 0;
   emu->vars_capacity = new_capacity;
@@ -30,7 +30,7 @@ e_stackemu_init(e_stackemu* emu)
   emu->strucs_count    = 0;
   emu->strucs_capacity = 0;
 
-  emu->frame_top      = 0;
+  emu->frame_top      = 1;
   emu->frame_capacity = new_capacity;
 
   return 0;
@@ -40,67 +40,37 @@ void
 e_stackemu_free(e_stackemu* emu)
 {
   free(emu->vars);
-  free(emu->frames);
   memset(emu, 0, sizeof *emu);
 }
-
-int
-e_stackemu_push(e_stackemu* emu)
-{
-  if (emu->frame_top >= emu->frame_capacity) {
-    u32  new_capacity = emu->frame_capacity * 2;
-    u32* new_frames   = (u32*)realloc(emu->frames, sizeof(u32) * new_capacity);
-    if (!new_frames) return -1;
-
-    emu->frame_capacity = new_capacity;
-    emu->frames         = new_frames;
-  }
-
-  emu->frames[emu->frame_top - 1]++;
-  return 0;
-}
-
-void
-e_stackemu_pop(e_stackemu* emu)
-{ emu->frames[emu->frame_top - 1]--; }
 
 int
 e_stackemu_push_frame(e_stackemu* emu)
 {
   if (emu->frame_top >= emu->frame_capacity) {
     u32  new_capacity = emu->frame_capacity * 2;
-    u32* new_frames   = realloc(emu->frames, sizeof(u32) * new_capacity);
+    u32* new_frames   = realloc(emu->frame_var_counts, sizeof(u32) * new_capacity);
     if (!new_frames) return -1;
 
-    emu->frames         = new_frames;
-    emu->frame_capacity = new_capacity;
+    emu->frame_var_counts = new_frames;
+    emu->frame_capacity   = new_capacity;
   }
 
-  emu->frames[emu->frame_top] = 0;
-  emu->frame_top++;
+  emu->frame_var_counts[emu->frame_top++] = emu->vars_count;
   return 0;
 }
 
 void
 e_stackemu_pop_frame(e_stackemu* emu)
 {
-  while (emu->vars_count > 0 && emu->vars[emu->vars_count - 1].stack_depth >= emu->frame_top) { emu->vars_count--; }
-  emu->frame_top--;
+  u32 start       = emu->frame_var_counts[--emu->frame_top];
+  emu->vars_count = start;
 }
-
-u32
-e_stackemu_top(const e_stackemu* emu)
-{ return emu->frames[emu->frame_top - 1]; }
-
-u32
-e_stackemu_fp(const e_stackemu* emu)
-{ return emu->frame_top; }
 
 int
 e_stackemu_push_var(e_stackemu* emu, const ecc_variable_information* info)
 {
   if (emu->vars_count >= emu->vars_capacity) {
-    u32                              new_capacity = emu->vars_count * 2;
+    u32                              new_capacity = emu->vars_capacity * 2;
     struct ecc_variable_information* new_vars     = realloc(emu->vars, sizeof(ecc_variable_information) * new_capacity);
     if (!new_vars) return -1;
 
@@ -115,8 +85,8 @@ e_stackemu_push_var(e_stackemu* emu, const ecc_variable_information* info)
 struct ecc_variable_information*
 e_stackemu_find_var(const e_stackemu* emu, u32 id)
 {
-  for (u32 i = 0; i < emu->vars_count; i++) {
-    if (emu->vars[i].name_hash == id) { return &emu->vars[i]; }
+  for (u32 i = emu->vars_count; i > 0; i--) {
+    if (emu->vars[i - 1].name_hash == id) return &emu->vars[i - 1];
   }
   return NULL;
 }
@@ -124,11 +94,13 @@ e_stackemu_find_var(const e_stackemu* emu, u32 id)
 struct ecc_variable_information*
 e_stackemu_find_var_in_curr_scope(const e_stackemu* emu, u32 id)
 {
-  u32 i = emu->vars_count;
-  while (i > 0) {
-    if (emu->vars[i - 1].stack_depth < e_stackemu_fp(emu)) break;
+  if (emu->frame_top == 0) return NULL;
+
+  u32 start = emu->frame_var_counts[emu->frame_top - 1];
+
+  for (u32 i = emu->vars_count; i > start; i--) {
     if (emu->vars[i - 1].name_hash == id) return &emu->vars[i - 1];
-    i--;
   }
+
   return NULL;
 }

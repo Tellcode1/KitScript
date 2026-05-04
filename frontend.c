@@ -61,6 +61,7 @@ main(int argc, char* argv[])
   if (e_str_interner_init(256, &interner)) goto ret;
 
   const char* out = NULL;
+  const char* in  = NULL;
   for (int i = 1; i < argc; i++) {
     const char* opt = argv[i];
 
@@ -77,10 +78,10 @@ main(int argc, char* argv[])
       ast_only = true;
     } else if (strcmp(opt, "mem") == 0) {
       print_memory_usage = true;
+    } else {
+      in = argv[i];
     }
   }
-
-  const char* in = argv[1];
 
   contents = read_file(in, nullptr);
   if (contents == nullptr) {
@@ -155,7 +156,7 @@ main(int argc, char* argv[])
 
   if (print_memory_usage) {
     size_t        goob = 0;
-    e_arena_page* next = arena.root;
+    e_arena_page* next = arena.current;
     while (next) {
       goob++;
       next = next->next;

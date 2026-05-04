@@ -134,7 +134,7 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
     name[len] = 0;
 
     r->names[i]        = name;
-    r->names_hashes[i] = e_hash_fnv(name, len);
+    r->names_hashes[i] = e_hash(name, len);
   }
 
   return E_FILE_READ_SUCCESS;

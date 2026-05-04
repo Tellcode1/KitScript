@@ -100,7 +100,7 @@ typedef int32_t  i32;
 typedef int64_t  i64;
 
 static inline u32
-e_hash_fnv(const void* data, size_t size)
+e_hash(const void* data, size_t size)
 {
 #ifndef E_DONT_USE_WYHASH
   return wyhash32(data, size, 0xDEADBEEFU);

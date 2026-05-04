@@ -24,6 +24,7 @@
 
 #include "var.h"
 
+#include "cast.h"
 #include "pool.h"
 #include "stdafx.h"
 
@@ -418,16 +419,16 @@ e_var_hash(const e_var* var)
     case E_VARTYPE_VOID:
     case E_VARTYPE_NULL: return 0;
     case E_VARTYPE_ERROR:
-    case E_VARTYPE_INT: return e_hash_fnv(&var->val.i, sizeof(var->val.i));
-    case E_VARTYPE_BOOL: return e_hash_fnv(&var->val.b, sizeof(bool));
-    case E_VARTYPE_CHAR: return e_hash_fnv(&var->val.c, sizeof(char));
-    case E_VARTYPE_FLOAT: return e_hash_fnv(&var->val.f, sizeof(var->val.f));
-    case E_VARTYPE_STRING: return e_hash_fnv(E_VAR_AS_STRING(var)->s, strlen(E_VAR_AS_STRING(var)->s));
-    case E_VARTYPE_VEC2: return e_hash_fnv(var->val.vec2, sizeof(e_vec2));
-    case E_VARTYPE_VEC3: return e_hash_fnv(var->val.vec3, sizeof(e_vec3));
-    case E_VARTYPE_VEC4: return e_hash_fnv(var->val.vec4, sizeof(e_vec4));
-    case E_VARTYPE_MAT3: return e_hash_fnv(E_VAR_AS_MAT3(var)->m, sizeof(e_mat3));
-    case E_VARTYPE_MAT4: return e_hash_fnv(E_VAR_AS_MAT4(var)->m, sizeof(e_mat4));
+    case E_VARTYPE_INT: return e_hash(&var->val.i, sizeof(var->val.i));
+    case E_VARTYPE_BOOL: return e_hash(&var->val.b, sizeof(bool));
+    case E_VARTYPE_CHAR: return e_hash(&var->val.c, sizeof(char));
+    case E_VARTYPE_FLOAT: return e_hash(&var->val.f, sizeof(var->val.f));
+    case E_VARTYPE_STRING: return e_hash(E_VAR_AS_STRING(var)->s, strlen(E_VAR_AS_STRING(var)->s));
+    case E_VARTYPE_VEC2: return e_hash(var->val.vec2, sizeof(e_vec2));
+    case E_VARTYPE_VEC3: return e_hash(var->val.vec3, sizeof(e_vec3));
+    case E_VARTYPE_VEC4: return e_hash(var->val.vec4, sizeof(e_vec4));
+    case E_VARTYPE_MAT3: return e_hash(E_VAR_AS_MAT3(var)->m, sizeof(e_mat3));
+    case E_VARTYPE_MAT4: return e_hash(E_VAR_AS_MAT4(var)->m, sizeof(e_mat4));
     case E_VARTYPE_LIST: return e_combine_hash((const void**)E_VAR_AS_LIST(var)->vars, E_VAR_AS_LIST(var)->size, sizeof(e_var));
     case E_VARTYPE_MAP: {
       const u32 random_prime = 61;
@@ -437,8 +438,21 @@ e_var_hash(const e_var* var)
     case E_VARTYPE_STRUCT: {
       return e_combine_hash((const void**)E_VAR_AS_STRUCT(var)->members, E_VAR_AS_STRUCT(var)->member_count, sizeof(e_var));
     }
-    default: return e_hash_fnv(&var->val, sizeof(var->val));
+    default: return e_hash(&var->val, sizeof(var->val));
   }
+}
+
+static inline bool
+is_integral(e_vartype type)
+{
+  switch (type) {
+    case E_VARTYPE_INT:
+    case E_VARTYPE_BOOL:
+    case E_VARTYPE_CHAR:
+    case E_VARTYPE_FLOAT: return true;
+    default: break;
+  }
+  return false;
 }
 
 bool
@@ -451,24 +465,26 @@ e_var_equal(const e_var* a, const e_var* b)
     default: assert(0);
 
     case E_VARTYPE_ERROR:
-    case E_VARTYPE_INT: return a->val.i == b->val.i;
-    case E_VARTYPE_BOOL: return a->val.b == b->val.b;
-    case E_VARTYPE_CHAR: return a->val.c == b->val.c;
-    case E_VARTYPE_FLOAT: return a->val.f == b->val.f;
-    case E_VARTYPE_STRING: return strcmp(E_VAR_AS_STRING(a)->s, E_VAR_AS_STRING(b)->s) == 0;
+    case E_VARTYPE_INT: return is_integral(b->type) && (a->val.i == e_cast_to_int(b));
+    case E_VARTYPE_BOOL: return is_integral(b->type) && (a->val.b == e_cast_to_bool(b));
+    case E_VARTYPE_CHAR: return is_integral(b->type) && (a->val.c == e_cast_to_char(b));
+    case E_VARTYPE_FLOAT: return is_integral(b->type) && (a->val.f == e_cast_to_float(b));
+    case E_VARTYPE_STRING: return a->type == b->type ? strcmp(E_VAR_AS_STRING(a)->s, E_VAR_AS_STRING(b)->s) == 0 : false;
 
     case E_VARTYPE_VEC2: {
-      return a->val.vec2[0] == b->val.vec2[0] && a->val.vec2[1] == b->val.vec2[1];
+      return a->type == b->type ? (a->val.vec2[0] == b->val.vec2[0] && a->val.vec2[1] == b->val.vec2[1]) : false;
     }
     case E_VARTYPE_VEC3: {
-      return a->val.vec3[0] == b->val.vec3[0] && a->val.vec3[1] == b->val.vec3[1] && a->val.vec3[2] == b->val.vec3[2];
+      return a->type == b->type ? (a->val.vec3[0] == b->val.vec3[0] && a->val.vec3[1] == b->val.vec3[1] && a->val.vec3[2] == b->val.vec3[2]) : false;
     }
     case E_VARTYPE_VEC4: {
-      return a->val.vec4[0] == b->val.vec4[0] && a->val.vec4[1] == b->val.vec4[1] && a->val.vec4[2] == b->val.vec4[2]
-          && a->val.vec4[3] == b->val.vec4[3];
+      return a->type == b->type ? (a->val.vec4[0] == b->val.vec4[0] && a->val.vec4[1] == b->val.vec4[1] && a->val.vec4[2] == b->val.vec4[2]
+                                   && a->val.vec4[3] == b->val.vec4[3])
+                                : false;
     }
 
     case E_VARTYPE_MAT3: {
+      if (b->type != a->type) return false;
       for (int j = 0; j < 3; j++) {
         for (int i = 0; i < 3; i++) {
           if (E_VAR_AS_MAT3(a)->m[j][i] != E_VAR_AS_MAT3(b)->m[j][i]) { return false; }
@@ -476,6 +492,7 @@ e_var_equal(const e_var* a, const e_var* b)
       }
     }
     case E_VARTYPE_MAT4: {
+      if (b->type != a->type) return false;
       for (int j = 0; j < 4; j++) {
         for (int i = 0; i < 4; i++) {
           if (E_VAR_AS_MAT4(a)->m[j][i] != E_VAR_AS_MAT4(b)->m[j][i]) { return false; }

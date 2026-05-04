@@ -28,6 +28,7 @@
 #include "stdafx.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,138 +51,15 @@ typedef struct e_arena_page {
 } e_arena_page;
 
 typedef struct e_arena {
-  struct e_arena_page* root;
   struct e_arena_page* current;
+  struct e_arena_page* free_pages;
 } e_arena;
 
-static inline uintptr_t
-align_up(uintptr_t data, size_t alignment)
-{
-  if (data % alignment == 0) return data;
-  return ((data + alignment - 1) & ~(alignment - 1));
-}
+int e_arena_init(u32 npages, e_arena* arena) ATTR_NODISCARD;
 
-static inline int
-e__create_and_link_page(size_t size, e_arena* arena)
-{
-  size = ((size + E_PAGE_SIZE - 1) / E_PAGE_SIZE) * E_PAGE_SIZE;
-
-  e_arena_page* next = arena->root;
-
-  e_arena_page* page = (e_arena_page*)malloc(size);
-  if (page == nullptr) return -1;
-
-  page->size = size - sizeof(e_arena_page);
-  page->head = 0;
-  page->next = next;
-
-  arena->root    = page;
-  arena->current = page;
-
-  return 0;
-}
-
-static inline int
-e_arena_init(u32 npages, e_arena* arena)
-{
-  npages = MAX(npages, 1);
-  memset(arena, 0, sizeof(*arena));
-
-  int e = 0;
-  for (u32 i = 0; i < npages; i++) {
-    e = e__create_and_link_page(E_PAGE_SIZE, arena);
-    if (e < 0) return e;
-  }
-
-  return e;
-}
-
-static inline void
-e_arena_resize(e_arena* a)
-{ e__create_and_link_page(E_PAGE_SIZE, a); }
-
-static inline void*
-e_arnalloc(e_arena* a, size_t size)
-{
-  size_t total = size;
-  total        = align_up(total, E_MEMALIGN);
-
-  /* can't fit in regular page. */
-  if (total > (E_PAGE_SIZE - sizeof(e_arena_page))) {
-    e_arena_page* page = (e_arena_page*)malloc(sizeof(e_arena_page) + total);
-    page->size         = total;
-    page->head         = total;
-    page->next         = a->root;
-    a->root            = page;
-
-    uchar* data = (uchar*)page + sizeof(*page);
-    void*  p    = e_align_ptr(data, E_MEMALIGN);
-    if ((uintptr_t)p & (E_MEMALIGN - 1)) abort();
-    return p;
-  }
-
-  /**
-   * Page with enough capacity.
-   */
-  e_arena_page* fits = a->root;
-  while (fits != nullptr) {
-    if ((fits->size - fits->head) >= total) break;
-    fits = fits->next;
-  }
-
-  // If current pages doesn't meet our requirements,
-  // Create an link a new one
-
-  if (fits == nullptr) {
-    e__create_and_link_page(E_PAGE_SIZE, a);
-    fits = a->current;
-  }
-
-  uchar* data = ((uchar*)fits + sizeof(*fits)) + fits->head;
-
-  // And return the pointer after it.
-  void* ptr = e_align_ptr(data, E_MEMALIGN);
-  if ((uintptr_t)ptr & (E_MEMALIGN - 1)) abort();
-
-  fits->head += total;
-
-  /**
-   * If we detect the branch is close to being full,
-   * we can place an order to the OS for more memory,
-   * before we actually need it.
-   * This generally improves performance by amortizing
-   * malloc cost.
-   *
-   *
-   * Causing more problems than fixing! Removed it.
-   */
-
-  return ptr;
-}
-
-static inline char*
-e_arnstrdup(e_arena* arena, const char* s)
-{
-  char* new_s = nullptr;
-  if (s != nullptr) {
-    size_t l = strlen(s);
-    new_s    = (char*)e_arnalloc(arena, l + 1);
-    strncpy(new_s, s, l);
-    new_s[l] = 0;
-  }
-  return new_s;
-}
-
-static inline void
-e_arena_free(e_arena* arena)
-{
-  e_arena_page* next = arena->root;
-  while (next != nullptr) {
-    e_arena_page* new_next = next->next;
-    free(next);
-    next = new_next;
-  }
-  memset(arena, 0, sizeof *arena);
-}
+void  e_arena_resize(e_arena* a);
+void* e_arnalloc(e_arena* a, size_t size);
+char* e_arnstrdup(e_arena* arena, const char* s);
+void  e_arena_free(e_arena* arena);
 
 #endif // E_ARENA_H

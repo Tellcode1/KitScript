@@ -41,7 +41,7 @@
 static inline int
 find_func(const char* name, u32 nfuncs, const e_function* funcs, e_function* out)
 {
-  u32 hash = e_hash_fnv(name, strlen(name));
+  u32 hash = e_hash(name, strlen(name));
   for (u32 i = 0; i < nfuncs; i++) {
     if (funcs[i].name_hash == hash) {
       *out = funcs[i];
@@ -133,8 +133,6 @@ main(int argc, char* argv[])
     goto RET;
   }
 
-  // printf("%u, %p, %u, %p, %p, %u, %p\n", nins, (void*)ins, nlits, (void*)lits, (void*)lits_hashes, nfuncs, (void*)funcs);
-
   e_function entry_point_func;
   e = find_func(entry_point, r.nfunctions, r.functions, &entry_point_func);
   if (e) {
@@ -194,12 +192,18 @@ main(int argc, char* argv[])
     return -1;
   }
 
+  e = e_stack_push_frame(&stack);
+  if (e) return e;
+
   info.code      = entry_point_func.code;
   info.code_size = entry_point_func.code_size;
   info.nargs     = 0;
   info.arg_slots = NULL;
+  info.stack     = &stack;
   /* Execute main function. */
   v = e_exec(&info);
+
+  e_stack_pop_frame(&stack);
 
   if (wants_to_print_return_value) { eb_println(&v, 1); }
 

@@ -76,32 +76,7 @@ typedef enum e_file_read_error {
 
 static inline void
 e_emit_instruction(e_compiler* cc, e_opcode opcode)
-{
-  ecc_frame_table* frames = &cc->frame_table;
-  if (opcode == E_OPCODE_PUSH_FRAME) {
-    if (frames->top > frames->capacity) {
-      u32  new_capacity  = frames->capacity * 2;
-      u32* new_sp_frames = realloc(frames->stack, sizeof(u32) * new_capacity);
-      if (!new_sp_frames) return;
-
-      frames->stack    = new_sp_frames;
-      frames->capacity = new_capacity;
-    }
-
-    frames->stack[frames->top++] = cc->stack_top;
-  } else if (opcode == E_OPCODE_POP_FRAME) {
-    if (frames->top == 0) {
-      fprintf(stderr, "*** stack top underflow ***\n");
-      return;
-    }
-    cc->stack_top = frames->stack[--frames->top];
-  } else {
-    cc->stack_top += e_get_instruction_stack_usage(opcode);
-  }
-  // fprintf(stderr, "STKDIF (%s): %i\n", e_opcode_to_str(opcode), e_get_instruction_stack_usage(opcode));
-
-  e_emit_u8(cc, opcode);
-}
+{ e_emit_u8(cc, opcode); }
 
 e_ins e_read_ins(const u8** ip);
 

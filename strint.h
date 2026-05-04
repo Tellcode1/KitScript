@@ -27,6 +27,7 @@
 
 #include "stdafx.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -48,13 +49,25 @@ e_str_interner_init(u32 capacity, e_str_interner* table)
   return 0;
 }
 
+static inline u32
+find_hash(const u32* hashes, u32 nhashes, u32 search)
+{
+  for (u32 i = 0; i < nhashes; i++) {
+    if (hashes[i] == search) return i;
+  }
+  return UINT32_MAX;
+}
+
 static inline const char*
 e_str_intern(const char* s, e_str_interner* table)
 {
-  u32 hash = e_hash_fnv(s, strlen(s));
-  for (u32 i = 0; i < table->strings_count; i++) {
-    if (hash == table->string_hashes[i]) { return table->strings[i]; }
-  }
+  u32 hash = e_hash(s, strlen(s));
+
+  // SLOWER!
+  // for (i64 i = (i64)table->strings_count - 1; i >= 0; i--) { // Start from behind
+
+  u32 search = find_hash(table->string_hashes, table->strings_count, hash);
+  if (search != UINT32_MAX) return table->strings[search];
 
   if (table->strings_count >= table->strings_capacity) {
     u32 new_capacity = MAX(table->strings_capacity * 2, 4);

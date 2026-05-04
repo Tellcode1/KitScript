@@ -51,7 +51,6 @@ static const u32 init_literal_capacity     = 64;
 static const u32 init_function_capacity    = 64;
 static const u32 init_namespaces_capacity  = 16;
 static const u32 init_label_jump_capacity  = 64;
-static const u32 init_sp_frame_capacity    = 64;
 static const u32 init_fields_capacity      = 16;
 static const u32 init_defer_entry_capacity = 8;
 static const u32 init_jumps_capacity       = 64;
@@ -466,13 +465,6 @@ compiler_make_fork(const e_compiler* old_c, e_compiler* new_c)
     .emit              = (u8*)calloc(1, init_code_capacity),
     .num_bytes_emitted = 0,
     .emit_capacity     = init_code_capacity,
-    .stack_top         = 0,
-    .stack_base        = old_c->stack_top,
-    .frame_table = {
-      .stack    = calloc(init_sp_frame_capacity, sizeof(u32)),
-      .capacity = init_sp_frame_capacity,
-      .top      = 0,
-    },
   };
   return new_c->emit ? 0 : -1;
 }
@@ -490,15 +482,6 @@ compiler_join_fork(const e_compiler* copy, e_compiler* cc)
   /* Ensure we don't ever get two labels in different streams with the same ID */
   cc->next_label = copy->next_label;
 
-  /**
-   * We set the fork's base stack top to the
-   * stack top we had before calling that function
-   * Ensure it's the same. This is redundant in most cases, but still.
-   */
-  cc->stack_top = copy->stack_base;
-
-  e_xfree((void**)&copy->frame_table.stack);
-
   /* Can't modify builtin variable count */
 }
 
@@ -509,7 +492,6 @@ static inline void
 compiler_free_fork_entirely(e_compiler* cc)
 {
   free(cc->emit);
-  free(cc->frame_table.stack);
   while (cc->defer_stack) defer_pop_scope(cc);
   memset(cc, 0, sizeof *cc);
 }
@@ -529,7 +511,7 @@ e_make_value(e_compiler* cc, int node)
 
       l.span         = &E_GET_NODE(cc->ast, node)->common.span;
       l.type         = E_LVAL_VAR;
-      l.val.var.id   = e_hash_fnv(name, strlen(name));
+      l.val.var.id   = e_hash(name, strlen(name));
       l.val.var.name = name;
 
       return l;
@@ -540,7 +522,7 @@ e_make_value(e_compiler* cc, int node)
 
       l.span         = &E_GET_NODE(cc->ast, node)->common.span;
       l.type         = E_LVAL_VAR;
-      l.val.var.id   = e_hash_fnv(name, strlen(name));
+      l.val.var.id   = e_hash(name, strlen(name));
       l.val.var.name = name;
       return l;
     }
@@ -661,19 +643,6 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
     e_emit_instruction(cc, E_OPCODE_ASSIGN);
     e_emit_u32(cc, lv.val.var.id);
 
-    // e_var* exists = e_stack_find_in_current_scope(cc->stack, lv.val.var.id);
-
-    // if (!exists) {
-    // ASSIGN preserves value
-    // return 0;
-    // }
-
-    // ecc_variable_information* info = E_VAR_AS_INFO(exists);
-
-    // // MOV from stack top to our variable's slot
-    // e_emit_instruction(cc, E_OPCODE_MOV);
-    // e_emit_u32(cc, info->stack_offset); // dst, the slot
-    // e_emit_u32(cc, cc->stack_top - 1);  // src, stack top
   }
   /* LVAL_INDEX handles all three of INDEX, INDEX_ASSIGN and INDEX_COMPOUND */
   else if (lv.type == E_LVAL_INDEX) {
@@ -691,7 +660,7 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
     if (e) return e;
   } else if (lv.type == E_LVAL_MEMBER) {
     e_emit_instruction(cc, E_OPCODE_MEMBER_ASSIGN);
-    e_emit_u32(cc, e_hash_fnv(lv.val.member.member, strlen(lv.val.member.member)));
+    e_emit_u32(cc, e_hash(lv.val.member.member, strlen(lv.val.member.member)));
 
     // MEMBER_ASSIGN pops value
 
@@ -764,7 +733,7 @@ e_emit_lvalue_load(e_compiler* cc, e_lval lv)
     if (e) return e;
 
     e_emit_instruction(cc, E_OPCODE_MEMBER_ACCESS);
-    e_emit_u32(cc, e_hash_fnv(right, strlen(right)));
+    e_emit_u32(cc, e_hash(right, strlen(right)));
   }
 
   return 0;
@@ -934,8 +903,6 @@ compile_list(e_compiler* cc, int node)
   e_emit_instruction(cc, E_OPCODE_MK_LIST);
   e_emit_u32(cc, nelems);
 
-  cc->stack_top += e_get_instruction_stack_usage_with_operand(E_OPCODE_MK_LIST, nelems);
-
   return 0;
 }
 
@@ -957,8 +924,6 @@ compile_map(e_compiler* cc, int node)
 
   e_emit_instruction(cc, E_OPCODE_MK_MAP);
   e_emit_u32(cc, npairs);
-
-  cc->stack_top += e_get_instruction_stack_usage_with_operand(E_OPCODE_MK_MAP, npairs);
 
   return 0;
 }
@@ -989,17 +954,11 @@ compile_function_definition(e_compiler* cc, int node)
   const char* function_name = E_GET_NODE(cc->ast, node)->func.name;
   char*       full          = qualify_name(cc, function_name);
 
-  const u32 hash = e_hash_fnv(full, strlen(full));
+  const u32 hash = e_hash(full, strlen(full));
 
   int e = 0;
 
   // free(full);
-
-  /**
-   * Push frame for (our/compiler only) stack
-   * We'll load the arguments to this same stack.
-   */
-  if (e_stackemu_push_frame(cc->stack)) return -1;
 
   /* Ensure it doesn't already exist */
   const ecc_function_table* func_table = cc->function_table;
@@ -1034,7 +993,7 @@ compile_function_definition(e_compiler* cc, int node)
       char* full_arg_name = qualify_name(cc, arg_name);
       if (!full_arg_name) goto ERR;
 
-      u32 arg_hash = e_hash_fnv(full_arg_name, strlen(full_arg_name));
+      u32 arg_hash = e_hash(full_arg_name, strlen(full_arg_name));
       // free(full_arg_name);
 
       arg_slots[i] = arg_hash;
@@ -1046,12 +1005,9 @@ compile_function_definition(e_compiler* cc, int node)
         .name_hash     = arg_hash,
         .span          = E_GET_NODE(cc->ast, node)->common.span,
         .is_const      = false, // User can override the argument any time.
-        .stack_depth   = e_stackemu_fp(cc->stack),
-        // We won't have anything on the stack except arguments.
-        .stack_offset = fork.stack_top,
-
       };
-      e_stackemu_push_var(&stack, &info);
+      e = e_stackemu_push_var(&stack, &info);
+      if (e) return e;
     }
   }
 
@@ -1084,7 +1040,6 @@ compile_function_definition(e_compiler* cc, int node)
   e = append_function_entry(cc->arena, cc->function_table, &f);
   if (e) goto ERR;
 
-  e_stackemu_pop_frame(cc->stack);
   e_stackemu_free(&stack);
 
   return e;
@@ -1298,7 +1253,7 @@ compile_function_call(e_compiler* cc, int node)
   const char* function_name = E_GET_NODE(cc->ast, node)->call.function_name;
 
   char* full = qualify_name(cc, function_name);
-  u32   hash = e_hash_fnv(full, strlen(full));
+  u32   hash = e_hash(full, strlen(full));
 
   int e = 0;
   for (u32 i = 0; i < nargs; i++) {
@@ -1353,10 +1308,6 @@ compile_function_call(e_compiler* cc, int node)
   e_emit_u32(cc, hash);                  // 4 bytes, function ID
   e_emit_u16(cc, nargs);                 // 2 bytes, number of arguments
 
-  cc->stack_top += e_get_instruction_stack_usage_with_operand(E_OPCODE_CALL, nargs);
-
-  // Return value
-
   return 0;
 }
 
@@ -1376,10 +1327,11 @@ compile_if_statement(e_compiler* cc, int node)
   /* Push a new scope before everything. */
   e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
 
-  const i64 stack_base = cc->stack_top;
+  int e = e_stackemu_push_frame(cc->stack);
+  if (e) goto ERR;
 
   // condition
-  int e = compile(cc, E_GET_NODE(cc->ast, node)->if_stmt.condition);
+  e = compile(cc, E_GET_NODE(cc->ast, node)->if_stmt.condition);
   if (e) goto ERR;
 
   // condition failed :<
@@ -1401,6 +1353,7 @@ compile_if_statement(e_compiler* cc, int node)
   if (e) goto ERR;
 
   defer_pop_scope(cc);
+  e_stackemu_pop_frame(cc->stack);
 
   // Still inside the body, JMP over all other branches
   // since we're done executing the body of the if statement
@@ -1412,7 +1365,8 @@ compile_if_statement(e_compiler* cc, int node)
     define_and_emit_label(cc, next_in_chain_label);
     next_in_chain_label = make_label_id(cc);
 
-    cc->stack_top = stack_base;
+    e = e_stackemu_push_frame(cc->stack);
+    if (e) goto ERR;
 
     // dont worry about it dont worry about it dont worry about it dont worry about it
     struct e_if_stmt* elif = &E_GET_NODE(cc->ast, node)->if_stmt.else_ifs[else_if_idx];
@@ -1442,6 +1396,8 @@ compile_if_statement(e_compiler* cc, int node)
 
     defer_pop_scope(cc);
 
+    e_stackemu_pop_frame(cc->stack);
+
     /* JMP over all other branches. */
     emit_and_record_jmp(cc, E_OPCODE_JMP, end_label); // skip remaining elseifs and else
   }
@@ -1449,7 +1405,8 @@ compile_if_statement(e_compiler* cc, int node)
   /* Emit the final next in chain label for the else statement. */
   define_and_emit_label(cc, next_in_chain_label); // BAM!
 
-  cc->stack_top = stack_base;
+  e = e_stackemu_push_frame(cc->stack);
+  if (e) goto ERR;
 
   e = defer_push_scope(cc);
   if (e) goto ERR;
@@ -1468,12 +1425,12 @@ compile_if_statement(e_compiler* cc, int node)
   if (e) goto ERR;
 
   defer_pop_scope(cc);
+  e_stackemu_pop_frame(cc->stack);
 
   /* END LABEL. There's still one instruction after this and it's to ensure we always pop our variables. */
   define_and_emit_label(cc, end_label);
 
   /* Pop scope. */
-  cc->stack_top = stack_base;
   e_emit_instruction(cc, E_OPCODE_POP_FRAME);
 
   return 0;
@@ -1498,8 +1455,6 @@ compile_while_statement(e_compiler* cc, int node)
 
   /* After the while loop, with one POP_VARIABLES to ensure we always pop our variables. */
   const u32 end_label = make_label_id(cc);
-
-  i64 stack_base = cc->stack_top;
 
   /**
    * Push frame for the stack
@@ -1526,6 +1481,8 @@ compile_while_statement(e_compiler* cc, int node)
   //
 
   e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
+  e = e_stackemu_push_frame(cc->stack);
+  if (e) goto ERR;
 
   /* CONDITION */
   e = compile(cc, E_GET_NODE(cc->ast, node)->while_stmt.condition);
@@ -1545,7 +1502,7 @@ compile_while_statement(e_compiler* cc, int node)
 
   // Pop the scope
   e_emit_instruction(cc, E_OPCODE_POP_FRAME);
-  cc->stack_top = stack_base;
+  e_stackemu_pop_frame(cc->stack);
 
   /* Jump to condition, body is done executing */
   emit_and_record_jmp(cc, E_OPCODE_JMP, pre_condition_label);
@@ -1561,8 +1518,6 @@ compile_while_statement(e_compiler* cc, int node)
    * Pop frame for the stack
    */
   e_stackemu_pop_frame(cc->stack);
-
-  cc->stack_top = stack_base;
 
   // swap the old loop metadata back in
   cc->loop = last;
@@ -1616,7 +1571,8 @@ compile_for_statement(e_compiler* cc, int node)
 
   e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
 
-  u32 stack_top_old = cc->stack_top;
+  e = e_stackemu_push_frame(cc->stack);
+  if (e) goto ERR;
 
   // INITIALIZERS
   initializers = E_GET_NODE(cc->ast, node)->for_stmt.initializers;
@@ -1630,6 +1586,8 @@ compile_for_statement(e_compiler* cc, int node)
 
   /* Push a new scope */
   e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
+  e = e_stackemu_push_frame(cc->stack);
+  if (e) goto ERR;
 
   // CONDITION
   condition = E_GET_NODE(cc->ast, node)->for_stmt.condition;
@@ -1639,7 +1597,6 @@ compile_for_statement(e_compiler* cc, int node)
     goto ERR;
   }
 
-  stack_top_old = cc->stack_top;
   if (condition >= 0 && compile(cc, condition) < 0) {
     cerror(E_GET_NODE(cc->ast, condition)->common.span, "Failed to compile condition [for statement]");
     goto ERR;
@@ -1696,7 +1653,7 @@ compile_for_statement(e_compiler* cc, int node)
   /* Pop body scope */
   e_emit_instruction(cc, E_OPCODE_POP_FRAME);
 
-  cc->stack_top = stack_top_old;
+  e_stackemu_pop_frame(cc->stack);
 
   // JMP TOP_LABEL
   emit_and_record_jmp(cc, E_OPCODE_JMP, top_label);
@@ -1705,9 +1662,8 @@ compile_for_statement(e_compiler* cc, int node)
   define_and_emit_label(cc, end_label);
 
   // For the compiler too
-  e_stackemu_pop_frame(cc->stack);
   e_emit_instruction(cc, E_OPCODE_POP_FRAME); // Pop entire for scope
-  cc->stack_top = stack_top_old;
+  e_stackemu_pop_frame(cc->stack);
 
   cc->loop = last;
 
@@ -1821,7 +1777,7 @@ static int
 append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* deposit)
 {
   char* dup  = e_arnstrdup(a, name);
-  u32   hash = e_hash_fnv(name, strlen(name));
+  u32   hash = e_hash(name, strlen(name));
 
   if (deposit->fields_count >= deposit->field_capacity || !deposit->fields || !deposit->field_hashes) {
     u32    field_cap_new    = deposit->field_capacity * 2;
@@ -1893,7 +1849,6 @@ compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_i
       .initializer   = -1, // Arguments aren't initialized.
       .current_value = -1, // Or initialized to null if you think about it.
       .name_hash     = arg_hash,
-      .stack_depth   = e_stackemu_fp(fork->stack),
       .span          = span,
       .is_const      = false, // User can override the argument any time.
     };
@@ -1950,7 +1905,7 @@ compile_struct_decleration(e_compiler* cc, int node)
   const char* struct_name        = E_GET_NODE(cc->ast, node)->struct_decl.name;
   int*        struct_decl_stmts  = E_GET_NODE(cc->ast, node)->struct_decl.stmts;
   u32         struct_decl_nstmts = E_GET_NODE(cc->ast, node)->struct_decl.nstmts;
-  u32         struct_name_hash   = e_hash_fnv(struct_name, strlen(struct_name));
+  u32         struct_name_hash   = e_hash(struct_name, strlen(struct_name));
 
   /* Gather all information the user provided into one big structure. */
   struct_data = (ecc_struct_information){
@@ -2006,7 +1961,7 @@ compile_variable_decleration(e_compiler* cc, int node)
   char*       full = qualify_name(cc, name);
   if (!full) return -1;
 
-  u32 hash        = e_hash_fnv(full, strlen(full));
+  u32 hash        = e_hash(full, strlen(full));
   int initializer = E_GET_NODE(cc->ast, node)->let.initializer;
 
   ecc_variable_information* exists = e_stackemu_find_var_in_curr_scope(cc->stack, hash);
@@ -2025,12 +1980,22 @@ compile_variable_decleration(e_compiler* cc, int node)
 
   /* Add variable entry to stack */
 
+  const bool initializer_provided = initializer >= 0;
+
+  e_emit_instruction(cc, E_OPCODE_INIT);
+  e_emit_u32(cc, hash);
+
+  /* make_value has a specialized path for variable decleration nodes */
+  if (!e_can_make_value(cc->ast, node)) {
+    fprintf(stderr, "Fatal error (possible memory corruption)\n");
+    return -1;
+  }
+
   /* Acquire a refdobj */
   const ecc_variable_information info = {
     .initializer   = initializer,
     .current_value = initializer, // current value is initializer, -1 if none
     .name_hash     = hash,
-    .stack_depth   = e_stackemu_fp(cc->stack), // Push our variable to stack top
     .span          = E_GET_NODE(cc->ast, node)->common.span,
     .is_const      = E_GET_NODE(cc->ast, node)->let.is_const,
   };
@@ -2038,21 +2003,10 @@ compile_variable_decleration(e_compiler* cc, int node)
   int e = e_stackemu_push_var(cc->stack, &info);
   if (e) return -1;
 
-  const bool initializer_provided = initializer >= 0;
-
-  e_emit_instruction(cc, E_OPCODE_INIT);
-  e_emit_u32(cc, hash);
-
-  if (!e_can_make_value(cc->ast, node)) {
-    fprintf(stderr, "Fatal error (possible memory corruption)\n");
-    return -1;
-  }
-
-  // INIT pushes a variable to the stack.
-
   if (initializer_provided) {
     e_lval lv = e_make_value(cc, node);
-    int    e  = e_emit_lvalue_assign(cc, initializer, lv);
+
+    e = e_emit_lvalue_assign(cc, initializer, lv);
     e_free_value(&lv);
     if (e) return -1;
   }
@@ -2096,7 +2050,7 @@ static int
 compile_variable_load(e_compiler* cc, int node)
 {
   char* full = qualify_name(cc, E_GET_NODE(cc->ast, node)->ident.ident);
-  u32   hash = e_hash_fnv(full, strlen(full));
+  u32   hash = e_hash(full, strlen(full));
 
   for (u32 i = 0; i < cc->builtin_var_table->builtin_vars_count; i++) {
     const e_builtin_var* builtin_var      = &cc->builtin_var_table->builtin_vars[i];
@@ -2359,7 +2313,7 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
     .field_hashes   = e_arnalloc(cc->arena, b->fields_count * sizeof(u32)),
     .fields_count   = b->fields_count,
     .field_capacity = b->fields_count,
-    .name_hash      = e_hash_fnv(b->name, strlen(b->name)),
+    .name_hash      = e_hash(b->name, strlen(b->name)),
   };
   if (!st.name || !st.fields || !st.field_hashes) { goto ERR; }
 
@@ -2368,7 +2322,7 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
     if (!st.fields[j]) goto ERR;
   }
   for (u32 j = 0; j < b->fields_count; j++) {
-    st.field_hashes[j] = e_hash_fnv(b->fields[j], strlen(b->fields[j]));
+    st.field_hashes[j] = e_hash(b->fields[j], strlen(b->fields[j]));
     if (!st.field_hashes[j]) goto ERR;
   }
 
@@ -2462,11 +2416,11 @@ e_compile(const ecc_info* info, e_compilation_result* result)
    */
   u32 builtin_var_ctr = 0;
   for (u32 i = 0; i < E_ARRLEN(eb_vars); i++, builtin_var_ctr++) {
-    builtin_variable_hashes[builtin_var_ctr] = e_hash_fnv(eb_vars[i].name, strlen(eb_vars[i].name));
+    builtin_variable_hashes[builtin_var_ctr] = e_hash(eb_vars[i].name, strlen(eb_vars[i].name));
     memcpy(&builtin_variables[builtin_var_ctr], &eb_vars[i], sizeof(e_builtin_var));
   }
   for (u32 i = 0; i < info->nhooked_vars; i++, builtin_var_ctr++) {
-    builtin_variable_hashes[builtin_var_ctr] = e_hash_fnv(info->hook_vars[i].name, strlen(info->hook_vars[i].name));
+    builtin_variable_hashes[builtin_var_ctr] = e_hash(info->hook_vars[i].name, strlen(info->hook_vars[i].name));
     memcpy(&builtin_variables[builtin_var_ctr], &info->hook_vars[i], sizeof(e_builtin_var));
   }
 
@@ -2512,18 +2466,11 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     .builtin_var_table = &builtin_var_table,
     .function_table    = &func_table,
     .label_table       = &label_table,
-    .frame_table = {
-      .stack    = calloc(init_sp_frame_capacity, sizeof(u32)),
-      .capacity = init_sp_frame_capacity,
-      .top      = 0,
-    },
-    .emit          = (u8*)calloc(1, init_code_capacity),
+    .emit              = (u8*)calloc(1, init_code_capacity),
     .num_bytes_emitted = 0,
     .emit_capacity     = init_code_capacity,
-    .stack_top         = 0,
-    .stack_base        = 0,
   };
-  if (!cc.emit || !cc.frame_table.stack) return -1;
+  if (!cc.emit) return -1;
 
   int e = defer_push_scope(&cc);
   if (e) goto ERR;
@@ -2567,7 +2514,6 @@ e_compile(const ecc_info* info, e_compilation_result* result)
 
   for (u32 i = 0; i < label_table.labels_count; i++) { free(label_table.labels[i].jumps_target_offsets); }
   e_xfree((void**)&label_table.labels);
-  e_xfree((void**)&cc.frame_table.stack);
   e_xfree((void**)&ns.namespaces);
 
   return e;

@@ -67,7 +67,7 @@ static inline const e_builtin_func*
 get_builtin_func_hashed(u32 hash)
 {
   for (u32 i = 0; i < E_ARRLEN(eb_funcs); i++) {
-    if (e_hash_fnv(eb_funcs[i].name, strlen(eb_funcs[i].name)) == hash) return &eb_funcs[i];
+    if (e_hash(eb_funcs[i].name, strlen(eb_funcs[i].name)) == hash) return &eb_funcs[i];
   }
   return nullptr;
 }
@@ -102,7 +102,7 @@ call(const e_exec_info* info, u32 hash, u32 nargs)
   // extern
   for (u32 i = 0; i < info->nextern_funcs; i++) {
     const char* name = info->extern_funcs[i].name;
-    if (e_hash_fnv(name, strlen(name)) != hash) continue;
+    if (e_hash(name, strlen(name)) != hash) continue;
     if (info->extern_funcs[i].func) { return_value = info->extern_funcs[i].func(args_copy, nargs); }
     goto pop_and_ret;
   }
@@ -244,8 +244,8 @@ e_exec(const e_exec_info* info)
       case E_OPCODE_MOV: {
         const u32 dst = ins.v.mov.dst;
         const u32 src = ins.v.mov.src;
-        if (dst >= info->stack->size || src >= info->stack->size) {
-          fprintf(stderr, "OOB mov\n");
+        if (dst >= info->stack->capacity || src >= info->stack->capacity) {
+          fprintf(stderr, "OOB mov [%u, %u], capacity is [0, %u]\n", dst, src, info->stack->capacity);
           return E_NULLVAR;
         }
 
@@ -407,10 +407,10 @@ e_exec(const e_exec_info* info)
           evector_zero_extend(e_stack_top(info->stack), v);
 
           double d = DBL_MAX;
-          if (member == e_hash_fnv("x", 1)) { d = v[0]; }
-          if (member == e_hash_fnv("y", 1)) { d = v[1]; }
-          if (member == e_hash_fnv("z", 1)) { d = v[2]; }
-          if (member == e_hash_fnv("w", 1)) { d = v[3]; }
+          if (member == e_hash("x", 1)) { d = v[0]; }
+          if (member == e_hash("y", 1)) { d = v[1]; }
+          if (member == e_hash("z", 1)) { d = v[2]; }
+          if (member == e_hash("w", 1)) { d = v[3]; }
 
           // Vectors are not ref counted. This is safe.
           push = (e_var){
@@ -453,10 +453,10 @@ e_exec(const e_exec_info* info)
         e_vartype type = struc->type;
 
         if (type == E_VARTYPE_VEC2 || type == E_VARTYPE_VEC3 || type == E_VARTYPE_VEC4) {
-          const u32 x = e_hash_fnv("x", 1);
-          const u32 y = e_hash_fnv("y", 1);
-          const u32 z = e_hash_fnv("z", 1);
-          const u32 w = e_hash_fnv("w", 1);
+          const u32 x = e_hash("x", 1);
+          const u32 y = e_hash("y", 1);
+          const u32 z = e_hash("z", 1);
+          const u32 w = e_hash("w", 1);
 
           if (member == x) {
             struc->val.vec4[0] = value->val.f;
@@ -628,7 +628,7 @@ e_exec(const e_exec_info* info)
         bool was_external = false;
         for (u32 i = 0; i < info->nextern_vars; i++) {
           const char* name = info->extern_vars[i].name;
-          if (e_hash_fnv(name, strlen(name)) == id) {
+          if (e_hash(name, strlen(name)) == id) {
             e_var v = {
               .type = info->extern_vars[i].type,
               .val  = info->extern_vars[i].value,
@@ -812,7 +812,7 @@ _RETURN: {
 e_var
 e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs)
 {
-  u32 hash = e_hash_fnv(func_name, strlen(func_name));
+  u32 hash = e_hash(func_name, strlen(func_name));
 
   for (u32 i = 0; i < s->compiled.nfunctions; i++) {
     if (hash == s->compiled.functions[i].name_hash) {

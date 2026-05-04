@@ -117,8 +117,6 @@ typedef struct ecc_namespace_stack {
 typedef struct ecc_variable_information {
   e_filespan span; // Span at where the variable (name) is.
   u32        name_hash;
-  u32        stack_offset;  // The offset in the stack where this variable is.
-  u32        stack_depth;   // The stack frame depth it was created in
   int        initializer;   // initializer provided during creation.
   int        current_value; // <0 if no value currently (void)
   bool       is_const;
@@ -268,9 +266,6 @@ typedef struct e_compiler {
   e_arena*      arena;
   struct e_ast* ast;
 
-  /* Embedded into the struct, not shared. */
-  ecc_frame_table frame_table;
-
   ecc_label_table*             label_table;
   ecc_literal_table*           lit_table;
   ecc_builtin_variables_table* builtin_var_table;
@@ -282,19 +277,6 @@ typedef struct e_compiler {
 
   /* Stack for storing information about variables during compilation. */
   struct e_stackemu* stack;
-
-  /**
-   * Tracks the top of the stack
-   * Synchronized across forks (since we use a single stack).
-   */
-  i64 stack_top;
-
-  /**
-   * The stack top (to which the parent compiler will have) to return to after
-   * a function or scope exits.
-   * Stored here so parent doesn't need to remember.
-   */
-  u32 stack_base;
 
   u8* emit;
   u32 num_bytes_emitted;

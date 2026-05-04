@@ -27,15 +27,25 @@
 
 #include "stdafx.h"
 
+/* Vector of 2 elements, aligned to 16 bytes */
 typedef double e_vec2[2] ALIGNAS(16);
+/* Vector of 3 elements, aligned to 16 bytes */
 typedef double e_vec3[3] ALIGNAS(16);
+/* Vector of 4 elements, aligned to 16 bytes */
 typedef double e_vec4[4] ALIGNAS(16);
 
+/* Intialize a vector2 from another (vec2 or larger) */
 #define E_VEC2_INIT(old) { (old)[0], (old)[1] }
+/* Intialize a vector3 from another (vec3 or larger) */
 #define E_VEC3_INIT(old) { (old)[0], (old)[1], (old)[2] }
+/* Intialize a vector4 from another */
 #define E_VEC4_INIT(old) { (old)[0], (old)[1], (old)[2], (old)[3] }
 
-/* Ref counted because they are bigly big */
+/**
+ * mat3 and mat4 are ref counted, to avoid bloating the
+ * variable size. Variables are stored linearly in the stack
+ * and any increase in size massively reduces performance.
+ */
 typedef struct e_mat3 {
   double m[3][3];
 } e_mat3;

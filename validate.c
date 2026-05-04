@@ -33,8 +33,10 @@ validate_stream(
   const u8* end = code + code_size;
 
   for (u32 i = 0; i < nargs; i++) {
-    ecc_variable_information var = { .name_hash = arg_slots[i], .stack_depth = e_stackemu_fp(emu) };
-    e_stackemu_push_var(emu, &var);
+    ecc_variable_information var = { .name_hash = arg_slots[i] };
+
+    e = e_stackemu_push_var(emu, &var);
+    if (e) return e;
   }
 
   // u32 stack_top = 0;
@@ -43,8 +45,10 @@ validate_stream(
     e_ins ins = e_read_ins(&ip);
 
     if (ins.opcode == E_OPCODE_INIT) {
-      ecc_variable_information var = { .name_hash = ins.v.init, .stack_depth = e_stackemu_fp(emu) };
-      e_stackemu_push_var(emu, &var);
+      ecc_variable_information var = { .name_hash = ins.v.init };
+
+      e = e_stackemu_push_var(emu, &var);
+      if (e) return e;
     }
 
     else if (ins.opcode == E_OPCODE_LOAD) {
@@ -53,7 +57,7 @@ validate_stream(
       bool found = false;
       for (u32 i = 0; i < info->nextern_vars; i++) {
         const char* name = info->extern_vars[i].name;
-        if (e_hash_fnv(name, strlen(name)) == id) {
+        if (e_hash(name, strlen(name)) == id) {
           found = true;
           break;
         }
@@ -61,7 +65,7 @@ validate_stream(
 
       for (u32 i = 0; i < E_ARRLEN(eb_vars); i++) {
         const char* name = eb_vars[i].name;
-        if (e_hash_fnv(name, strlen(name)) == id) {
+        if (e_hash(name, strlen(name)) == id) {
           found = true;
           break;
         }
@@ -111,37 +115,37 @@ validate_stream(
     }
 
     else if (ins.opcode == E_OPCODE_CALL) {
-      const u32 id    = ins.v.call.hash;
-      const u32 nargs = ins.v.call.nargs;
+      const u32 id         = ins.v.call.hash;
+      const u32 func_nargs = ins.v.call.nargs;
 
       bool found             = false;
       bool invalid_arg_count = false;
       for (u32 i = 0; i < info->nfuncs; i++) {
         if (info->funcs[i].name_hash == id) {
           found = true;
-          if (info->funcs[i].nargs != nargs) { invalid_arg_count = true; }
+          if (info->funcs[i].nargs != func_nargs) { invalid_arg_count = true; }
           break;
         }
       }
 
       for (u32 i = 0; i < E_ARRLEN(eb_funcs); i++) {
-        if (e_hash_fnv(eb_funcs[i].name, strlen(eb_funcs[i].name)) == id) {
+        if (e_hash(eb_funcs[i].name, strlen(eb_funcs[i].name)) == id) {
           found = true;
-          if (nargs < eb_funcs[i].min_args || nargs > eb_funcs[i].max_args) { invalid_arg_count = true; }
+          if (func_nargs < eb_funcs[i].min_args || func_nargs > eb_funcs[i].max_args) { invalid_arg_count = true; }
           break;
         }
       }
 
       for (u32 i = 0; i < info->nextern_vars; i++) {
-        if (e_hash_fnv(info->extern_funcs[i].name, strlen(info->extern_funcs[i].name)) == id) {
+        if (e_hash(info->extern_funcs[i].name, strlen(info->extern_funcs[i].name)) == id) {
           found = true;
-          if (nargs < info->extern_funcs[i].min_args || nargs > info->extern_funcs[i].max_args) { invalid_arg_count = true; }
+          if (func_nargs < info->extern_funcs[i].min_args || func_nargs > info->extern_funcs[i].max_args) { invalid_arg_count = true; }
           break;
         }
       }
 
-      if (!found) { fprintf(f, "CALL %s,%u: undefined function\n", find_name(id, info), nargs); }
-      if (invalid_arg_count) { fprintf(f, "CALL %s,%u: invalid argument count\n", find_name(id, info), nargs); }
+      if (!found) { fprintf(f, "CALL %s,%u: undefined function\n", find_name(id, info), func_nargs); }
+      if (invalid_arg_count) { fprintf(f, "CALL %s,%u: invalid argument count\n", find_name(id, info), func_nargs); }
 
       if (!found || invalid_arg_count) return -1;
     }

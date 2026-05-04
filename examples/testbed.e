@@ -94,8 +94,39 @@ fn main() {
    list::append(refer, 3);
    list::append(refer, 2);
    list::append(refer, 1);
-   if (refer != [3,2,1, 3,2,1]) {
+   if (refer != [3,2,1, 3,2,1]) { // List comparison, wow!
       io::println(io::STDERR, "List append failed: Appended [3,2,1] to [3,2,1] but got: ", refer);
+      error = true;
+   }
+
+   let multiassign_1 = 2;
+   let multiassign_2 = 4;
+   let multiassign_3 = 8;
+   
+   const multiassign_target = 16;
+   multiassign_1 = multiassign_2 = multiassign_3 = multiassign_target;
+
+   if (multiassign_1 != multiassign_target || multiassign_2 != multiassign_target || multiassign_3 != multiassign_target) {
+      io::println(io::STDERR, "Multiassignment failed! Expected [16, 16, 16], got ", [multiassign_1, multiassign_2, multiassign_3]);
+      error = true;
+   }
+
+   struct stroctor {
+      let glooby;
+      let goopy;
+   };
+   let s = stroctor(true, false);
+   if (s.glooby != true || s.goopy != false) {
+      io::println(io::STDERR, "Structure member assignment failed: Expected [true, false], got ", [s.glooby, s.goopy]);
+      error = true;
+   }
+
+   struct Cell {
+      let another_cell;
+   };
+   let nested_struct = Cell(Cell(null));
+   if (nested_struct.another_cell.another_cell != null) {
+      io::println(io::STDERR, "Nested structure member assignment failed, expected {{null}}, got ", nested_struct);
       error = true;
    }
 

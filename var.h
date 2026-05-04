@@ -111,12 +111,11 @@ typedef union e_varval {
   void* generic_ptr;
 } e_varval;
 
-#pragma pack(push, 16)
 typedef struct e_var {
   e_vartype type;
   e_varval  val;
 } e_var;
-#pragma pack(pop)
+
 #define E_NULLVAR                                                                                                                                    \
   (e_var) { .type = E_VARTYPE_NULL }
 
@@ -151,7 +150,7 @@ e_combine_hash(const void** list, size_t size, size_t var_size)
   const u32 magic_prime   = 31;
   u32       combined_hash = 0;
   for (size_t i = 0; i < size; i++) {
-    u32 element_hash = e_hash_fnv(list[i], var_size);
+    u32 element_hash = e_hash(list[i], var_size);
     combined_hash    = (combined_hash * magic_prime) + element_hash;
   }
   return combined_hash;
