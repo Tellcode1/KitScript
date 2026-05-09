@@ -275,15 +275,15 @@ e_var_print(const struct e_var* v, FILE* f)
       break;
     }
     case E_VARTYPE_VEC2: {
-      printf("<%g, %g>", v->val.vec2[0], v->val.vec2[1]);
+      printf("<x=%g y=%g>", v->val.vec2[0], v->val.vec2[1]);
       break;
     }
     case E_VARTYPE_VEC3: {
-      printf("<%g, %g, %g>", v->val.vec3[0], v->val.vec3[1], v->val.vec3[2]);
+      printf("<x=%g y=%g z=%g>", v->val.vec3[0], v->val.vec3[1], v->val.vec3[2]);
       break;
     }
     case E_VARTYPE_VEC4: {
-      printf("<%g, %g, %g, %g>", v->val.vec4[0], v->val.vec4[1], v->val.vec4[2], v->val.vec4[3]);
+      printf("<x=%g y=%g z=%g w=%g>", v->val.vec4[0], v->val.vec4[1], v->val.vec4[2], v->val.vec4[3]);
       break;
     }
     case E_VARTYPE_MAT4: {

@@ -192,9 +192,18 @@ vector_index(const e_var* vec, int index)
 
   e_vec4 vector;
   evector_zero_extend(vec, vector);
-  if (index < vector_elements(vec)) { push = (e_var){ .type = E_VARTYPE_FLOAT, .val.f = vector[index] }; }
+  if (index < vector_elements(vec) && index >= 0) { push = (e_var){ .type = E_VARTYPE_FLOAT, .val.f = vector[index] }; }
 
   return push;
+}
+
+static inline const char*
+find_name_in_syms(u32 hash, const e_exec_info* info)
+{
+  for (u32 i = 0; i < info->nnames; i++) {
+    if (info->names_hashes[i] == hash) { return info->names[i]; }
+  }
+  return "(symbol not found)";
 }
 
 e_var
@@ -228,35 +237,11 @@ e_exec(const e_exec_info* info)
   while (ip < end) {
     ins = e_read_ins(&ip);
 
-    // fputs("STACK[ ", stdout);
-    // for (u32 i = 0; i < info->stack->size; i++) {
-    //   eb_print(&info->stack->stack[i], 1);
-    //   fputs(", ", stdout);
-    // }
-    // fputs(" ]\n\n", stdout);
-
     switch ((e_opcode_bck)ins.opcode) {
       /* NOOPs */
       case E_OPCODE_LABEL:
       case E_OPCODE_COUNT:
       case E_OPCODE_NOOP: break;
-
-      case E_OPCODE_MOV: {
-        const u32 dst = ins.v.mov.dst;
-        const u32 src = ins.v.mov.src;
-        if (dst >= info->stack->capacity || src >= info->stack->capacity) {
-          fprintf(stderr, "OOB mov [%u, %u], capacity is [0, %u]\n", dst, src, info->stack->capacity);
-          return E_NULLVAR;
-        }
-
-        e_var* stack = info->stack->stack;
-
-        e_var_release(&stack[dst]);
-        stack[dst] = stack[src];
-        e_var_acquire(&stack[dst]);
-
-        break;
-      }
 
       case E_OPCODE_POP: e_stack_pop(info->stack); break;
       case E_OPCODE_DUP: {
@@ -268,7 +253,7 @@ e_exec(const e_exec_info* info)
       }
 
       case E_OPCODE_CALL: {
-        const u32 func_nargs = ins.v.call.nargs;
+        const u16 func_nargs = ins.v.call.nargs;
         const u32 hash       = ins.v.call.hash;
 
         if (info->stack->size < func_nargs) {
@@ -407,10 +392,18 @@ e_exec(const e_exec_info* info)
           evector_zero_extend(e_stack_top(info->stack), v);
 
           double d = DBL_MAX;
-          if (member == e_hash("x", 1)) { d = v[0]; }
-          if (member == e_hash("y", 1)) { d = v[1]; }
-          if (member == e_hash("z", 1)) { d = v[2]; }
-          if (member == e_hash("w", 1)) { d = v[3]; }
+          if (member == e_hash("x", 1)) {
+            d = v[0];
+          } else if (member == e_hash("y", 1)) {
+            d = v[1];
+          } else if (member == e_hash("z", 1)) {
+            d = v[2];
+          } else if (member == e_hash("w", 1)) {
+            d = v[3];
+          } else {
+            fprintf(stderr, "No such member %s in vec2\n", find_name_in_syms(member, info));
+            return E_NULLVAR;
+          }
 
           // Vectors are not ref counted. This is safe.
           push = (e_var){
@@ -419,14 +412,20 @@ e_exec(const e_exec_info* info)
           };
         } else if (type == E_VARTYPE_STRUCT) {
           e_struct* st = E_VAR_AS_STRUCT(e_stack_top(info->stack));
+
+          bool found = false;
           for (u32 i = 0; i < st->member_count; i++) {
             if (st->member_hashes[i] == member) {
               TRY_V(e_var_shallow_cpy(&st->members[i], &push));
               e_var_acquire(&push); // acquire tmp
+              found = true;
               break;
             }
           }
+
+          if (!found) { fprintf(stderr, "No such member %s in struct\n", find_name_in_syms(member, info)); }
         } else {
+          fprintf(stderr, "Structure does not support member access\n");
           push = E_NULLVAR;
         }
 
@@ -479,18 +478,8 @@ e_exec(const e_exec_info* info)
           }
         }
 
-        // e_var value_copy;
-        // e_var_shallow_cpy(value, &value_copy);
-        // e_var_acquire(&value_copy);
-
         /* remove value, we have a copy of it.  */
         e_stack_pop(info->stack);
-
-        // /* release old struct object */
-        // e_var_release(struc);
-
-        // /* replace struct slot with value copy */
-        // *struc = value_copy;
 
         break;
       }
@@ -711,48 +700,54 @@ e_exec(const e_exec_info* info)
           return E_NULLVAR;
         }
 
-        e_var* base  = &stack[stack_size - 3];
+        e_var  base  = stack[stack_size - 3];
         e_var* index = &stack[stack_size - 2];
-        e_var* value = &stack[stack_size - 1];
+        e_var  value = stack[stack_size - 1];
 
-        if (base->type == E_VARTYPE_LIST) {
-          e_list* list = E_VAR_AS_LIST(base);
+        e_var_acquire(&value);
+        e_var_acquire(&base);
+
+        if (base.type == E_VARTYPE_LIST) {
+          e_list* list = E_VAR_AS_LIST(&base);
           int     idx  = e_cast_to_int(&*index);
 
           e_var* slot = &list->vars[idx];
           e_var_release(slot);
-          TRY_V(e_var_shallow_cpy(value, slot));
+          TRY_V(e_var_shallow_cpy(&value, slot));
           e_var_acquire(slot);
-        } else if (base->type == E_VARTYPE_MAP) {
-          e_map* map  = E_VAR_AS_MAP(base);
+        } else if (base.type == E_VARTYPE_MAP) {
+          e_map* map  = E_VAR_AS_MAP(&base);
           e_var* slot = e_map_find_or_insert(map, index);
 
           if (!map || !slot) { return (e_var){ .type = E_VARTYPE_NULL }; }
 
           e_var_release(slot);
-          TRY_V(e_var_shallow_cpy(value, slot));
+          TRY_V(e_var_shallow_cpy(&value, slot));
           e_var_acquire(slot);
-        } else if (base->type == E_VARTYPE_VEC2 || base->type == E_VARTYPE_VEC3 || base->type == E_VARTYPE_VEC4) {
+        } else if (base.type == E_VARTYPE_VEC2 || base.type == E_VARTYPE_VEC3 || base.type == E_VARTYPE_VEC4) {
           int    idx = e_cast_to_int(&*index);
-          double f   = e_cast_to_float(value);
+          double f   = e_cast_to_float(&value);
 
-          if (idx == 0) {
-            base->val.vec4[0] = f;
-          } else if (idx == 1) {
-            base->val.vec4[1] = f;
-          } else if (idx == 2) {
-            base->val.vec4[2] = f;
-          } else if (idx == 3) {
-            base->val.vec4[3] = f;
-          }
+          if (idx >= 0 && idx < 4) base.val.vec4[idx] = f;
         }
 
         e_stack_pop(info->stack);
-        // fputs("top=", stdout);
-        // eb_println(e_stack_top(info->stack), 1);
         e_stack_pop(info->stack);
-        /* base remains on stack */
+        e_stack_pop(info->stack);
 
+        /* Push value */
+        int e = e_stack_push(info->stack, &value);
+        if (e) return E_NULLVAR;
+
+        /* Push base */
+        e = e_stack_push(info->stack, &base);
+        if (e) return E_NULLVAR;
+
+        /* [.. value, base] */
+        /* base will be assigned back after this and popped, so resulting value can be chained in assignments */
+
+        e_var_release(&value);
+        e_var_release(&base);
         break;
       }
 
@@ -797,7 +792,7 @@ e_exec(const e_exec_info* info)
       // Non fatal return
       case E_OPCODE_HALT: goto _RETURN;
 
-      default: fprintf(stderr, "[%zu] Illegal instruction\n", (size_t)(ip - end)); break;
+      default: fprintf(stderr, "[%zu] Illegal instruction [%u]\n", (size_t)(ip - end), ins.opcode); break;
     }
   }
 

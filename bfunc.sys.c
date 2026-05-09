@@ -31,7 +31,6 @@
 #include "var.h"
 
 #include <stdio.h>
-#include <string.h>
 
 char** e_argv = nullptr;
 int    e_argc = 0;
@@ -88,11 +87,12 @@ eb_get_cwd(e_var* args, u32 nargs)
   return cwd;
 }
 
-
-e_var eb_shell(e_var* args, u32 nargs) {
-    const char *cmd = E_VAR_AS_STRING(&args[0])->s;
-    return (e_var){
-        .type = E_VARTYPE_INT,
-        .val.i = system(cmd),
-    };
+e_var
+eb_shell(e_var* args, u32 nargs)
+{
+  const char* cmd = E_VAR_AS_STRING(&args[0])->s;
+  return (e_var){
+    .type  = E_VARTYPE_INT,
+    .val.i = system(cmd),
+  };
 }

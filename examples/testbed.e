@@ -1,7 +1,3 @@
-fn error() {
-    
-}
-
 fn edit_refer(r) {
    r[0] = 3;
    r[1] = 2;
@@ -72,7 +68,7 @@ fn main() {
       defer ctr--;
    }
 
-      for (let i = 0; i < 100; i++) {
+   for (let i = 0; i < 100; i++) {
       defer {
          ctr++;
          ctr--;
@@ -95,7 +91,7 @@ fn main() {
    list::append(refer, 2);
    list::append(refer, 1);
    if (refer != [3,2,1, 3,2,1]) { // List comparison, wow!
-      io::println(io::STDERR, "List append failed: Appended [3,2,1] to [3,2,1] but got: ", refer);
+      io::println(io::STDERR, "List append/comparison failed: Appended [3,2,1] to [3,2,1] but got: ", refer);
       error = true;
    }
 
@@ -129,6 +125,16 @@ fn main() {
       io::println(io::STDERR, "Nested structure member assignment failed, expected {{null}}, got ", nested_struct);
       error = true;
    }
+
+   let mix_and_match_1 = 2;
+   let mix_and_match_2 = [3];
+   let mix_and_match_3 = #{ 2 : 64 };
+   mix_and_match_1 = mix_and_match_2[0] = mix_and_match_3[2];
+
+   if ((mix_and_match_1 != mix_and_match_2[0]) || (mix_and_match_2[0] != mix_and_match_3[2])) {
+      io::println(io::STDERR, "Expected [[64], [64], #{2:64}], but got ", [mix_and_match_1, mix_and_match_2, mix_and_match_3]);
+   }
+
 
    if (!error) {
       io::println(io::STDERR, "Successful! No errors");

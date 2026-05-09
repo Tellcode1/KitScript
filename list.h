@@ -38,11 +38,13 @@ typedef struct e_list {
 int  e_list_init(struct e_var* vars, u32 nvars, struct e_list* list);
 void e_list_free(struct e_list* list);
 
-struct e_var* e_list_index(struct e_list* list, u32 index);
-void          e_list_append(struct e_var* v, e_list* list);
+struct e_var* e_list_index(const struct e_list* list, u32 index);
+int           e_list_append(const struct e_var* v, e_list* list);
 void          e_list_pop(e_list* list);
-void          e_list_insert(u32 index, struct e_var* v, e_list* list);
+int           e_list_insert(u32 index, const struct e_var* v, e_list* list);
 void          e_list_remove(u32 index, e_list* list);
-int           e_list_reserve(u32 new_capacity, e_list* list);
+
+int e_list_reserve(u32 new_capacity, e_list* list);
+int e_list_resize(u32 new_size, e_list* list);
 
 #endif // E_LIST_H

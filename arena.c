@@ -12,7 +12,7 @@ align_up(uintptr_t data, size_t alignment)
   return ((data + alignment - 1) & ~(alignment - 1));
 }
 
-static inline int
+static inline ATTR_NODISCARD int
 add_free_page(size_t size, e_arena* arena)
 {
   // Round to page size
@@ -66,15 +66,15 @@ e_arena_init(u32 npages, e_arena* arena)
   return e;
 }
 
-void
-e_arena_resize(e_arena* a)
-{ add_free_page(E_PAGE_SIZE, a); }
+int
+e_arena_add_free_page(e_arena* a, size_t size)
+{ return add_free_page(size, a); }
 
 void*
 e_arnalloc(e_arena* a, size_t size)
 {
   size_t total = size;
-  total        = align_up(total, E_MEMALIGN);
+  total        = align_up(total, E_ARENA_MINIMUM_ALIGNMENT);
 
   /* can't fit in regular page. */
   if (total > (E_PAGE_SIZE - sizeof(e_arena_page))) {
@@ -87,8 +87,8 @@ e_arnalloc(e_arena* a, size_t size)
     a->current = page;
 
     uchar* data = (uchar*)page + sizeof(*page);
-    void*  p    = e_align_ptr(data, E_MEMALIGN);
-    if ((uintptr_t)p & (E_MEMALIGN - 1)) abort();
+    void*  p    = e_align_ptr(data, E_ARENA_MINIMUM_ALIGNMENT);
+    if ((uintptr_t)p & (E_ARENA_MINIMUM_ALIGNMENT - 1)) abort();
     return p;
   }
 
@@ -108,7 +108,7 @@ e_arnalloc(e_arena* a, size_t size)
   uchar* data = ((uchar*)fits + sizeof(*fits)) + fits->head;
 
   // And return the pointer after it.
-  void* ptr = e_align_ptr(data, E_MEMALIGN);
+  void* ptr = e_align_ptr(data, E_ARENA_MINIMUM_ALIGNMENT);
   fits->head += total;
 
   /**
@@ -117,10 +117,12 @@ e_arnalloc(e_arena* a, size_t size)
    * before we actually need it.
    * This generally improves performance by amortizing
    * malloc cost.
-   *
-   * Default threshold is 80%
    */
-  if ((10 * fits->head) >= (8 * fits->size)) { add_free_page(E_PAGE_SIZE, a); }
+  if ((E_ARENA_ALLOCATION_AMORTIZATION_THRESHOLD_DENOMINATION * fits->head) >= (E_ARENA_ALLOCATION_AMORTIZATION_THRESHOLD_NUMERATOR * fits->size)) {
+    int e = add_free_page(E_PAGE_SIZE, a);
+    /* what to do with error? */
+    (void)e;
+  }
 
   return ptr;
 }

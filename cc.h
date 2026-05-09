@@ -42,7 +42,7 @@
 struct e_ast;
 
 typedef struct ecc_info {
-  e_arena* arena; // If NULL, cc initializes its own arena
+  e_arena* arena; // Must not be NULL
 
   struct e_ast* ast; // Must not be NULL
 
@@ -50,7 +50,7 @@ typedef struct ecc_info {
    * Must be a valid node.
    * Need node have the ROOT type, anything works.
    */
-  int root;
+  int root_node;
 
   // If NULL, main is used.
   const char* custom_entry_point;
@@ -113,7 +113,6 @@ typedef struct ecc_namespace_stack {
   u32    capacity;
 } ecc_namespace_stack;
 
-/* Must not exceed E_REFLEAVE_SIZE bytes! If it does, change the LEAFSIZE in pool.h */
 typedef struct ecc_variable_information {
   e_filespan span; // Span at where the variable (name) is.
   u32        name_hash;
@@ -227,7 +226,7 @@ typedef struct ecc_label_jumps_table {
 /**
  * All labels in the stream, and their child jmps.
  *
- *                LABEL
+ *                LABEL0
  *    --------------|-----------------
  *    |             |                |
  *    |             |                |

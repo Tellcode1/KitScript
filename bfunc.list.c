@@ -35,7 +35,11 @@ eb_list_make(e_var* args, u32 nargs)
     .val.list = e_refdobj_pool_acquire(&ge_pool),
   };
 
-  e_list_init(args, nargs, E_VAR_AS_LIST(&v));
+  int e = e_list_init(args, nargs, E_VAR_AS_LIST(&v));
+  if (e) {
+    e_refdobj_pool_return(&ge_pool, v.val.list);
+    return E_NULLVAR;
+  }
 
   return v;
 }
@@ -45,7 +49,7 @@ eb_list_append(e_var* args, u32 nargs)
 {
   (void)nargs;
   e_list* l = E_VAR_AS_LIST(&args[0]);
-  e_list_append(&args[1], l);
+  (void)e_list_append(&args[1], l);
   return (e_var){ .type = E_VARTYPE_NULL };
 }
 
@@ -125,6 +129,16 @@ eb_list_reserve(e_var* args, u32 nargs)
   (void)nargs;
   e_list* l                 = E_VAR_AS_LIST(&args[0]);
   int     nelems_to_reserve = eb_cast_int(&args[1], 1).val.i;
-  e_list_reserve(l->capacity + nelems_to_reserve, l);
+  (void)e_list_reserve(l->capacity + nelems_to_reserve, l);
+  return (e_var){ .type = E_VARTYPE_NULL };
+}
+
+e_var
+eb_list_resize(e_var* args, u32 nargs)
+{
+  (void)nargs;
+  e_list* l        = E_VAR_AS_LIST(&args[0]);
+  int     new_size = eb_cast_int(&args[1], 1).val.i;
+  (void)e_list_resize(new_size, l);
   return (e_var){ .type = E_VARTYPE_NULL };
 }

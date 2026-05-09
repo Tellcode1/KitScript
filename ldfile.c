@@ -323,12 +323,6 @@ e_read_ins(const u8** ip)
       for (u32 j = 0; j < i.v.mk_struct.nmembers; j++) { i.v.mk_struct.members[j] = e_read_u32(ip); }
       break;
 
-    case E_OPCODE_MOV: {
-      i.v.mov.dst = e_read_u32(ip);
-      i.v.mov.src = e_read_u32(ip);
-      break;
-    }
-
     case E_OPCODE_MEMBER_ACCESS:
     case E_OPCODE_MEMBER_ASSIGN: i.v.member = e_read_u32(ip); break;
     case E_OPCODE_HALT:

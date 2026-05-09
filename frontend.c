@@ -55,6 +55,7 @@ main(int argc, char* argv[])
   e_str_interner       interner           = { 0 };
   e_arena              arena              = { 0 };
   int                  e                  = 0;
+  int                  opt_level          = 0;
 
   if (e_refdobj_pool_init(16, &ge_pool)) goto ret;
 
@@ -72,6 +73,13 @@ main(int argc, char* argv[])
       assert(i + 1 < argc);
       out = argv[i + 1];
       i++; // consumed path!
+    } else if (*opt == 'O') {
+      opt++;
+      opt_level = *opt - '0';
+      if (opt_level < 0 || opt_level > 3) {
+        fprintf(stderr, "Expected optimization level to be between 0 and 3. Assuming 0\n");
+        opt_level = 0;
+      }
     } else if (strcmp(opt, "tokens") == 0) {
       tokenizer_only = true;
     } else if (strcmp(opt, "ast") == 0) {
@@ -132,9 +140,9 @@ main(int argc, char* argv[])
   ecc_info info = {
     .arena              = &arena,
     .ast                = &ast,
-    .root               = root,
+    .root_node          = root,
     .custom_entry_point = nullptr,
-    .opt_level          = 3,
+    .opt_level          = opt_level,
   };
 
   e = e_compile(&info, &compiled);

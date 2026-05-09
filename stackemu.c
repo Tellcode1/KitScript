@@ -30,7 +30,7 @@ e_stackemu_init(e_stackemu* emu)
   emu->strucs_count    = 0;
   emu->strucs_capacity = 0;
 
-  emu->frame_top      = 1;
+  emu->frame_top      = 0;
   emu->frame_capacity = new_capacity;
 
   return 0;

@@ -34,23 +34,20 @@
 
 typedef enum e_opcode_bck {
   /**
-   * NOOP. Does nothing. Used for alignment sometimes.
-   * Since the size of an instruction is 2 bytes, instructions can really be only aligned with
-   * 2 byte offsets (or through other methods.)
-   * Usage(noattr): NOOP
+   * A 1 byte no operation instruction, used for alignment and all.
    */
   E_OPCODE_NOOP,
 
   /**
-   * Operate two (variables from the stack) and push result to the stack (or optionally to a variable);
-   * If the COMPOUND attr is added, first operand is the destination, where the result of [2] and [3] will be stored.
-   * If the MULTIPLE attr is used, the first operand is unconditionally the number of arguments, followed by the usual arguments.
-   * Usage(noattr): ADD/SUB/MUL/DIV/EXP, Stack contains operands
-   * Usage(MULTIPLE): ADD/SUB/MUL/DIV/EXP [NumArgs], Stack contains operands
-   * Usage(COMPOUND|MULTIPLE): ADD/SUB/MUL/DIV/EXP [NumArgs] [LeftID], Stack contains right operand
-   * Usage(VARIABLE): ADD/SUB/MUL/DIV/EXP [LeftID] [RightID], Result is pushed to the stack
-   * Usage(VARIABLE|MULTIPLE): ADD/SUB/MUL/DIV/EXP [NumArgs] [LeftID] [RightID1] [RightID2] [RightID3] ..., Result is pushed to the stack
-   * Usage(VARIABLE|COMPOUND|MULTIPLE): ADD/SUB/MUL/DIV/EXP [NumArgs] [LeftID] [RightID1] [RightID2] [RightID3] ..., Result is stored to [Left].
+   * Arithmetic binary operators.
+   * Operands are stored in the stack, the top being the RHS and under it the LHS.
+   * Operands are popped off, and result is pushed to the stack, nullvar if operation
+   * wasn't valid, say, 1 + "invalid", pushes nullvar.
+   *
+   * Stack state before: [..., left, right]
+   * Stack state after: [..., result]
+   *
+   * Instruction signature: OPCODE
    */
   E_OPCODE_ADD,
   E_OPCODE_SUB,
@@ -60,136 +57,144 @@ typedef enum e_opcode_bck {
   E_OPCODE_EXP,
   E_OPCODE_AND,  // Boolean AND
   E_OPCODE_OR,   // Boolean OR
-  E_OPCODE_NOT,  // Boolean NOT
   E_OPCODE_BAND, // Bitwise AND
   E_OPCODE_BOR,  // Bitwise OR
   E_OPCODE_XOR,  // Bitwise XOR (no boolean equivalent!)
-  E_OPCODE_BNOT, // Bitwise NOT
   E_OPCODE_EQL,  // Equality
   E_OPCODE_NEQ,  // Inequality
   E_OPCODE_LT,
   E_OPCODE_LTE,
   E_OPCODE_GT,
   E_OPCODE_GTE,
-  E_OPCODE_NEG, // Negate (-x)
 
   /**
-   * Increment or Decrement the top of the stack (or optionally a variable).
-   * Usage(noattr): INC/DEC , Stack contains operand
-   * Usage(VARIABLE): INC/DEC [var ID:u32]
+   * Arithmetic unary operators.
+   * RHS must be on the stack.
+   * RHS is popped off the stack and result is pushed.
+   *
+   * Stack state before: [..., right]
+   * Stack state after: [..., result]
+   *
+   * Instruction signature: OPCODE
+   */
+  E_OPCODE_BNOT, // Bitwise NOT
+  E_OPCODE_NEG,  // Negate (-x)
+  E_OPCODE_NOT,  // Boolean NOT
+
+  /**
+   * Increment or Decrement the top of the stack
+   * Modifies stack in place.
+   * Only integers or floats may be incremented, otherwise
+   * serves as a NOOP, though this behaviour is undefined.
+   *
+   * Stack state before: [..., RHS]
+   * Stack state after: [..., RHS] [STATE UNCHANGED]
+   *
+   * Instruction signature: INC/DEC [Variable ID]
    */
   E_OPCODE_INC,
   E_OPCODE_DEC,
 
   /**
-   * Call a function.
-   * arguments will be popped from the stack on function return.
-   * Arguments are compiled in reverse order, so they can be popped linearly.
-   * (Compilation is: for (i64 i = nargs - 1; i >= 0; i--) compile(args[i]), popping in VM is for (u32 i = 0; i < nargs; i++) push(args[i]))
-   * If the INLINE attr is used, the function will not push a stack frame.
-   * Builtin methods never push a stack frame, so the inline attr is implied and not necessary.
-   * If the COMPOUND and VARIABLE attr is used, the functions return value is assigned to the variable ID in 3rd operand.
-   * Usage(noattr/INLINE): CALL [nargs:u16] [function ID:u32]
+   * Call a function, be it builtin, external or user defined.
+   * Arguments are pushed to stack, in correct order:
+   * If function does not return a value explicitly, it will return nullvar. Always.
+   *
+   * Stack state before: [... arg0, arg1, arg2]
+   * Stack state after: [... return value], return value may be nullvar.
+   * Instruction signature: CALL [Function ID : u32] [Number of arguments: u16]
    */
   E_OPCODE_CALL,
 
   /**
-   * Return to the caller (with a value optionally).
-   * Usage(noattr): RET [has_value], has_value is 1 byte boolean.
-   * If has_value, the top of the stack is returned to the caller.
-   * Else, void is returned.
+   * Return from a function or procedure. Optionally, an explicit value can be returned to the
+   * caller, otherwise nullvar is returned.
+   *
+   * Stack state before: [... if have_return_value: return value]
+   * Stack state after: Stack invalidated, it no longer exists.
+   * Instruction signature: RETURN [have_return_value : u8]
    */
   E_OPCODE_RETURN,
 
   /**
-   * Push a literal from the literal table with the index specified as the first operand.
-   * Usage(noattr): LOADCONST [idx : e_operand]
+   * Push a literal from the literal table with the hash specified.
+   *
+   * State stack before: [...]
+   * Stack state after: [..., deep copy of literal]
+   * Instruction signature: LITERAL [hash : u32]
    */
   E_OPCODE_LITERAL,
 
   /**
-   * Load a variable from the map using the 1st operand as the ID.
-   * If the MEMBER_LOAD attr is used, the 1st operand is the member index, and the 2nd operand is the variable ID.
-   * If the MULTIPLE attr is used, the 1st operand is the number of variables to load, in the order that they are specified.
-   * !!! The MULTIPLE attr cannot be used with the MEMBER_LOAD attr.
-   * Usage (noattr): LOAD [var ID]
-   * Usage (MEMBER_ACCESS attr): LOAD [member index] [struct variable ID]
-   * Usage (MULTIPLE attr): LOAD [NumArgs] [ID1] [ID2] [ID3]...
+   * Load a shallow copy of a variable (that was INIT'd) from the map using its ID.
+   * nullvar if no such variable exists.
+   *
+   * State stack before: [...]
+   * Stack state after: [..., shallow copy of variable]
+   * Instruction signature: LOAD [Variable ID : u32]
    */
   E_OPCODE_LOAD,
 
   /**
    * Pop the top of the stack.
+   *
+   * State stack before: [..., top]
+   * Stack state after: [...]
+   * Instruction signature: POP
    */
   E_OPCODE_POP,
 
   /**
-   * Duplicate the top of the stack.
-   * If object is refcounted, produce a shallow copy.
+   * Duplicate (shallow copy!) the top of the stack.
+   *
+   * State stack before: [..., top]
+   * Stack state after: [..., top, shallow copy of top]
+   * Instruction signature: DUP
    */
   E_OPCODE_DUP,
 
   /**
-   * Load a reference to the variable using the 1st operand as the ID.
-   * If MEMBER_ACCESS attr is used, the 1st operand is the member index, and the 2nd operand is the variable ID.
-   * Usage(noattr): LOAD_REFERENCE [var ID]
-   * Usage(MEMBER_ACCESS): LOAD_REFERENCE [member index] [struct var ID]
-   */
-  // E_OPCODE_LOAD_REFERENCE,
-  // I'm removing references.
-  // Stop me if you can.
-
-  /**
-   * Assign the top of the stack to the variable on the 1st operand.
-   * The assigned value will be left on the stack.
-   * If the MEMBER_ACCESS attr is used, the 1st operand will be the member index, and the 2nd operand is the variable ID of the struct.
-   * If the CLEAN attr is used, assigned value will be popped off the stack.
-   * Usage(noattr/CLEAN): ASSIGN [var ID]
-   * Usage(MEMBER_ACCESS): ASSIGN [member index] [struct variable ID]
+   * Store the top of the stack (shallow copy) to the variable ID's slot.
+   * Stored value (top of stack) is *not* popped, to support chained assignments.
+   *
+   * Stack state before: [slot, ..., value]
+   * Stack state after: [*slot= shallow copy of value, ..., value]
+   * Instruction signature: ASSIGN [Variable ID : u32]
    */
   E_OPCODE_ASSIGN,
 
   /**
-   * Move (Copy!) data in stack.
-   * MOV [dst_offset] [src_offset]
-   */
-  E_OPCODE_MOV,
-
-  /**
    * Assign to a member of a struct/container.
-   * The base struct/container and index will be popped.
-   * assigned value is kept.
-   * Usage(noattr): INDEX_ASSIGN [var ID : u32], Stack is Top=Value, Top-1=Index, Top-2=Base struct/container
+   *
+   * The modified base structure is pushed, and the assigned value is preserved.
+   * Only the index is popped.
+   * (See the Stack state delta, it will make sense)
+   *
+   * It's complicated like this since we need to write back structures like
+   * vec2s to their slots. After  the writeback, the modified base structures are popped
+   * with instructions by the compiler (since we don't know where the vec2 originates from at runtime).
+   *
+   * Stack state before: [..., base, index, value]
+   * Stack state after: [... value, base]
+   * Instruction signature: INDEX_ASSIGN [var ID : u32], Stack is Top=Value, Top-1=Index, Top-2=Base struct/container
    */
   E_OPCODE_INDEX_ASSIGN,
 
   /**
-   * Assign to variable on the stack.
-   * Used for direct variable assignments
-   * (vectors, generally.)
-   * INDEX_ASSIGN_VAR [varID : u32]
-   */
-  // E_OPCODE_INDEX_ASSIGN_VAR,
-
-  /**
    * Push a variable to the stack, and set its ID on the variable table.
-   * The initial value of the variable will be NULL.
-   * If an explicit type for the variable is defined, but no initializer was specified, the initial value of the variable will be zeroed.
-   * If the COMPOUND attr is used, the top of the stack is assigned to the variable.
-   * If the VARIABLE attr is used, the value of the variable ID operand is SHALLOW copied.
-   * If the MULTIPLE attr is used, 1st operand specifies the number of variables to push. Each variable will be initialized to VOID.
-   * If both the MULTIPLE and COMPOUND attres are used, the values are pushed off of the stack and stored to the variable in reverse order (First
-   * variable gets top, second gets top - 1, etc).
-   * !!! The MULTIPLE attr cannot be used with the VARIABLE attr.
+   * The initial value of the variable will be nullvar.
+   * INIT'd variables are popped when the frame they were INIT'd in is popped.
    */
   E_OPCODE_INIT,
 
   /**
    * Pack elements into a single list.
-   * The list is pushed to the stack.
+   * The list is pushed to the stack. Elements are popped off.
    * nelems is allowed to be 0.
-   * If the CLEAN attr is used, the elements are popped from the stack on copy.
-   * Usage(noattr): MK_LIST [num_elems:u32]
+   *
+   * Stack state before: [... elem0, elem1, elem2]
+   * Stack state after: [... list]
+   * Instruction signature: MK_LIST [num_elems : u32]
    */
   E_OPCODE_MK_LIST,
 
@@ -206,7 +211,10 @@ typedef enum e_opcode_bck {
    * And is popped in reverse order (value first, key next).
    * Order of KV pairs does not matter in maps, as they
    * do not have any particular order.
-   * Usage(noattr): MK_MAP [npairs]
+   *
+   * Stack state before: [... pair0.key, pair0.value, pair1.key, pair1.value]
+   * Stack state after: [... map]
+   * Instruction signature: MK_MAP [npairs : u32]
    */
   E_OPCODE_MK_MAP,
 
@@ -324,108 +332,13 @@ typedef struct e_ins {
       u32 members[32];
     } mk_struct;
     u32 member;
-    struct {
-      u32 dst;
-      u32 src;
-    } mov;
   } v;
 } e_ins;
-
-static inline i32
-e_get_instruction_stack_usage(e_opcode_bck opc)
-{
-  switch (opc) {
-    case E_OPCODE_DUP:
-    case E_OPCODE_LOAD:
-    case E_OPCODE_LITERAL: return 1;
-
-    case E_OPCODE_ADD:
-    case E_OPCODE_SUB:
-    case E_OPCODE_MUL:
-    case E_OPCODE_DIV:
-    case E_OPCODE_MOD:
-    case E_OPCODE_EXP:
-    case E_OPCODE_AND:
-    case E_OPCODE_OR:
-    case E_OPCODE_BAND:
-    case E_OPCODE_BOR:
-    case E_OPCODE_XOR:
-    case E_OPCODE_EQL:
-    case E_OPCODE_NEQ:
-    case E_OPCODE_LT:
-    case E_OPCODE_LTE:
-    case E_OPCODE_GT:
-    case E_OPCODE_GTE: return 1 - 2; // 1 Pushed, 2 Popped
-
-    case E_OPCODE_NEG:
-    case E_OPCODE_NOT:
-    case E_OPCODE_BNOT:
-    case E_OPCODE_INC:
-    case E_OPCODE_DEC: return 1 - 1; // 1 Pushed, 1 Popped
-
-    case E_OPCODE_JZ: // Single condition
-    case E_OPCODE_JNZ: return -1;
-
-    case E_OPCODE_JE: // Both conditions
-    case E_OPCODE_JNE: return -2;
-
-    case E_OPCODE_MEMBER_ACCESS: return 1 - 1; // pops base, pushes member
-    case E_OPCODE_MEMBER_ASSIGN: return -1;    // pops value, pushes (preserves) base
-
-    case E_OPCODE_INDEX: return 1 - 2;     // pops base & index, pushes value
-    case E_OPCODE_INDEX_ASSIGN: return -2; // pops base & index
-
-    case E_OPCODE_PUSH_FRAME:
-    case E_OPCODE_POP_FRAME:
-
-    case E_OPCODE_MOV:
-    case E_OPCODE_JMP:
-    case E_OPCODE_LABEL:
-    case E_OPCODE_HALT:
-    case E_OPCODE_RETURN:
-    case E_OPCODE_ASSIGN: return 0; // Don't pop or push anything.
-
-    case E_OPCODE_INIT: return 1; // Pushes a variable to the stack and tracks its slot.
-    case E_OPCODE_POP: return -1;
-
-    case E_OPCODE_MK_STRUCT: return 1; // Just sets up (pushes) the structure and initializes all members to NULL.
-
-    case E_OPCODE_NOOP:
-    case E_OPCODE_CALL:
-    case E_OPCODE_MK_LIST:
-    case E_OPCODE_MK_MAP:
-    case E_OPCODE_COUNT: return 0;
-  }
-  return 0;
-}
-
-static inline i32
-e_get_instruction_stack_usage_with_operand(e_opcode opc, u32 operand)
-{
-  switch (opc) {
-    case E_OPCODE_CALL: return -(i32)operand + 1;         // Pop all arguments off + Push return value
-    case E_OPCODE_MK_MAP: return -(i32)(operand * 2) + 1; // Pop all pairs off, push map
-    case E_OPCODE_MK_LIST: return -(i32)operand + 1;      // Pop all elemens, push list
-    default: return e_get_instruction_stack_usage(opc);
-  }
-}
-
-static inline i32
-e_get_ins_stack_usage(e_ins i)
-{
-  switch (i.opcode) {
-    case E_OPCODE_CALL: return -(i32)i.v.call.nargs + 1;     // Pop all arguments off + Push return value
-    case E_OPCODE_MK_MAP: return -(i32)(i.v.mk_map * 2) + 1; // Pop all pairs off, push map
-    case E_OPCODE_MK_LIST: return -(i32)i.v.mk_list + 1;     // Pop all elemens, push list
-    default: return e_get_instruction_stack_usage(i.opcode);
-  }
-}
 
 static inline const char*
 e_opcode_to_str(e_opcode_bck op)
 {
   switch (op) {
-    case E_OPCODE_MOV: return "MOV";
     case E_OPCODE_NOOP: return "NOOP";
     case E_OPCODE_ADD: return "ADD";
     case E_OPCODE_SUB: return "SUB";

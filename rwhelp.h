@@ -40,10 +40,10 @@
 #define E_GEN_READ_FUNCTION(type)                                                                                                                    \
   static inline type e_read_##type(const u8** _ip)                                                                                                   \
   {                                                                                                                                                  \
-    *(_ip) = (const u8*)e_align_ptr((void*)*(_ip), sizeof(type)); /* Align pointer so we don't get a SIGBUS */                                       \
+    *(_ip) = (const u8*)e_align_ptr((void*)*(_ip), sizeof(type)); /* Align IP so we don't get a SIGBUS */                                            \
     type v = 0;                                                                                                                                      \
-    memcpy(&v, *_ip, sizeof(type));                                                                                                                  \
-    *(_ip) += sizeof(type);                                                                                                                          \
+    memcpy(&v, *_ip, sizeof(type)); /* memcpy from ip, faster and safer than dereferencing */                                                        \
+    *(_ip) += sizeof(type);         /* Move ip forward*/                                                                                             \
     return v;                                                                                                                                        \
   }
 E_GEN_READ_FUNCTION(u32)
@@ -58,9 +58,9 @@ E_GEN_READ_FUNCTION(u8)
     void* unaligned = (uchar*)cc->emit + cc->num_bytes_emitted;                                                                                      \
     void* aligned   = e_align_ptr((uchar*)cc->emit + cc->num_bytes_emitted, sizeof(type)); /* Align pointer so we don't get a SIGBUS */              \
     memset(unaligned, E_OPCODE_NOOP, (uchar*)aligned - (uchar*)unaligned);                 /* Fill the memory we're skipping over with NOOPs */      \
-    memcpy((type*)aligned, &value, sizeof(value));                                                                                                   \
-    cc->num_bytes_emitted += ((uchar*)aligned - (uchar*)unaligned);                                                                                  \
-    cc->num_bytes_emitted += sizeof(type);                                                                                                           \
+    memcpy((type*)aligned, &value, sizeof(value));                                         /* Emit our value */                                      \
+    cc->num_bytes_emitted += ((uchar*)aligned - (uchar*)unaligned);                        /* Move over alignment padding */                         \
+    cc->num_bytes_emitted += sizeof(type);                                                 /* Move over size */                                      \
   }
 E_GEN_EMIT_FN(u32)
 E_GEN_EMIT_FN(u64)

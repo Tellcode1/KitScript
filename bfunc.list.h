@@ -42,6 +42,8 @@ e_var eb_list_find(e_var* args, u32 nargs);  // Returns index, -1 if it doesn't 
 e_var eb_list_rfind(e_var* args, u32 nargs); // Returns index, -1 if it doesn't exist.
 // reserve(list, elements_to_reserve)
 e_var eb_list_reserve(e_var* args, u32 nargs); // number of new variables to reserve
+// resize(list, new_size)
+e_var eb_list_resize(e_var* args, u32 nargs);
 // len(list)
 e_var eb_list_len(e_var* args, u32 nargs);
 

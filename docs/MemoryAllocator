@@ -1,0 +1,23 @@
+[See arena.h, arena.c, pool.h, pool.c]
+
+This project relies on multiple different allocators, each specialized for their purpose.
+These are: Arena allocator, Pool (reference objects), and the system allocator.
+
+For instance, compilation uses an arena (bump) allocator for temporary allocations.
+
+1. Arena allocator:
+* The arena allocator simply allocates a block of E_PAGESIZE memory,
+* It stores a "head" variable to track where the next allocation will start.
+* When you allocate from the arena, it returns a pointer in the page starting from head,
+* aligning it to E_ARENA_MINIMUM_ALIGNMENT, returning it.
+* It then moves the head forward by the number of bytes allocated.
+* No free function is present! All pages are cleared on e_arena_free().
+
+2. Pool allocator:
+* Used for referenced objects.
+* Stores "branches" per type size.
+* When some type size needs to be allocated,
+* the pool finds the bucket with the best fit size and returns
+* a branch from there (allocating another branch if needed).
+
+3. System allocator: Used for everything else, resizable arrays (faster performance), et cetera.

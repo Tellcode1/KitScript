@@ -31,18 +31,11 @@
 
 #include <stdio.h>
 
-static u32 stack_top;
-
 static inline void
 e_print_instruction(e_ins i)
 {
-  i32 stack_usage = e_get_ins_stack_usage(i);
-  printf("[%u, %u] (%i)", stack_top, stack_top + stack_usage, stack_usage);
-  stack_top += stack_usage;
-
   switch ((e_opcode_bck)i.opcode) {
     case E_OPCODE_NOOP: printf("noop\n"); break;
-    case E_OPCODE_MOV: printf("mov [%u] [%u]\n", i.v.mov.dst, i.v.mov.src); break;
 
     case E_OPCODE_ADD: printf("add\n"); break;
     case E_OPCODE_SUB: printf("sub\n"); break;
@@ -125,19 +118,17 @@ e_print_instruction(e_ins i)
 static inline void
 e_print_instruction_stream(const u8* stm, u32 stm_size, int indent)
 {
-  stack_top = 0;
-
   const u8* ip  = stm;
   const u8* end = stm + stm_size;
   while (ip < end) {
     u32 instruction_offset = ip - stm;
 
-    e_ins i = e_read_ins(&ip);
+    e_ins ins = e_read_ins(&ip);
 
-    for (int i = 0; i < indent; i++) fputc(' ', stdout);
+    for (int j = 0; j < indent; j++) fputc(' ', stdout);
 
     printf("%-4u: ", instruction_offset); // Print offset of instruction
-    e_print_instruction(i);
+    e_print_instruction(ins);
   }
 }
 
