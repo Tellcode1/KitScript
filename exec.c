@@ -751,6 +751,49 @@ e_exec(const e_exec_info* info)
         break;
       }
 
+      case E_OPCODE_INDEX_PEEK: {
+        e_var push = { .type = E_VARTYPE_NULL };
+
+        e_var* stack      = info->stack->stack;
+        size_t stack_size = info->stack->size;
+        if (stack_size < 2) {
+          fputs("*** stack corruption ***\n", stderr);
+          return E_NULLVAR;
+        }
+
+        e_var* left = &stack[stack_size - 2];
+
+        if (left->type == E_VARTYPE_LIST) {
+          e_list* list = left->type == E_VARTYPE_LIST ? E_VAR_AS_LIST(left) : NULL;
+          if (!list) { return (e_var){ .type = E_VARTYPE_NULL }; }
+
+          int idx = e_cast_to_int(&stack[stack_size - 1]);
+
+          if (list && idx >= 0 && (u64)idx < list->size) {
+            push = list->vars[idx];
+            e_var_acquire(&push);
+          }
+        } else if (left->type == E_VARTYPE_MAP) {
+          e_map* map = E_VAR_AS_MAP(left);
+          e_var  key = stack[stack_size - 1];
+
+          if (!map) { return (e_var){ .type = E_VARTYPE_NULL }; }
+
+          e_var* find = e_map_find(map, &key);
+          if (find) {
+            push = *find;
+            e_var_acquire(&push);
+          } // else push is null var
+        } else if (is_vector(left)) {
+          int idx = e_cast_to_int(&stack[stack_size - 1]);
+          push    = vector_index(left, idx);
+        }
+
+        TRY_V(e_stack_push(info->stack, &push));
+        e_var_release(&push);
+        break;
+      }
+
       case E_OPCODE_ASSIGN: {
         const u32 id = ins.v.assign;
 

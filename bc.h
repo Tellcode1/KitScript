@@ -180,6 +180,8 @@ typedef enum e_opcode_bck {
    */
   E_OPCODE_INDEX_ASSIGN,
 
+  E_OPCODE_INDEX_PEEK,
+
   /**
    * Push a variable to the stack, and set its ID on the variable table.
    * The initial value of the variable will be nullvar.
@@ -222,21 +224,22 @@ typedef enum e_opcode_bck {
    * Index into an list, string or structure.
    * The returned value is not an lvalue, you can not modify it and expect
    * modifications to propogate across all copies.
-   * If index is out of range, program HALTs with E_EOUTOFRANGE.
-   * Base (structure/string/list) will NOT be popped off the stack.
-   * Usage(noattr): INDEX
-   * Stack is: Top=Index, Top-1=Base
+   * If index is out of range, returns nullvar.
+   *
+   * Stack state before: [... base, index]
+   * Stack state after: [... value (*value = base[index])]
+   * Instruction signature: INDEX
    */
   E_OPCODE_INDEX,
 
   /**
-   * A label. Removed from the instruction stream on optimization levels >= 2
-   * because it requires walking through the entire bytestream for each label,
-   * modifying each jump to point to the correct indices.
-   * Should serve as NOOP.
+   * A label with an ID. JMPs can refer to this ID to ensure
+   * byte code changes do not require a retracking.
+   * Serves as a NOOP during runtime.
    * One operand is used, as the label ID. All jumps to this label must have the
    * same label ID.
-   * Usage(noattr): LABEL [labelID : u32]
+   *
+   * Instruction signature: LABEL [labelID : u32]
    */
   E_OPCODE_LABEL,
 
@@ -313,16 +316,16 @@ static const u8 static_assert__e_opcode_must_have_less_than_256_entries__[E_OPCO
 typedef struct e_ins {
   u8 opcode;
   union {
-    u32  init;
-    u32  load;
-    u32  halt;
-    u32  jmp; // , jz, jnz, je, jne
-    u32  assign;
-    u32  mk_list, mk_map;
-    u32  index_assign;
-    u32  label;
-    u32  literal;
-    bool has_return_value;
+    u32 init;
+    u32 load;
+    u32 halt;
+    u32 jmp; // , jz, jnz, je, jne
+    u32 assign;
+    u32 mk_list, mk_map;
+    u32 index_assign;
+    u32 label;
+    u32 literal;
+    u8  has_return_value;
     struct {
       u16 nargs;
       u32 hash;
@@ -387,6 +390,7 @@ e_opcode_to_str(e_opcode_bck op)
     case E_OPCODE_MEMBER_ASSIGN: return "MEMBER_ASSIGN";
     case E_OPCODE_HALT: return "HALT";
     case E_OPCODE_COUNT: return "COUNT";
+    case E_OPCODE_INDEX_PEEK: return "INDEX_PEEK";
   }
   return "UNKNOWN";
 }

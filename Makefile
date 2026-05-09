@@ -1,6 +1,6 @@
 CC ?= cc
-CFLAGS ?= -std=c99 -g -Wall -Wpedantic
-LDFLAGS ?= -g -lm
+CFLAGS ?= -std=c99 -g -Wall -Wpedantic -fsanitize=address
+LDFLAGS ?= -g -lm -fsanitize=address
 
 SRC_DIR=.
 BUILD_DIR?=build

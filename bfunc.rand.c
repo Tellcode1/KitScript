@@ -1,5 +1,6 @@
 #include "bfunc.list.h"
 #include "cast.h"
+#include "list.h"
 #include "stdafx.h"
 #include "var.h"
 
@@ -76,6 +77,11 @@ eb_rand_list(e_var* args, u32 nargs)
   int min = e_cast_to_int(&args[0]);
   int max = e_cast_to_int(&args[1]);
   int num = e_cast_to_int(&args[2]);
+  if (max < min) {
+    int tmp = min;
+    min     = max;
+    max     = tmp;
+  }
 
   e_var v    = (e_var){ .type = E_VARTYPE_LIST };
   v.val.list = e_refdobj_pool_acquire(&ge_pool);
@@ -84,13 +90,14 @@ eb_rand_list(e_var* args, u32 nargs)
 
   u32 seed[4] = { time(NULL), (u32)(u64)&v, (u32)(u64)rand, clock() };
 
+  u64 range = (u64)(i64)max - (u64)(i64)min + 1;
   for (i32 i = 0; i < num; i++) {
     e_var e = {
       .type  = E_VARTYPE_INT,
-      .val.i = (int)(min + (xoshiro(seed) % (max - min + 1))),
+      .val.i = (int)((i64)min + (i64)(xoshiro(seed) % range)),
     };
-    e_var append[] = { v, e };
-    eb_list_append(append, 2);
+    int err = e_list_append(&e, E_VAR_AS_LIST(&v));
+    if (err) return E_NULLVAR;
   }
 
   return v;

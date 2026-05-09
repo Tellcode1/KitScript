@@ -112,6 +112,7 @@ e_print_instruction(e_ins i)
       break;
     }
     case E_OPCODE_DUP: printf("dup\n"); break;
+    case E_OPCODE_INDEX_PEEK: printf("idx_peek\n"); break;
   }
 }
 

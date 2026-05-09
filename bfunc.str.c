@@ -169,6 +169,9 @@ eb_str_split(e_var* args, u32 nargs)
     e_var s = e_make_var_from_string(e_strdup(tok));
     e_list_append(&s, E_VAR_AS_LIST(&returned_list));
 
+    // Hand over ownership to list.
+    e_var_release(&s);
+
     tok = strtok(NULL, split_by);
   }
 

@@ -40,6 +40,7 @@ void
 e_stackemu_free(e_stackemu* emu)
 {
   free(emu->vars);
+  free(emu->frame_var_counts);
   memset(emu, 0, sizeof *emu);
 }
 

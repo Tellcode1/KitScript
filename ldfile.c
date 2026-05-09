@@ -1,3 +1,4 @@
+#include "bc.h"
 #include "cc.h"
 #include "rwhelp.h"
 #include "stdafx.h"
@@ -290,6 +291,7 @@ e_read_ins(const u8** ip)
     case E_OPCODE_POP:
     case E_OPCODE_DUP:
     case E_OPCODE_INDEX_ASSIGN:
+    case E_OPCODE_INDEX_PEEK:
     case E_OPCODE_PUSH_FRAME:
     case E_OPCODE_POP_FRAME:
     case E_OPCODE_INDEX:

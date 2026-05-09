@@ -607,10 +607,7 @@ emit_lvalue_assign_prologue(e_compiler* cc, e_lval lv)
 
     e_lval left = e_make_value(cc, lv.val.index.left_node);
 
-    int e = emit_lvalue_assign_prologue(cc, left);
-    if (e) return e;
-
-    e = e_emit_lvalue_load(cc, left);
+    int e = e_emit_lvalue_load(cc, left);
     if (e) return e;
 
     e = compile(cc, lv.val.index.index_node);
@@ -639,10 +636,7 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
 {
   int e = 0;
 
-  if (lv.is_compound) {
-    // RHS already on stack. Just emit the operator.
-    e_emit_instruction(cc, e_binary_operator_to_opcode(lv.compound_operator));
-  }
+  if (lv.is_compound) { e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN); }
 
   if (lv.type == E_LVAL_VAR) {
     e_emit_instruction(cc, E_OPCODE_ASSIGN);
@@ -650,22 +644,7 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
   }
   /* LVAL_INDEX handles all three of INDEX, INDEX_ASSIGN and INDEX_COMPOUND */
   else if (lv.type == E_LVAL_INDEX) {
-    // We emitted a copy of our LHS in prologue, and we have RHS now
-    // so emit the operation
-
     e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN);
-
-    /* Stack is now [... value, base] */
-
-    /* Assign back to base */
-    e_lval base = e_make_value(cc, lv.val.index.left_node);
-    e           = emit_lvalue_assign_epilogue(cc, base);
-    e_free_value(&base);
-    if (e) return e;
-
-    /* Pop modified struct off (assigned it back right now), leaving only value on the stack. */
-    e_emit_instruction(cc, E_OPCODE_POP);
-
   } else if (lv.type == E_LVAL_MEMBER) {
     e_emit_instruction(cc, E_OPCODE_MEMBER_ASSIGN);
     e_emit_u32(cc, e_hash(lv.val.member.member, strlen(lv.val.member.member)));
@@ -689,11 +668,15 @@ e_emit_lvalue_assign(e_compiler* cc, int value, e_lval lv)
   int e = emit_lvalue_assign_prologue(cc, lv);
   if (e) return e;
 
-  // after prologue sets up base and index, push the value
-  // if it is compound.
-  if (lv.is_compound) {
-    e = e_emit_lvalue_load(cc, lv);
+  if (lv.type == E_LVAL_INDEX && lv.is_compound) {
+    e_emit_instruction(cc, E_OPCODE_INDEX_PEEK);
+
+    e = compile(cc, value);
     if (e) return e;
+
+    e_emit_instruction(cc, e_binary_operator_to_opcode(lv.compound_operator));
+    e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN);
+    return 0; // DONE!
   }
 
   e = compile(cc, value);
@@ -952,7 +935,8 @@ append_function_entry(e_arena* a, ecc_function_table* funcs, const e_function* f
 static int
 compile_function_definition(e_compiler* cc, int node)
 {
-  e_compiler fork = { 0 };
+  e_compiler fork  = { 0 };
+  e_stackemu stack = { 0 };
 
   const char* function_name = E_GET_NODE(cc->ast, node)->func.name;
   char*       full          = qualify_name(cc, function_name);
@@ -976,8 +960,6 @@ compile_function_definition(e_compiler* cc, int node)
 
   u32  nargs     = E_GET_NODE(cc->ast, node)->func.nargs;
   u32* arg_slots = nullptr;
-
-  e_stackemu stack = { 0 };
 
   e = e_stackemu_init(&stack);
   if (e) goto ERR;
@@ -1053,6 +1035,7 @@ compile_function_definition(e_compiler* cc, int node)
 
 ERR:
   compiler_free_fork_entirely(&fork);
+  e_stackemu_free(&stack);
   return e == 0 ? -1 : e;
 }
 

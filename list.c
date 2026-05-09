@@ -131,7 +131,7 @@ e_list_reserve(u32 new_capacity, struct e_list* list)
   e_var* new_vars = (e_var*)realloc(list->vars, sizeof(e_var) * new_capacity);
   if (!new_vars) return -1;
 
-  for (u32 i = list->size; i < new_capacity; i++) { list->vars[i] = E_NULLVAR; }
+  for (u32 i = list->size; i < new_capacity; i++) { new_vars[i] = E_NULLVAR; }
 
   list->vars     = new_vars;
   list->capacity = new_capacity;
