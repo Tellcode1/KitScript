@@ -80,7 +80,22 @@ typedef int (*eopt_pass_fn)(eopt_stage stage, eopt_data* data);
 typedef struct eopt_pass {
   const char*  name;  // Name of pass
   eopt_stage   stage; // Stage at which it wants to be called
-  eopt_pass_fn fp;    // Must not be NULL.
+  int          minimum_opt_level;
+  eopt_pass_fn fp; // Must not be NULL.
 } eopt_pass;
+
+/**
+ * Constant fold expressions.
+ * AKA. simplify constant expressions that can be evaluated
+ * at compile time.
+ *
+ * Given a binary operator node, 1 + 2. This pass converts the entire leaf
+ * into a single node with integer literal value 3.
+ */
+int eopt_constant_fold(eopt_stage stage, eopt_data* data);
+
+static const eopt_pass eopt_passes[] = {
+  { .name = "Constant Folding", .stage = EOPT_STAGE_AST, .minimum_opt_level = 2, .fp = eopt_constant_fold },
+};
 
 #endif // E_OPTIMIZATION_PASSES_H

@@ -636,8 +636,6 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
 {
   int e = 0;
 
-  if (lv.is_compound) { e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN); }
-
   if (lv.type == E_LVAL_VAR) {
     e_emit_instruction(cc, E_OPCODE_ASSIGN);
     e_emit_u32(cc, lv.val.var.id);
@@ -645,6 +643,15 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
   /* LVAL_INDEX handles all three of INDEX, INDEX_ASSIGN and INDEX_COMPOUND */
   else if (lv.type == E_LVAL_INDEX) {
     e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN);
+
+    e_lval base = e_make_value(cc, lv.val.index.left_node);
+    if (base.type == E_LVAL_VAR) {
+      e_emit_instruction(cc, E_OPCODE_ASSIGN);
+      e_emit_u32(cc, base.val.var.id);
+    }
+    e_free_value(&base);
+
+    e_emit_instruction(cc, E_OPCODE_POP);
   } else if (lv.type == E_LVAL_MEMBER) {
     e_emit_instruction(cc, E_OPCODE_MEMBER_ASSIGN);
     e_emit_u32(cc, e_hash(lv.val.member.member, strlen(lv.val.member.member)));
@@ -676,6 +683,16 @@ e_emit_lvalue_assign(e_compiler* cc, int value, e_lval lv)
 
     e_emit_instruction(cc, e_binary_operator_to_opcode(lv.compound_operator));
     e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN);
+
+    e_lval base = e_make_value(cc, lv.val.index.left_node);
+    if (base.type == E_LVAL_VAR) {
+      e_emit_instruction(cc, E_OPCODE_ASSIGN);
+      e_emit_u32(cc, base.val.var.id);
+    }
+    e_free_value(&base);
+
+    e_emit_instruction(cc, E_OPCODE_POP);
+
     return 0; // DONE!
   }
 

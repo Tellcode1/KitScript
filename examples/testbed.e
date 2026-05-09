@@ -45,7 +45,7 @@ fn main() {
    let vector = vec2(1.0, 0.0);
    vector[0] = 2.0;
    if (vector[0] != 2.0 || vector[1] != 0.0) {
-      io::println(io::STDERR, "Vector indexing failed");
+      io::println(io::STDERR, "Vector indexing failed. Expected <x=2.0, y=1.0>, but got: ", vector);
       error = true;
    }
 
@@ -131,10 +131,10 @@ fn main() {
    let mix_and_match_3 = #{ 2 : 64 };
    mix_and_match_1 = mix_and_match_2[0] = mix_and_match_3[2];
 
-   if ((mix_and_match_1 != mix_and_match_2[0]) || (mix_and_match_2[0] != mix_and_match_3[2])) {
+   if ((mix_and_match_1 != mix_and_match_3[2]) || (mix_and_match_2[0] != mix_and_match_3[2])) {
       io::println(io::STDERR, "Expected [[64], [64], #{2:64}], but got ", [mix_and_match_1, mix_and_match_2, mix_and_match_3]);
+      error = true;
    }
-
 
    if (!error) {
       io::println(io::STDERR, "Successful! No errors");

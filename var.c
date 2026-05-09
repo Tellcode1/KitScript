@@ -131,8 +131,6 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
       if (dst->val.mat4 && var->val.mat4) { memcpy(dst->val.mat4->data, var->val.mat4->data, sizeof(e_mat4)); }
       return 0;
     }
-
-    case E_VARTYPE_ERROR: break;
   }
 
   return 0;
@@ -185,7 +183,6 @@ e_var_free(e_var* var)
     case E_VARTYPE_INT:
     case E_VARTYPE_CHAR:
     case E_VARTYPE_BOOL:
-    case E_VARTYPE_ERROR:
     case E_VARTYPE_VEC2:
     case E_VARTYPE_VEC3:
     case E_VARTYPE_VEC4:
@@ -270,48 +267,44 @@ e_var_print(const struct e_var* v, FILE* f)
       fputc('}', f);
       break;
     }
-    case E_VARTYPE_ERROR: {
-      fprintf(f, "%i", v->val.errcode);
-      break;
-    }
     case E_VARTYPE_VEC2: {
-      printf("<x=%g y=%g>", v->val.vec2[0], v->val.vec2[1]);
+      fprintf(f, "<x=%g y=%g>", v->val.vec2[0], v->val.vec2[1]);
       break;
     }
     case E_VARTYPE_VEC3: {
-      printf("<x=%g y=%g z=%g>", v->val.vec3[0], v->val.vec3[1], v->val.vec3[2]);
+      fprintf(f, "<x=%g y=%g z=%g>", v->val.vec3[0], v->val.vec3[1], v->val.vec3[2]);
       break;
     }
     case E_VARTYPE_VEC4: {
-      printf("<x=%g y=%g z=%g w=%g>", v->val.vec4[0], v->val.vec4[1], v->val.vec4[2], v->val.vec4[3]);
+      fprintf(f, "<x=%g y=%g z=%g w=%g>", v->val.vec4[0], v->val.vec4[1], v->val.vec4[2], v->val.vec4[3]);
       break;
     }
     case E_VARTYPE_MAT4: {
-      printf("4x4[ ");
+      fprintf(f, "4x4[ ");
       for (u32 i = 0; i < 4; i++) {
-        printf("<");
+        fprintf(f, "<");
         for (u32 j = 0; j < 4; j++) {
-          printf("%g", E_VAR_AS_MAT4(v)->m[j][i]);
-          if (j != 3) { printf(", "); }
+          fprintf(f, "%g", E_VAR_AS_MAT4(v)->m[j][i]);
+          if (j != 3) { fprintf(f, ", "); }
         }
-        printf(">");
-        if (i != 3) { printf(", "); }
+        fprintf(f, ">");
+        if (i != 3) { fprintf(f, ", "); }
       }
-      printf(" ]");
+      fprintf(f, " ]");
       break;
     }
     case E_VARTYPE_MAT3: {
-      printf("3x3[ ");
+      fprintf(f, "3x3[ ");
       for (u32 i = 0; i < 3; i++) {
-        printf("<");
+        fprintf(f, "<");
         for (u32 j = 0; j < 3; j++) {
-          printf("%g", E_VAR_AS_MAT3(v)->m[j][i]);
-          if (j != 2) { printf(", "); }
+          fprintf(f, "%g", E_VAR_AS_MAT3(v)->m[j][i]);
+          if (j != 2) { fprintf(f, ", "); }
         }
-        printf(">");
-        if (i != 2) { printf(", "); }
+        fprintf(f, ">");
+        if (i != 2) { fprintf(f, ", "); }
       }
-      printf(" ]");
+      fprintf(f, " ]");
       break;
     }
   }
@@ -354,10 +347,6 @@ e_var_to_string(const struct e_var* v, char* buffer, size_t buffer_size)
       break;
     }
     case E_VARTYPE_MAP: break;
-    case E_VARTYPE_ERROR: {
-      snprintf(buffer, buffer_size, "%i", v->val.errcode);
-      break;
-    }
   }
 }
 
@@ -404,10 +393,6 @@ e_var_to_string_size(const struct e_var* v)
       break;
     }
     case E_VARTYPE_MAP: break;
-    case E_VARTYPE_ERROR: {
-      total += snprintf(nullptr, 0, "%i", v->val.errcode);
-      break;
-    }
   }
   return total;
 }
@@ -418,7 +403,6 @@ e_var_hash(const e_var* var)
   switch (var->type) {
     case E_VARTYPE_VOID:
     case E_VARTYPE_NULL: return 0;
-    case E_VARTYPE_ERROR:
     case E_VARTYPE_INT: return e_hash(&var->val.i, sizeof(var->val.i));
     case E_VARTYPE_BOOL: return e_hash(&var->val.b, sizeof(bool));
     case E_VARTYPE_CHAR: return e_hash(&var->val.c, sizeof(char));
@@ -464,7 +448,6 @@ e_var_equal(const e_var* a, const e_var* b)
   switch (a->type) {
     default: assert(0);
 
-    case E_VARTYPE_ERROR:
     case E_VARTYPE_INT: return is_integral(b->type) && (a->val.i == e_cast_to_int(b));
     case E_VARTYPE_BOOL: return is_integral(b->type) && (a->val.b == e_cast_to_bool(b));
     case E_VARTYPE_CHAR: return is_integral(b->type) && (a->val.c == e_cast_to_char(b));

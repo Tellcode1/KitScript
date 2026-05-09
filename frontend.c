@@ -28,8 +28,10 @@
 #include "ast.h"
 #include "cc.h"
 #include "lex.h"
+#include "opt.h"
 #include "pool.h"
 #include "rwhelp.h"
+#include "stdafx.h"
 #include "strint.h"
 
 #include <assert.h>
@@ -116,6 +118,7 @@ main(int argc, char* argv[])
       if (i != ntoks - 1) { fputs(" ", stdout); }
     }
     fputc('\n', stdout);
+    return 0;
   }
 
   e = e_ast_init(tokens, ntoks, &interner, &ast);
@@ -130,6 +133,18 @@ main(int argc, char* argv[])
   if (root < 0 || e) {
     fprintf(stderr, "ec: AST parsing failed\n");
     goto ret;
+  }
+
+  eopt_data ast_opt_data = { .ast = &ast };
+  for (u32 i = 0; i < E_ARRLEN(eopt_passes); i++) {
+    const eopt_pass* pass = &eopt_passes[i];
+    if (pass->stage == EOPT_STAGE_AST && opt_level >= pass->minimum_opt_level) {
+      e = pass->fp(EOPT_STAGE_AST, &ast_opt_data);
+      if (e) {
+        fprintf(stderr, "ec: Optimization pass failed\n");
+        return e;
+      }
+    }
   }
 
   if (ast_only) {

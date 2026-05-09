@@ -32,7 +32,6 @@
 #include "map.h"
 #include "mathstrucs.h"
 #include "operate.h"
-#include "perr.h"
 #include "pool.h"
 #include "rwhelp.h"
 #include "script.h"
@@ -51,7 +50,7 @@
 
 // clang-format off
 #define TRY(expr) do { int PASTE(__e__, __LINE__) = 0; if ((PASTE(__e__, __LINE__) = (expr))) { return PASTE(__e__, __LINE__); } } while (0)
-#define TRY_V(expr) do {   int PASTE(__e__, __LINE__) = (expr);   if (PASTE(__e__, __LINE__)) { return (e_var){ .type = E_VARTYPE_ERROR, .val.errcode = PASTE(__e__, __LINE__) }; } } while (0)
+#define TRY_V(expr) do {   int PASTE(__e__, __LINE__) = (expr);   if (PASTE(__e__, __LINE__)) { return (e_var){ .type = E_VARTYPE_NULL }; } } while (0)
 // clang-format on
 
 // static inline e_var*
@@ -219,7 +218,7 @@ e_exec(const e_exec_info* info)
 
   for (u32 i = 0; i < info->nargs; i++) {
     e_var* slot = e_stack_push_variable(info->arg_slots[i], info->stack);
-    if (!slot) return (e_var){ .type = E_VARTYPE_ERROR, .val.errcode = E_EUNKNOWN };
+    if (!slot) return (e_var){ .type = E_VARTYPE_NULL };
 
     // Nothing should be on the stack but still...
     e_var_release(slot);
@@ -262,7 +261,6 @@ e_exec(const e_exec_info* info)
         }
 
         e_var r = call(info, hash, func_nargs);
-        if (r.type == E_VARTYPE_ERROR) { return r; }
 
         TRY_V(e_stack_push(info->stack, &r));
         e_var_release(&r);
