@@ -57,6 +57,8 @@ static inline e_var eb_trunc(e_var*args, u32 nargs) { (void)nargs; return (e_var
 static inline e_var eb_abs(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = fabs(e_cast_to_float(&args[0]))}}; }
 static inline e_var eb_hypot(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = hypot(e_cast_to_float(&args[0]), e_cast_to_float(&args[1]))}}; }
 static inline e_var eb_signbit(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_INT, .val = {.i = signbit(e_cast_to_float(&args[0]))}}; }
+static inline e_var eb_deg2rad(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = e_cast_to_float(&args[0]) * 3.14159265358979323846 / 180.0}}; }
+static inline e_var eb_rad2deg(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = e_cast_to_float(&args[0]) * 180.0 / 3.14159265358979323846}}; }
 // clang-format on
 
 #endif // E_MATH_BUILTIN_FUNCTIONS_H

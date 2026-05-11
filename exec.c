@@ -27,6 +27,7 @@
 #include "bc.h"
 #include "bfunc.h"
 #include "cast.h"
+#include "cc.h"
 #include "fn.h"
 #include "list.h"
 #include "map.h"
@@ -129,6 +130,8 @@ call(const e_exec_info* info, u32 hash, u32 nargs)
       .extern_vars     = info->extern_vars,
       .nextern_vars    = info->nextern_vars,
       .stack           = &stack,
+      .nstructs        = info->nstructs,
+      .structs         = info->structs,
     };
     return_value = e_exec(&fi);
 
@@ -354,10 +357,18 @@ e_exec(const e_exec_info* info)
       }
 
       case E_OPCODE_MK_STRUCT: {
-        const u32 member_count = ins.v.mk_struct.nmembers;
-
-        u32* fields = calloc(member_count, sizeof(u32));
-        for (u32 i = 0; i < member_count; i++) { fields[i] = ins.v.mk_struct.members[i]; }
+        const ecc_struct_information* lookup = NULL;
+        for (u32 i = 0; i < info->nstructs; i++) {
+          if (ins.v.mk_struct == info->structs[i].name_hash) {
+            lookup = &info->structs[i];
+            break;
+          }
+        }
+        if (!lookup) {
+          e_var tmp = E_NULLVAR;
+          TRY_V(e_stack_push(info->stack, &tmp));
+          return E_NULLVAR;
+        }
 
         e_var st = {
           .type      = E_VARTYPE_STRUCT,
@@ -365,11 +376,12 @@ e_exec(const e_exec_info* info)
         };
         if (!st.val.struc) return E_NULLVAR;
 
-        E_VAR_AS_STRUCT(&st)->member_hashes = fields;
-        E_VAR_AS_STRUCT(&st)->members       = (e_var*)calloc(member_count, sizeof(e_var));
-        E_VAR_AS_STRUCT(&st)->member_count  = member_count;
+        E_VAR_AS_STRUCT(&st)->member_hashes = (u32*)calloc(lookup->fields_count, sizeof(u32));
+        E_VAR_AS_STRUCT(&st)->members       = (e_var*)calloc(lookup->fields_count, sizeof(e_var));
+        E_VAR_AS_STRUCT(&st)->member_count  = lookup->fields_count;
 
-        for (u32 i = 0; i < member_count; i++) { E_VAR_AS_STRUCT(&st)->members[i] = (e_var){ .type = E_VARTYPE_NULL }; }
+        for (u32 i = 0; i < lookup->fields_count; i++) { E_VAR_AS_STRUCT(&st)->member_hashes[i] = lookup->field_hashes[i]; }
+        for (u32 i = 0; i < lookup->fields_count; i++) { E_VAR_AS_STRUCT(&st)->members[i] = (e_var){ .type = E_VARTYPE_NULL }; }
 
         TRY_V(e_stack_push(info->stack, &st));
         e_var_release(&st); // Stack owns it now
@@ -850,7 +862,7 @@ e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs)
 {
   u32 hash = e_hash(func_name, strlen(func_name));
 
-  for (u32 i = 0; i < s->compiled.nfunctions; i++) {
+  for (u32 i = 0; i < s->compiled.functions_count; i++) {
     if (hash == s->compiled.functions[i].name_hash) {
       e_exec_info info = {
         .code            = s->compiled.functions[i].code,
@@ -863,8 +875,8 @@ e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs)
         .stack           = &s->stack,
         .code_size       = s->compiled.functions[i].code_size,
         .nargs           = nargs,
-        .nliterals       = s->compiled.nliterals,
-        .nfuncs          = s->compiled.nfunctions,
+        .nliterals       = s->compiled.literals_count,
+        .nfuncs          = s->compiled.functions_count,
         .nextern_funcs   = s->nxtern_funcs,
         .extern_vars     = s->extern_vars,
         .nextern_vars    = s->nextern_vars,

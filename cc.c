@@ -51,6 +51,7 @@ static const u32 init_literal_capacity     = 64;
 static const u32 init_function_capacity    = 64;
 static const u32 init_namespaces_capacity  = 16;
 static const u32 init_label_jump_capacity  = 64;
+static const u32 init_structs_capacity     = 64;
 static const u32 init_fields_capacity      = 16;
 static const u32 init_defer_entry_capacity = 8;
 static const u32 init_jumps_capacity       = 64;
@@ -464,6 +465,7 @@ compiler_make_fork(const e_compiler* old_c, e_compiler* new_c)
     .builtin_var_table = old_c->builtin_var_table,
     .function_table    = old_c->function_table,
     .label_table       = old_c->label_table,
+    .struct_table      = old_c->struct_table,
     .next_label        = old_c->next_label,
     .ns                = old_c->ns,
     .stack             = old_c->stack,
@@ -1822,26 +1824,21 @@ compile_return(e_compiler* cc, int node)
 static int
 append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* deposit)
 {
-  char* dup  = e_arnstrdup(a, name);
-  u32   hash = e_hash(name, strlen(name));
+  u32 hash = e_hash(name, strlen(name));
 
-  if (deposit->fields_count >= deposit->field_capacity || !deposit->fields || !deposit->field_hashes) {
-    u32    field_cap_new    = MAX(deposit->field_capacity * 2, 4);
-    char** fields_new       = (char**)realloc((void*)deposit->fields, field_cap_new * sizeof(char*));
-    u32*   field_hashes_new = (u32*)realloc(deposit->field_hashes, field_cap_new * sizeof(u32));
+  if (deposit->fields_count >= deposit->field_capacity || !deposit->field_hashes) {
+    u32  field_cap_new    = MAX(deposit->field_capacity * 2, 4);
+    u32* field_hashes_new = (u32*)realloc(deposit->field_hashes, field_cap_new * sizeof(u32));
 
-    if (!fields_new || !field_hashes_new) {
-      if (fields_new) free((void*)fields_new);
+    if (!field_hashes_new) {
       if (field_hashes_new) free(field_hashes_new);
       return -1;
     }
 
-    deposit->fields         = fields_new;
     deposit->field_capacity = field_cap_new;
     deposit->field_hashes   = field_hashes_new;
   }
 
-  deposit->fields[deposit->fields_count]       = dup;
   deposit->field_hashes[deposit->fields_count] = hash;
 
   deposit->fields_count++;
@@ -1880,9 +1877,30 @@ collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_i
   return 0;
 }
 
+static inline int
+append_struct_info(e_compiler* cc, const ecc_struct_information* data)
+{
+  if (cc->struct_table->structs_count >= cc->struct_table->structs_capacity) {
+    u32                     new_capacity = MAX(cc->struct_table->structs_capacity * 2, 4);
+    ecc_struct_information* new_structs  = realloc(cc->struct_table->structs, sizeof(ecc_struct_information));
+    if (!new_structs) return -1;
+
+    cc->struct_table->structs_capacity = new_capacity;
+    cc->struct_table->structs          = new_structs;
+  }
+
+  memcpy(&cc->struct_table->structs[cc->struct_table->structs_count], data, sizeof(ecc_struct_information));
+  cc->struct_table->structs_count++;
+
+  return 0;
+}
+
 static int
 compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_information* struc)
 {
+  int e = e_stackemu_push_frame(fork->stack);
+  if (e) return e;
+
   u32* arg_slots = (u32*)e_arnalloc(fork->arena, sizeof(u32) * struc->fields_count);
 
   for (u32 i = 0; i < struc->fields_count; i++) {
@@ -1903,10 +1921,7 @@ compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_i
   }
 
   e_emit_instruction(fork, E_OPCODE_MK_STRUCT);
-  e_emit_u32(fork, struc->fields_count); // number of members
-
-  // hashes of all members
-  for (u32 i = 0; i < struc->fields_count; i++) { e_emit_u32(fork, struc->field_hashes[i]); }
+  e_emit_u32(fork, struc->name_hash); /* its ID */
 
   /**
    * Assign the arguments to all members
@@ -1935,8 +1950,10 @@ compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_i
     .nargs     = struc->fields_count,
   };
 
-  int e = append_function_entry(fork->arena, fork->function_table, &f);
+  e = append_function_entry(fork->arena, fork->function_table, &f);
   if (e) return e;
+
+  e_stackemu_pop_frame(fork->stack);
 
   return 0;
 }
@@ -1955,14 +1972,12 @@ compile_struct_decleration(e_compiler* cc, int node)
 
   /* Gather all information the user provided into one big structure. */
   struct_data = (ecc_struct_information){
-    .name           = e_arnstrdup(cc->arena, struct_name),
     .name_hash      = struct_name_hash,
-    .fields         = (char**)e_xalloc(init_fields_capacity, sizeof(char*)),
     .field_hashes   = (u32*)e_xalloc(init_fields_capacity, sizeof(u32)),
     .field_capacity = init_fields_capacity,
     .fields_count   = 0,
   };
-  if (!struct_data.fields || !struct_data.field_hashes) goto ERR;
+  if (!struct_data.field_hashes) goto ERR;
 
   e = collect_struct_declerations(cc, struct_decl_stmts, struct_decl_nstmts, &struct_data);
   if (e) goto ERR;
@@ -1980,11 +1995,8 @@ compile_struct_decleration(e_compiler* cc, int node)
   e = compile_struct_constructor(&fork, E_GET_NODE(cc->ast, node)->common.span, &struct_data);
   if (e) goto ERR;
 
-  free((void*)struct_data.fields);
-  struct_data.fields = NULL;
-
-  free(struct_data.field_hashes);
-  struct_data.field_hashes = NULL;
+  e = append_struct_info(cc, &struct_data);
+  if (e) goto ERR;
 
   defer_pop_scope(&fork);
   compiler_join_fork(&fork, cc);
@@ -1994,7 +2006,6 @@ compile_struct_decleration(e_compiler* cc, int node)
   return 0;
 
 ERR:
-  if (struct_data.fields) free((void*)struct_data.fields);
   if (struct_data.field_hashes) free(struct_data.field_hashes);
   compiler_free_fork_entirely(&fork);
   return e ? e : -1;
@@ -2349,19 +2360,13 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
   int        e    = 0;
 
   ecc_struct_information st = {
-    .name           = e_arnstrdup(cc->arena, b->name),
-    .fields         = (char**)e_arnalloc(cc->arena, b->fields_count * sizeof(u32)),
     .field_hashes   = e_arnalloc(cc->arena, b->fields_count * sizeof(u32)),
     .fields_count   = b->fields_count,
     .field_capacity = b->fields_count,
     .name_hash      = e_hash(b->name, strlen(b->name)),
   };
-  if (!st.name || !st.fields || !st.field_hashes) { goto ERR; }
+  if (!st.field_hashes) { goto ERR; }
 
-  for (u32 j = 0; j < b->fields_count; j++) {
-    st.fields[j] = e_arnstrdup(cc->arena, b->fields[j]);
-    if (!st.fields[j]) goto ERR;
-  }
   for (u32 j = 0; j < b->fields_count; j++) {
     st.field_hashes[j] = e_hash(b->fields[j], strlen(b->fields[j]));
     if (!st.field_hashes[j]) goto ERR;
@@ -2431,6 +2436,7 @@ e_compile(const ecc_info* info, e_compilation_result* result)
   ecc_builtin_variables_table builtin_var_table = { 0 };
   ecc_function_table          func_table        = { 0 };
   ecc_label_table             label_table       = { 0 };
+  ecc_struct_table            struct_table      = { 0 };
   e_compiler                  cc                = { 0 };
 
   ns = (ecc_namespace_stack){
@@ -2503,6 +2509,12 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     goto ERR;
   }
 
+  struct_table = (ecc_struct_table){
+    .structs_count    = 0,
+    .structs_capacity = init_structs_capacity,
+    .structs          = e_xalloc(init_structs_capacity, sizeof(ecc_struct_information)),
+  };
+
   cc = (e_compiler){
     .arena             = info->arena,
     .ast               = info->ast,
@@ -2514,6 +2526,7 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     .builtin_var_table = &builtin_var_table,
     .function_table    = &func_table,
     .label_table       = &label_table,
+    .struct_table      = &struct_table,
     .emit              = (u8*)e_xalloc(1, init_code_capacity),
     .num_bytes_emitted = 0,
     .emit_capacity     = init_code_capacity,
@@ -2539,13 +2552,15 @@ e_compile(const ecc_info* info, e_compilation_result* result)
   defer_pop_scope(&cc);
 
   if (result) {
-    result->literals        = cc.lit_table->literals;
-    result->nliterals       = cc.lit_table->literals_count;
-    result->literals_hashes = cc.lit_table->literal_hashes;
-    result->functions       = func_table.functions;
-    result->nfunctions      = func_table.functions_count;
-    result->ninstructions   = cc.num_bytes_emitted;
-    result->instructions    = cc.emit;
+    result->literals           = cc.lit_table->literals;
+    result->literals_count     = cc.lit_table->literals_count;
+    result->literals_hashes    = cc.lit_table->literal_hashes;
+    result->functions          = func_table.functions;
+    result->functions_count    = func_table.functions_count;
+    result->instructions_count = cc.num_bytes_emitted;
+    result->instructions       = cc.emit;
+    result->structs_count      = cc.struct_table->structs_count;
+    result->structs            = cc.struct_table->structs;
 
     u32          strings_count = cc.ast->interner->strings_count;
     const char** strings       = (const char**)cc.ast->interner->strings;

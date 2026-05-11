@@ -287,3 +287,13 @@ eb_io_type(e_var* args, u32 nargs)
 
   return (e_var){ .type = E_VARTYPE_INT, .val.i = EB_IO_UNKNOWN };
 }
+
+e_var
+eb_io_list_dir(e_var* args, u32 nargs)
+{
+  const char* path = E_VAR_AS_STRING(&args[0])->s;
+  if (!path) return E_NULLVAR;
+
+  /* TODO: Implement*/
+  return E_NULLVAR;
+}

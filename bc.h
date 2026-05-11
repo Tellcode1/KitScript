@@ -176,16 +176,29 @@ typedef enum e_opcode_bck {
    *
    * Stack state before: [..., base, index, value]
    * Stack state after: [... value, base]
-   * Instruction signature: INDEX_ASSIGN [var ID : u32], Stack is Top=Value, Top-1=Index, Top-2=Base struct/container
+   * Instruction signature: INDEX_ASSIGN [Variable ID : u32]
    */
   E_OPCODE_INDEX_ASSIGN,
 
+  /**
+   * Index into a structure/list/string/map and push the result to the stack
+   * without popping off base and index.
+   * Used for index assigns, mostly.
+   *
+   * Stack state before: [..., base, index]
+   * Stack state after: [... base, index, indexed]
+   * Instruction signature: INDEX_ASSIGN
+   */
   E_OPCODE_INDEX_PEEK,
 
   /**
    * Push a variable to the stack, and set its ID on the variable table.
    * The initial value of the variable will be nullvar.
    * INIT'd variables are popped when the frame they were INIT'd in is popped.
+   *
+   * Stack state before: [...]
+   * Stack state after: [... variable (*variable = nullvar)]
+   * Instruction signature: INIT [Variable ID : u32]
    */
   E_OPCODE_INIT,
 
@@ -245,39 +258,80 @@ typedef enum e_opcode_bck {
 
   /**
    * Jump to the specified label.
-   * Usage(noattr): JMP [labelID : u32]
+   * Target (operand) is the offset in the instruction stream to jump to.
+   * Out of (current) stream jumps are not allowed.
+   * Only CALL is allowed to access other instruction streams.
+   *
+   * If target is out of range, the interpreter prints an error and returns
+   * from the executing function with nullvar (not the entire program!).
+   * During compilation, JMP initially has the label ID as its operand
+   * This is later patched (when the label is defined) to be the target instruction index.
+   *
+   * Stack state before: [...]
+   * Stack state after: [...]
+   * Instruction signature: JMP [Target : u32]
    */
   E_OPCODE_JMP,
 
   /**
-   * Jump if equal
-   * Usage(noattr): JE [labelID : u32], Stack is [top], [top - 1]
+   * Jump if top of stack is equal to the value under it.
+   * For more information, refer to JMP.
+   * If a == b, (comparison is done through e_var_equal), jump to the target.
+   * Conditions are popped.
+   *
+   * Stack state before: [..., a, b]
+   * Stack state after: [...]
+   * Instruction signature: JE [Target : u32]
    */
   E_OPCODE_JE,
 
   /**
-   * Jump if not equal
-   * Usage(noattr): JE [labelID : u32], Stack is [top], [top - 1]
+   * Jump if top of stack is not equal to the value under it.
+   * For more information, refer to JMP.
+   * If a != b, (comparison is done through e_var_equal), jump to the target.
+   * Conditions are popped.
+   *
+   * Stack state before: [..., a, b]
+   * Stack state after: [...]
+   * Instruction signature: JNE [Target : u32]
    */
   E_OPCODE_JNE,
 
   /**
-   * Jump if zero.
-   * Usage(noattr): JZ [labelID : u32]
+   * Jump if top of stack is equal to zero (only booleans/chars/integers).
+   * For more information, refer to JMP.
+   * If e_cast_to_int(stack top) == 0, then jump to the target.
+   *
+   * Stack state before: [..., a]
+   * Stack state after: [...]
+   * Instruction signature: JZ [Target : u32]
    */
   E_OPCODE_JZ,
 
   /**
-   * Jump if not zero.
-   * Usage(noattr): JNZ [labelID : u32]
+   * Jump if top of stack is not equal to zero (only booleans/chars/integers).
+   * For more information, refer to JMP.
+   * If e_cast_to_int(stack top) != 0, then jump to the target.
+   *
+   * Stack state before: [..., a]
+   * Stack state after: [...]
+   * Instruction signature: JNZ [Target : u32]
    */
   E_OPCODE_JNZ,
 
   /**
-   * Push the variable state to a custom location on the VM.
-   * The state can be restored by calling E_OPCODE_POP_VARIABLES
+   * Push/pop the stack frame.
+   * Push stores the current stack top (offset)and variable map to the stack.
+   * Pop causes the VM to pop all variables that will go out of scope
+   * and set the stack top and variable map to the stored values.
+   *
+   * The (pushed) state can be restored by calling E_OPCODE_POP_FRAME
+   *
    * No operands are used.
-   * Usage(noattr): PUSH_VARIABLES/POP_VARIABLES
+   *
+   * Stack state before: [...]
+   * Stack state after: [...]
+   * Instruction signature: PUSH_FRAME/POP_FRAME
    */
   E_OPCODE_PUSH_FRAME,
   E_OPCODE_POP_FRAME,
@@ -330,10 +384,7 @@ typedef struct e_ins {
       u16 nargs;
       u32 hash;
     } call;
-    struct {
-      u32 nmembers;
-      u32 members[32];
-    } mk_struct;
+    u32 mk_struct;
     u32 member;
   } v;
 } e_ins;

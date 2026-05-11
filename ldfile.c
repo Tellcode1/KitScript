@@ -27,17 +27,17 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
 
   uchar* alloc = (uchar*)*root_allocation;
 
-  if (fread(&r->nliterals, sizeof(r->nliterals), 1, f) != 1) goto ERR;
+  if (fread(&r->literals_count, sizeof(r->literals_count), 1, f) != 1) goto ERR;
 
   alloc       = e_align_ptr(alloc, 8);
   r->literals = (e_var*)alloc;
-  alloc += sizeof(e_var) * r->nliterals;
+  alloc += sizeof(e_var) * r->literals_count;
 
   alloc              = e_align_ptr(alloc, 8);
   r->literals_hashes = (u32*)alloc;
-  alloc += sizeof(u32) * r->nliterals;
+  alloc += sizeof(u32) * r->literals_count;
 
-  for (u32 i = 0; i < r->nliterals; i++) {
+  for (u32 i = 0; i < r->literals_count; i++) {
     if (fread(&r->literals[i].type, sizeof(e_vartype), 1, f) != 1) goto ERR;
 
     e_var* lit = &r->literals[i];
@@ -79,13 +79,30 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
     r->literals_hashes[i] = e_var_hash(lit);
   }
 
-  if (fread(&r->nfunctions, sizeof(r->nfunctions), 1, f) != 1) goto ERR;
+  if (fread(&r->structs_count, sizeof(u32), 1, f) != 1) goto ERR;
+
+  alloc      = e_align_ptr(alloc, 8);
+  r->structs = (ecc_struct_information*)alloc;
+  alloc += sizeof(ecc_struct_information) * r->structs_count;
+
+  for (u32 i = 0; i < r->structs_count; i++) {
+    if (fread(&r->structs[i].name_hash, sizeof(u32), 1, f) != 1) goto ERR;
+    if (fread(&r->structs[i].fields_count, sizeof(u32), 1, f) != 1) goto ERR;
+
+    alloc                      = e_align_ptr(alloc, 4);
+    r->structs[i].field_hashes = (u32*)alloc;
+    alloc += sizeof(u32) * r->structs[i].fields_count;
+
+    if (fread(r->structs[i].field_hashes, sizeof(u32), r->structs[i].fields_count, f) != r->structs[i].fields_count) goto ERR;
+  }
+
+  if (fread(&r->functions_count, sizeof(r->functions_count), 1, f) != 1) goto ERR;
 
   alloc        = e_align_ptr(alloc, 8);
   r->functions = (e_function*)(alloc);
-  alloc += sizeof(e_function) * (r->nfunctions);
+  alloc += sizeof(e_function) * (r->functions_count);
 
-  for (u32 i = 0; i < r->nfunctions; i++) {
+  for (u32 i = 0; i < r->functions_count; i++) {
     e_function func = { 0 };
     if (fread(&func.code_size, sizeof(func.code_size), 1, f) != 1) goto ERR;
     if (fread(&func.nargs, sizeof(func.nargs), 1, f) != 1) goto ERR;
@@ -107,13 +124,13 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
     r->functions[i] = func;
   }
 
-  if (fread(&r->ninstructions, sizeof(r->ninstructions), 1, f) != 1) goto ERR;
+  if (fread(&r->instructions_count, sizeof(r->instructions_count), 1, f) != 1) goto ERR;
 
   alloc           = e_align_ptr(alloc, 8);
   r->instructions = (u8*)alloc;
-  if (fread(r->instructions, sizeof(u8), r->ninstructions, f) != r->ninstructions) goto ERR;
+  if (fread(r->instructions, sizeof(u8), r->instructions_count, f) != r->instructions_count) goto ERR;
 
-  alloc += r->ninstructions;
+  alloc += r->instructions_count;
   alloc = e_align_ptr(alloc, 4);
 
   if (fread(&r->names_count, sizeof(r->names_count), 1, f) != 1) goto ERR;
@@ -153,13 +170,13 @@ e_file_bytes_required(const e_compilation_result* r)
 
   size = e_align_size(size, 8);
   // literals array
-  size += sizeof(e_var) * r->nliterals;
+  size += sizeof(e_var) * r->literals_count;
 
   size = e_align_size(size, 8);
   // literal hashes array (we don't write this tho)
-  size += sizeof(u32) * r->nliterals;
+  size += sizeof(u32) * r->literals_count;
 
-  for (u32 i = 0; i < r->nliterals; i++) {
+  for (u32 i = 0; i < r->literals_count; i++) {
     const e_var* lit = &r->literals[i];
 
     if (lit->type == E_VARTYPE_STRING) {
@@ -171,11 +188,18 @@ e_file_bytes_required(const e_compilation_result* r)
     }
   }
 
+  // structures array
+  size = e_align_size(size, 8);
+  size += sizeof(ecc_struct_information) * r->structs_count;
+  for (u32 i = 0; i < r->structs_count; i++) {
+    size = e_align_size(size, 4);
+    size += r->structs[i].fields_count * sizeof(u32);
+  }
+
   // functions array
   size = e_align_size(size, 8);
-  size += sizeof(e_function) * r->nfunctions;
-
-  for (u32 i = 0; i < r->nfunctions; i++) {
+  size += sizeof(e_function) * r->functions_count;
+  for (u32 i = 0; i < r->functions_count; i++) {
     const e_function* fn = &r->functions[i];
 
     if (fn->nargs > 0) {
@@ -188,7 +212,7 @@ e_file_bytes_required(const e_compilation_result* r)
   }
 
   size = e_align_size(size, 8);
-  size += r->ninstructions;
+  size += r->instructions_count;
 
   size = e_align_size(size, 4);
   size += sizeof(r->names_count);
@@ -216,8 +240,8 @@ e_file_write(const e_compilation_result* r, FILE* f)
   u32 bytes_req = e_file_bytes_required(r);
   fwrite(&bytes_req, sizeof(bytes_req), 1, f);
 
-  fwrite(&r->nliterals, sizeof(r->nliterals), 1, f);
-  for (u32 i = 0; i < r->nliterals; i++) {
+  fwrite(&r->literals_count, sizeof(r->literals_count), 1, f);
+  for (u32 i = 0; i < r->literals_count; i++) {
     const e_var* lit = &r->literals[i];
     fwrite(&lit->type, sizeof(lit->type), 1, f);
 
@@ -239,8 +263,15 @@ e_file_write(const e_compilation_result* r, FILE* f)
     }
   }
 
-  fwrite(&r->nfunctions, sizeof(r->nfunctions), 1, f);
-  for (u32 i = 0; i < r->nfunctions; i++) {
+  fwrite(&r->structs_count, sizeof(u32), 1, f);
+  for (u32 i = 0; i < r->structs_count; i++) {
+    fwrite(&r->structs[i].name_hash, sizeof(u32), 1, f);
+    fwrite(&r->structs[i].fields_count, sizeof(u32), 1, f);
+    fwrite(r->structs[i].field_hashes, sizeof(u32), r->structs[i].fields_count, f);
+  }
+
+  fwrite(&r->functions_count, sizeof(r->functions_count), 1, f);
+  for (u32 i = 0; i < r->functions_count; i++) {
     const e_function* fn = &r->functions[i];
     fwrite(&fn->code_size, sizeof(fn->code_size), 1, f);
     fwrite(&fn->nargs, sizeof(fn->nargs), 1, f);
@@ -249,8 +280,8 @@ e_file_write(const e_compilation_result* r, FILE* f)
     fwrite(fn->code, 1, fn->code_size, f);
   }
 
-  fwrite(&r->ninstructions, sizeof(r->ninstructions), 1, f);
-  fwrite(r->instructions, sizeof(u8), r->ninstructions, f);
+  fwrite(&r->instructions_count, sizeof(r->instructions_count), 1, f);
+  fwrite(r->instructions, sizeof(u8), r->instructions_count, f);
 
   fwrite(&r->names_count, sizeof(r->names_count), 1, f);
   for (u32 i = 0; i < r->names_count; i++) {
@@ -319,11 +350,7 @@ e_read_ins(const u8** ip)
     case E_OPCODE_JZ:
     case E_OPCODE_JNZ: i.v.jmp = e_read_u32(ip); break;
 
-    case E_OPCODE_MK_STRUCT:
-      i.v.mk_struct.nmembers = e_read_u32(ip);
-      assert(i.v.mk_struct.nmembers <= 32);
-      for (u32 j = 0; j < i.v.mk_struct.nmembers; j++) { i.v.mk_struct.members[j] = e_read_u32(ip); }
-      break;
+    case E_OPCODE_MK_STRUCT: i.v.mk_struct = e_read_u32(ip); break;
 
     case E_OPCODE_MEMBER_ACCESS:
     case E_OPCODE_MEMBER_ASSIGN: i.v.member = e_read_u32(ip); break;

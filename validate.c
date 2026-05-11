@@ -17,15 +17,7 @@ find_name(u32 id, const e_exec_info* info)
 }
 
 static int
-validate_stream(
-    const u8*          code,
-    u32                code_size,
-    const u32*         arg_slots,
-    u32                nargs,
-    const e_stackemu*  global_namespace,
-    e_stackemu*        emu,
-    const e_exec_info* info,
-    FILE*              f)
+validate_stream(const u8* code, u32 code_size, const u32* arg_slots, u32 nargs, e_stackemu* emu, const e_exec_info* info, FILE* f)
 {
   int e = 0;
 
@@ -72,7 +64,6 @@ validate_stream(
       }
 
       if (e_stackemu_find_var(emu, id) != NULL) { found = true; }
-      if (!found && e_stackemu_find_var(global_namespace, id) != NULL) { found = true; }
 
       if (!found) {
         fprintf(f, "LOAD: %s undeclared\n", find_name(id, info));
@@ -104,7 +95,6 @@ validate_stream(
 
       bool found = false;
       if (e_stackemu_find_var(emu, id) != NULL) { found = true; }
-      if (!found && e_stackemu_find_var(global_namespace, id) != NULL) { found = true; }
 
       if (!found) {
         fprintf(f, "ASSIGN: target %s undeclared/external\n", find_name(id, info));
@@ -164,29 +154,27 @@ validate_stream(
 int
 e_validate(const struct e_exec_info* info, FILE* f)
 {
-  e_stackemu global_namespace = { 0 };
+  e_stackemu emu = { 0 };
 
-  int e = e_stackemu_init(&global_namespace);
+  int e = e_stackemu_init(&emu);
   if (e) return e;
 
-  e = validate_stream(info->code, info->code_size, NULL, 0, &global_namespace, &global_namespace, info, f);
+  e = validate_stream(info->code, info->code_size, NULL, 0, &emu, info, f);
+  if (e) goto RET;
+
+  e = e_stackemu_push_frame(&emu);
   if (e) goto RET;
 
   for (u32 i = 0; i < info->nfuncs; i++) {
-    e_stackemu emu = { 0 };
-
-    e = e_stackemu_init(&emu);
-    if (e) return e;
-
     const e_function* fn = &info->funcs[i];
 
-    e = validate_stream(fn->code, fn->code_size, fn->arg_slots, fn->nargs, &global_namespace, &emu, info, f);
-    e_stackemu_free(&emu);
-
+    e = validate_stream(fn->code, fn->code_size, fn->arg_slots, fn->nargs, &emu, info, f);
     if (e) { goto RET; }
   }
 
+  e_stackemu_pop_frame(&emu);
+
 RET:
-  e_stackemu_free(&global_namespace);
+  e_stackemu_free(&emu);
   return e;
 }

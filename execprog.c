@@ -134,7 +134,7 @@ main(int argc, char* argv[])
   }
 
   e_function entry_point_func;
-  e = find_func(entry_point, r.nfunctions, r.functions, &entry_point_func);
+  e = find_func(entry_point, r.functions_count, r.functions, &entry_point_func);
   if (e) {
     fprintf(stderr, "eexec: File does not have the entry point '%s'\n", entry_point);
     goto RET;
@@ -165,15 +165,17 @@ main(int argc, char* argv[])
     .literals_hashes = r.literals_hashes,
     .funcs           = r.functions,
     .code            = r.instructions,
-    .code_size       = r.ninstructions,
-    .nliterals       = r.nliterals,
-    .nfuncs          = r.nfunctions,
+    .code_size       = r.instructions_count,
+    .nliterals       = r.literals_count,
+    .nfuncs          = r.functions_count,
     .stack           = &stack,
     .nextern_funcs   = 0,
     .extern_funcs    = NULL,
     .names           = (const char**)r.names,
     .names_hashes    = r.names_hashes,
     .nnames          = r.names_count,
+    .structs         = r.structs,
+    .nstructs        = r.structs_count,
   };
 
   if (!no_validate) {

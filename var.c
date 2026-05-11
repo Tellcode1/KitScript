@@ -241,7 +241,12 @@ e_var_print(const struct e_var* v, FILE* f)
     case E_VARTYPE_LIST: {
       fputc('[', f);
       for (u32 i = 0; i < E_VAR_AS_LIST(v)->size; i++) {
-        e_var_print(&E_VAR_AS_LIST(v)->vars[i], f);
+        const e_var* elem = &E_VAR_AS_LIST(v)->vars[i];
+
+        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+        e_var_print(elem, f);
+        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+
         if (i < E_VAR_AS_LIST(v)->size - 1) { fputs(", ", f); }
       }
       fputc(']', f);
@@ -250,7 +255,12 @@ e_var_print(const struct e_var* v, FILE* f)
     case E_VARTYPE_STRUCT: {
       fputc('{', f);
       for (u32 i = 0; i < E_VAR_AS_STRUCT(v)->member_count; i++) {
-        e_var_print(&E_VAR_AS_STRUCT(v)->members[i], f);
+        const e_var* elem = &E_VAR_AS_STRUCT(v)->members[i];
+
+        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+        e_var_print(elem, f);
+        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+
         if (i < E_VAR_AS_STRUCT(v)->member_count - 1) { fputs(", ", f); }
       }
       fputc('}', f);
@@ -259,9 +269,19 @@ e_var_print(const struct e_var* v, FILE* f)
     case E_VARTYPE_MAP: {
       fputs("#{", f);
       for (u32 i = 0; i < E_VAR_AS_MAP(v)->size; i++) {
-        e_var_print(&E_VAR_AS_MAP(v)->keys[i], f);
+        const e_var* key = &E_VAR_AS_MAP(v)->keys[i];
+        const e_var* val = &E_VAR_AS_MAP(v)->vals[i];
+
+        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+        e_var_print(key, f);
+        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+
         fputs(":", f);
-        e_var_print(&E_VAR_AS_MAP(v)->vals[i], f);
+
+        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+        e_var_print(val, f);
+        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+
         if (i < E_VAR_AS_MAP(v)->size - 1) { fputs(", ", f); }
       }
       fputc('}', f);
@@ -322,9 +342,11 @@ e_var_to_string(const struct e_var* v, char* buffer, size_t buffer_size)
     case E_VARTYPE_BOOL: snprintf(buffer, buffer_size, "%s", (int)v->val.b ? "true" : "false"); break;
     case E_VARTYPE_FLOAT: snprintf(buffer, buffer_size, "%g", v->val.f); break;
     case E_VARTYPE_STRING: snprintf(buffer, buffer_size, "%s", E_VAR_AS_STRING(v)->s); break;
-    case E_VARTYPE_VEC2: snprintf(buffer, buffer_size, "<%g, %g>", v->val.vec2[0], v->val.vec2[1]); break;
-    case E_VARTYPE_VEC3: snprintf(buffer, buffer_size, "<%g, %g, %g>", v->val.vec3[0], v->val.vec3[1], v->val.vec3[2]); break;
-    case E_VARTYPE_VEC4: snprintf(buffer, buffer_size, "<%g, %g, %g, %g>", v->val.vec4[0], v->val.vec4[1], v->val.vec4[2], v->val.vec4[3]); break;
+    case E_VARTYPE_VEC2: snprintf(buffer, buffer_size, "<x=%g y=%g>", v->val.vec2[0], v->val.vec2[1]); break;
+    case E_VARTYPE_VEC3: snprintf(buffer, buffer_size, "<x=%g y=%g z=%g>", v->val.vec3[0], v->val.vec3[1], v->val.vec3[2]); break;
+    case E_VARTYPE_VEC4:
+      snprintf(buffer, buffer_size, "<x=%g y=%g z=%g w=%g>", v->val.vec4[0], v->val.vec4[1], v->val.vec4[2], v->val.vec4[3]);
+      break;
     case E_VARTYPE_LIST: {
       strncpy(buffer, "[", buffer_size - 1);
       buffer[buffer_size] = 0;
@@ -368,7 +390,7 @@ e_var_to_string_size(const struct e_var* v)
       e_vec4 vooctor;
       evector_zero_extend(v, vooctor);
       for (u32 i = 0; i < 4; i++) {
-        total += snprintf(nullptr, 0, "%g", vooctor[i]);
+        total += snprintf(nullptr, 0, "c=%g", vooctor[i]);
         if (i != 3) total += strlen(", ");
       }
       break;
@@ -397,6 +419,17 @@ e_var_to_string_size(const struct e_var* v)
   return total;
 }
 
+static inline u32
+hash_list(const e_var* list, u32 nelems)
+{
+  const u32 seeds[4] = { 256, 35092, 0xDEADBEEF, 1234567890 };
+
+  u32 hash = nelems;
+  for (u32 i = 0; i < nelems; i++) { hash += seeds[i % 4] * e_var_hash(&list[i]); }
+
+  return hash;
+}
+
 u32
 e_var_hash(const e_var* var)
 {
@@ -413,14 +446,14 @@ e_var_hash(const e_var* var)
     case E_VARTYPE_VEC4: return e_hash(var->val.vec4, sizeof(e_vec4));
     case E_VARTYPE_MAT3: return e_hash(E_VAR_AS_MAT3(var)->m, sizeof(e_mat3));
     case E_VARTYPE_MAT4: return e_hash(E_VAR_AS_MAT4(var)->m, sizeof(e_mat4));
-    case E_VARTYPE_LIST: return e_combine_hash((const void**)E_VAR_AS_LIST(var)->vars, E_VAR_AS_LIST(var)->size, sizeof(e_var));
+    case E_VARTYPE_LIST: return hash_list(E_VAR_AS_LIST(var)->vars, E_VAR_AS_LIST(var)->size);
     case E_VARTYPE_MAP: {
       const u32 random_prime = 61;
-      return e_combine_hash((const void**)(E_VAR_AS_MAP(var)->keys), (E_VAR_AS_MAP(var)->size), sizeof(e_var))
-          + (random_prime * e_combine_hash((const void**)(E_VAR_AS_MAP(var)->vals), (E_VAR_AS_MAP(var)->size), sizeof(e_var)));
+      return hash_list(E_VAR_AS_MAP(var)->keys, E_VAR_AS_MAP(var)->size)
+          + (random_prime * hash_list(E_VAR_AS_MAP(var)->vals, E_VAR_AS_MAP(var)->size));
     }
     case E_VARTYPE_STRUCT: {
-      return e_combine_hash((const void**)E_VAR_AS_STRUCT(var)->members, E_VAR_AS_STRUCT(var)->member_count, sizeof(e_var));
+      return hash_list(E_VAR_AS_STRUCT(var)->members, E_VAR_AS_STRUCT(var)->member_count);
     }
     default: return e_hash(&var->val, sizeof(var->val));
   }

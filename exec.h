@@ -27,6 +27,7 @@
 
 #include "bfunc.h"
 #include "bvar.h"
+#include "cc.h"
 #include "fn.h"
 #include "stack.h"
 #include "stdafx.h"
@@ -35,14 +36,15 @@
 #include <stddef.h>
 
 typedef struct e_exec_info {
-  const u8*             code;
-  const e_var*          args;      // nullptr if nargs == 0, shallow copied.
-  const u32*            arg_slots; // The IDs which the arguments take
-  const e_var*          literals;  // must outlive the exec function.
-  const u32*            literals_hashes;
-  const e_function*     funcs;
-  const e_builtin_func* extern_funcs;
-  const e_builtin_var*  extern_vars;
+  const u8*                     code;
+  const e_var*                  args;      // nullptr if nargs == 0, shallow copied.
+  const u32*                    arg_slots; // The IDs which the arguments take
+  const e_var*                  literals;  // must outlive the exec function.
+  const u32*                    literals_hashes;
+  const e_function*             funcs;
+  const e_builtin_func*         extern_funcs;
+  const e_builtin_var*          extern_vars;
+  const ecc_struct_information* structs;
 
   const char** names;
   const u32*   names_hashes;
@@ -60,6 +62,7 @@ typedef struct e_exec_info {
   u32 nextern_funcs;
   u32 nextern_vars;
   u32 nnames;
+  u32 nstructs;
 } e_exec_info;
 
 /**

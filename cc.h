@@ -125,12 +125,10 @@ typedef struct ecc_variable_information {
  * Data deposit for a structure.
  */
 typedef struct ecc_struct_information {
-  char*  name;
-  char** fields;
-  u32*   field_hashes;
-  u32    fields_count;
-  u32    field_capacity;
-  u32    name_hash;
+  u32* field_hashes;
+  u32  fields_count;
+  u32  field_capacity;
+  u32  name_hash;
 } ecc_struct_information;
 
 /**
@@ -270,6 +268,7 @@ typedef struct e_compiler {
   ecc_builtin_variables_table* builtin_var_table;
   ecc_function_table*          function_table;
   ecc_defer_scope*             defer_stack;
+  ecc_struct_table*            struct_table;
 
   ecc_loop_location*   loop;
   ecc_namespace_stack* ns;
@@ -282,19 +281,20 @@ typedef struct e_compiler {
   u32 emit_capacity;
 
   u32 next_label;
-
 } e_compiler;
 
 typedef struct e_compilation_result {
-  u32 nliterals;
-  u32 nfunctions;
-  u32 ninstructions;
+  u32 literals_count;
+  u32 functions_count;
+  u32 instructions_count;
   u32 names_count;
+  u32 structs_count;
 
-  e_var*      literals;        // Array allocated by struct, don't free inviduals.
-  u32*        literals_hashes; // Array allocated by struct. Free after use.
-  e_function* functions;       // Array allocated by struct. Free after use.
-  u8*         instructions;    // Array allocated by struct. Free after use.
+  e_var*                  literals;        // Array allocated by struct, don't free inviduals.
+  u32*                    literals_hashes; // Array allocated by struct. Free after use.
+  e_function*             functions;       // Array allocated by struct. Free after use.
+  u8*                     instructions;    // Array allocated by struct. Free after use.
+  ecc_struct_information* structs;         // Array (and arrays inside) allocated by struct. Free after use.
 
   /* Debug symbols. Optional. */
   char** names; // Array && individuals allocated.
@@ -322,13 +322,15 @@ ecc_stream_resize(e_compiler* cc, int new_cap)
 static inline void
 e_compilation_result_free(e_compilation_result* r)
 {
-  for (u32 i = 0; i < r->nfunctions; i++) { free(r->functions[i].code); }
+  for (u32 i = 0; i < r->functions_count; i++) { free(r->functions[i].code); }
   for (u32 i = 0; i < r->names_count; i++) { free(r->names[i]); }
+  for (u32 i = 0; i < r->structs_count; i++) { free(r->structs[i].field_hashes); }
   free((void*)r->names);
   free((void*)r->names_hashes);
   free(r->literals);
   free(r->literals_hashes);
   free(r->functions);
+  free(r->structs);
   free(r->instructions);
 }
 

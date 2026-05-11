@@ -1213,7 +1213,7 @@ parse_struct_decleration(e_ast* p, int node)
   u32  nstmts = 0;
 
   if (!peek(p) || peek(p)->type != E_TOKEN_TYPE_IDENT) {
-    asterror(peek(p)->span, "Expected structure name, got '%s' [structure decleration]\n", e_token_type_to_string(prev(p)->type));
+    asterror(peek(p)->span, "Expected structure name, got '%s' [structure decleration]\n", e_token_type_to_string(peek(p)->type));
     goto ERR;
   }
 

@@ -88,7 +88,7 @@ static inline bool
 e_script_has_function(e_script* s, const char* func_name)
 {
   u32 hash = e_hash(func_name, strlen(func_name));
-  for (u32 i = 0; i < s->compiled.nfunctions; i++) {
+  for (u32 i = 0; i < s->compiled.functions_count; i++) {
     if (hash == s->compiled.functions[i].name_hash) return true;
   }
   return false;

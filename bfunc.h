@@ -124,6 +124,7 @@ e_var eb_vec4_zero(e_var* args, u32 nargs);
 e_var eb_mat3(e_var* args, u32 nargs);
 e_var eb_mat4(e_var* args, u32 nargs);
 
+e_var eb_rand_seed(e_var* args, u32 nargs);
 e_var eb_rand_int(e_var* args, u32 nargs);
 e_var eb_rand_float(e_var* args, u32 nargs);
 e_var eb_rand_vec2(e_var* args, u32 nargs);
@@ -157,20 +158,20 @@ static const e_builtin_func eb_funcs[] = {
 
   /* Read line from stdin */
   { "readln", "Read a line from stdin and retrieve it as a string. null on error.", "fn readln(...) -> string|null", 0, 0, 0, eb_readln },
-
-  /* Can convert anything to string. */
-  { "string", "Cast a variable to a string", "fn string(v) -> string", 0xFFFFFFFF, 1, 1, eb_cast_string },
-
+  
   {"vec2", "Cast two floats in to a vec2", "fn vec2(x, y) -> vec2", E_VARTYPE_FLOAT, 2, 2, eb_vec2},
   {"vec3", "Cast two floats in to a vec3", "fn vec3(x, y, z) -> vec3", E_VARTYPE_FLOAT, 3, 3, eb_vec3},
   {"vec4", "Cast two floats in to a vec4", "fn vec4(x, y, z, w) -> vec4", E_VARTYPE_FLOAT, 4, 4, eb_vec4},
-
+  
   {"vec2", "Create an empty vec2 (0 initialized)", "fn vec2::zero() -> vec2", E_VARTYPE_FLOAT, 0, 0, eb_vec2_zero},
   {"vec3", "Create an empty vec3 (0 initialized)", "fn vec3::zero() -> vec3", E_VARTYPE_FLOAT, 0, 0, eb_vec3_zero},
   {"vec4", "Create an empty vec4 (0 initialized)", "fn vec4::zero() -> vec4", E_VARTYPE_FLOAT, 0, 0, eb_vec4_zero},
-
+  
   {"mat3", "Cast three vector3's into a mat3", "fn mat3(row0, row1, row2) -> mat3", E_VARTYPE_VEC3, 3, 3, eb_mat3},
   {"mat4", "Cast three vector4's into a mat3", "fn mat4(row0, row1, row2, row3) -> mat4", E_VARTYPE_VEC4, 4, 4, eb_mat4},
+  
+    /* Can convert anything to string. */
+  { "string", "Cast a variable to a string", "fn string(v) -> string", 0xFFFFFFFF, 1, 1, eb_cast_string },
 
   /* Scalar types */
   { "int", "Cast a variable to a int", "fn int(v) -> int", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_int },
@@ -178,6 +179,7 @@ static const e_builtin_func eb_funcs[] = {
   { "bool", "Cast a variable to a bool", "fn bool(v) -> bool", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_bool },
   { "float", "Cast a variable to a float", "fn float(v) -> float", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_float },
 
+  { "rand::seed", "Seed the random number generator with a string.", "fn rand::seed(str) -> null", 0, 1, 1, eb_rand_seed },
   { "rand::list", "Get a random list of num integers between min and max (inclusive of both)", "fn rand::list(min, max, num) -> []", 0, 3, 3, eb_rand_list },
   { "rand::int", "Get a random integer between 0 and int::MAX (inclusive of both)", "fn rand::int() -> int", 0, 0, 0, eb_rand_int },
   { "rand::float", "Get a random float between 0 and 1 (inclusive of both)", "fn rand::float() -> float", 0, 0, 0, eb_rand_float },
@@ -217,6 +219,8 @@ static const e_builtin_func eb_funcs[] = {
   { "math::abs", "Compute the absolute value of the given argument", "fn math::abs(x) -> float", E_VARTYPE_FLOAT, 1, 1, eb_abs },
   { "math::hypot", "Compute the sqrt(x^2 + y^2), with maximum accuracy", "fn math::hypot(x, y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_hypot },
   { "math::signbit", "Get the sign bit of the given floating point input (0 positive, 1 negative)", "fn math::signbit(x) -> int", E_VARTYPE_FLOAT, 1, 1, eb_signbit },
+  { "math::deg2rad", "Convert input degrees to radians", "fn math::deg2rad(x) -> float", E_VARTYPE_FLOAT, 1, 1, eb_deg2rad },
+  { "math::rad2deg", "Convert input radians to degrees", "fn math::deg2rad(x) -> float", E_VARTYPE_FLOAT, 1, 1, eb_rad2deg },
 
   { "io::open", "Open a file. null on error.", "fn io::open( path:string, mode:string ) -> fd", E_VARTYPE_INT, 2, 2, eb_io_open },
   { "io::close", "Close a file.", "fn io::close( fd ) -> null", E_VARTYPE_INT, 1, 1, eb_io_close },
@@ -231,7 +235,7 @@ static const e_builtin_func eb_funcs[] = {
   { "io::println", "Print all given variables and a newline to file. null on error. number of bytes written on success.", "fn io::println( fd, ... ) -> int|null", E_VARTYPE_INT,    1, UINT32_MAX, eb_io_println },
   { "io::print", "Print all given variables to file. null on error. number of bytes written on success.", "fn io::print( fd, ... ) -> int|null", E_VARTYPE_INT, 2, UINT32_MAX, eb_io_print },
   { "io::type", "Get the type of an object on the disk. Possible return values are io::FILE|io::LINK|io::DIRECTORY|io::UNKNOWN", "fn io::type( path ) -> int", E_VARTYPE_INT, 1, 1, eb_io_type },
-  { "io::list_dir", "List a directory. Returns the file (and directory) paths as a list.", "fn io::list_dir( path ) -> list", E_VARTYPE_INT, 3, 3, eb_io_seek },
+  { "io::list_dir", "List a directory. Returns the file (and directory) paths as a list.", "fn io::list_dir( path ) -> list", E_VARTYPE_STRING, 1, 1, eb_io_list_dir },
   { "io::at_eof", "At the end of file? Boolean result only", "fn io::at_eof(fd) -> bool", E_VARTYPE_INT, 1, 1, eb_io_at_eof },
   { "io::error", "Get error string. Won't always be success for successful operations.", "fn io::error(fd) -> string", 0, 0, 0, eb_io_error },
 
@@ -243,7 +247,7 @@ static const e_builtin_func eb_funcs[] = {
   { "str::ltrim", "Trim all spaces from the left in the string and return a copy", "fn str::ltrim(s : string) -> string", E_VARTYPE_STRING,    1,    1, eb_str_ltrim },
   { "str::rtrim", "Trim all spaces from the right in the string and return a copy", "fn str::rtrim(s : string) -> string", E_VARTYPE_STRING,    1,    1, eb_str_rtrim },
   { "str::trim", "Trim all spaces from the string and return a copy", "fn str::trim(s : string) -> string", E_VARTYPE_STRING, 1, 1, eb_str_trim },
-  { "str::split", "Split a string by a another string (the delimiter) and return a list containing each token", "fn str::split(s : string, )", E_VARTYPE_STRING, 2, 2, eb_str_split },
+  { "str::split", "Split a string by a another string (the delimiter) and return a list containing each token", "fn str::split(s : string, delim : string)", E_VARTYPE_STRING, 2, 2, eb_str_split },
   { "str::len", "Get the length of the string. Alias to len", "fn str::len(s : string) -> int", E_VARTYPE_STRING, 1, 1, eb_str_len }, // equivalent to len()
 
   { "list::dup", "Duplicate a list. Alias to dup", "fn list::dup(list) -> list", E_VARTYPE_LIST, 1, 1, eb_var_dup },

@@ -141,18 +141,6 @@ int evector_zero_extend(const e_var* v, e_vec4 out);
 
 e_var evector_length(const e_var* v);
 
-static inline u32
-e_combine_hash(const void** list, size_t size, size_t var_size)
-{
-  const u32 magic_prime   = 31;
-  u32       combined_hash = 0;
-  for (size_t i = 0; i < size; i++) {
-    u32 element_hash = e_hash(list[i], var_size);
-    combined_hash    = (combined_hash * magic_prime) + element_hash;
-  }
-  return combined_hash;
-}
-
 static inline const char*
 e_var_type_to_string(e_vartype type)
 {
