@@ -41,7 +41,7 @@ eb_str_cat(e_var* args, u32 nargs)
   u32 total_len = 0;
   for (u32 i = 0; i < nargs; i++) { total_len += strlen(E_VAR_AS_STRING(&args[i])->s); }
 
-  char* big_s = calloc(1, total_len + 1);
+  char* big_s = e_xalloc(1, total_len + 1);
 
   char* p = big_s;
   p[0]    = 0;
@@ -64,7 +64,7 @@ eb_str_substr(e_var* args, u32 nargs)
 
   size_t copy_len = MIN(len, s_len - start);
 
-  char* new_s = calloc(1, copy_len + 1);
+  char* new_s = e_xalloc(1, copy_len + 1);
   strncpy(new_s, s + start, copy_len);
   new_s[copy_len] = 0;
 
@@ -81,7 +81,7 @@ eb_str_repeat(e_var* args, u32 nargs)
 
   int new_len = (int)strlen(s) * times;
 
-  char* new_s = calloc(1, new_len + 1);
+  char* new_s = e_xalloc(1, new_len + 1);
   new_s[0]    = 0;
 
   char* p = new_s;
@@ -114,7 +114,7 @@ eb_str_rtrim(e_var* args, u32 nargs)
   while (end >= s && isspace(*end)) { end--; }
 
   size_t len   = (end - s) + 1; // include end character
-  char*  new_s = calloc(1, len + 1);
+  char*  new_s = e_xalloc(1, len + 1);
   strncpy(new_s, s, len);
   new_s[len] = 0;
 
@@ -133,7 +133,7 @@ eb_str_trim(e_var* args, u32 nargs)
   while (end >= s && isspace(*end)) end--;
 
   size_t len   = end - s + 1; // include end
-  char*  new_s = calloc(1, len);
+  char*  new_s = e_xalloc(1, len);
   strncpy(new_s, s, len);
   new_s[len] = 0;
 
@@ -177,4 +177,117 @@ eb_str_split(e_var* args, u32 nargs)
 
   free(to_split_copy);
   return returned_list;
+}
+
+/* https://creativeandcritical.net/str-replace-c : Released under the public domain */
+/* MODIFIED A BIT! */
+char*
+repl_str(const char* str, const char* from, const char* to)
+{
+  /* Adjust each of the below values to suit your needs. */
+
+  /* Increment positions cache size initially by this number. */
+  size_t cache_sz_inc = 16;
+  /* Thereafter, each time capacity needs to be increased,
+   * multiply the increment by this factor. */
+  const size_t cache_sz_inc_factor = 2; // was 3
+
+  char*       pret;
+  char*       ret = NULL;
+  const char* pstr2;
+  const char* pstr  = str;
+  size_t      i     = 0;
+  size_t      count = 0;
+
+#if (__STDC_VERSION__ >= 199901L)
+  uintptr_t* pos_cache_tmp;
+  uintptr_t* pos_cache = NULL;
+#else
+  ptrdiff_t* pos_cache_tmp;
+  ptrdiff_t* pos_cache = NULL;
+#endif
+  size_t cache_sz = 0;
+  size_t cpylen   = 0;
+  size_t orglen   = 0;
+  size_t retlen   = 0;
+  size_t tolen    = 0;
+  size_t fromlen  = strlen(from);
+
+  /* Find all matches and cache their positions. */
+  while ((pstr2 = strstr(pstr, from)) != NULL) {
+    count++;
+
+    /* Increase the cache size when necessary. */
+    if (cache_sz < count) {
+      cache_sz += cache_sz_inc;
+      pos_cache_tmp = realloc(pos_cache, sizeof(*pos_cache) * cache_sz);
+      if (pos_cache_tmp == NULL) {
+        goto end_repl_str;
+      } else pos_cache = pos_cache_tmp;
+      cache_sz_inc *= cache_sz_inc_factor;
+    }
+
+    pos_cache[count - 1] = pstr2 - str;
+    pstr                 = pstr2 + fromlen;
+  }
+
+  orglen = pstr - str + strlen(pstr);
+
+  /* Allocate memory for the post-replacement string. */
+  if (count > 0) {
+    tolen  = strlen(to);
+    retlen = orglen + ((tolen - fromlen) * count);
+  } else retlen = orglen;
+  ret = malloc(retlen + 1);
+  if (ret == NULL) { goto end_repl_str; }
+
+  if (count == 0) {
+    /* If no matches, then just duplicate the string. */
+    strcpy(ret, str);
+  } else {
+    /* Otherwise, duplicate the string whilst performing
+     * the replacements using the position cache. */
+    pret = ret;
+    memcpy(pret, str, pos_cache[0]);
+    pret += pos_cache[0];
+    for (i = 0; i < count; i++) {
+      memcpy(pret, to, tolen);
+      pret += tolen;
+      pstr   = str + pos_cache[i] + fromlen;
+      cpylen = (i == count - 1 ? orglen : pos_cache[i + 1]) - pos_cache[i] - fromlen;
+      memcpy(pret, pstr, cpylen);
+      pret += cpylen;
+    }
+    ret[retlen] = '\0';
+  }
+
+end_repl_str:
+  /* Free the cache and return the post-replacement string,
+   * which will be NULL in the event of an error. */
+  free(pos_cache);
+  return ret;
+}
+
+e_var
+eb_str_replace(e_var* args, u32 nargs)
+{
+  const char* str          = E_VAR_AS_STRING(&args[0])->s;
+  const char* replace_this = E_VAR_AS_STRING(&args[1])->s;
+  const char* replace_with = E_VAR_AS_STRING(&args[2])->s;
+
+  char* s = repl_str(str, replace_this, replace_with);
+
+  return e_make_var_from_string(s);
+}
+
+e_var
+eb_str_find(e_var* args, u32 nargs)
+{
+  const char* hay    = E_VAR_AS_STRING(&args[0])->s;
+  const char* needle = E_VAR_AS_STRING(&args[1])->s;
+
+  const char* find = strstr(hay, needle);
+  if (!find) return e_var_from_int(-1);
+
+  return e_var_from_int((int)(find - hay));
 }

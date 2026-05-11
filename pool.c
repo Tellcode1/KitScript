@@ -47,7 +47,7 @@ e_refdobj_pool_init(u32 nbranches, e_refdobj_pool* pool)
   pool->nbranches = nbranches;
 
   // array of pointers to branches!
-  pool->branches = (e_refdobj_branch**)calloc(nbranches, sizeof(e_refdobj_branch*));
+  pool->branches = (e_refdobj_branch**)e_xalloc(nbranches, sizeof(e_refdobj_branch*));
 
   if (!pool->branches) return -1;
 

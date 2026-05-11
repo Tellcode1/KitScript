@@ -143,7 +143,8 @@ main(int argc, char* argv[])
   /* Maybe add a way to pass integers / strings from the command line as arguments? */
   if (entry_point_func.nargs != 0) {
     fputs("Entry point takes non zero arguments, can not give any\n", stderr);
-    return -1;
+    e = -1;
+    goto RET;
   }
 
   const u32 init_stack_capacity    = 256;
@@ -180,30 +181,42 @@ main(int argc, char* argv[])
 
   if (!no_validate) {
     e = e_validate(&info, stderr);
-    if (e) return e;
+    if (e) {
+      fprintf(stderr, "Validation failed. Bailing out. (--no-validate to skip validation ; not recommended)\n");
+      goto RET;
+    }
   }
 
   /**
    * Global variable initialization
    */
-  v = e_exec(&info);
+  e = e_exec(&info, &v);
+  if (e) {
+    fprintf(stderr, "Program initialization: Execution error\n");
+    goto RET;
+  }
 
   if (v.type != E_VARTYPE_NULL) {
-    fputs("Program initialization returned non-null variable: ", stdout);
+    fputs("Program initialization returned non-null variable: ", stderr);
     eb_println(&v, 1);
-    return -1;
+    goto RET;
   }
 
   e = e_stack_push_frame(&stack);
-  if (e) return e;
+  if (e) goto RET;
 
   info.code      = entry_point_func.code;
   info.code_size = entry_point_func.code_size;
   info.nargs     = 0;
   info.arg_slots = NULL;
   info.stack     = &stack;
+
   /* Execute main function. */
-  v = e_exec(&info);
+  e = e_exec(&info, &v);
+  if (e) {
+    fprintf(stderr, "Error in execution. Bailing out\n");
+    goto RET;
+  }
 
   e_stack_pop_frame(&stack);
 

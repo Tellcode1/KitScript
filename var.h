@@ -169,6 +169,10 @@ e_var_from_int(int x)
 { return (e_var){ .type = E_VARTYPE_INT, .val = { .i = x } }; }
 
 static inline e_var
+e_var_from_bool(bool x)
+{ return (e_var){ .type = E_VARTYPE_BOOL, .val = { .b = x } }; }
+
+static inline e_var
 e_var_from_float(double x)
 { return (e_var){ .type = E_VARTYPE_FLOAT, .val = { .f = x } }; }
 

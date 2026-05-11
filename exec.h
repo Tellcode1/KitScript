@@ -73,6 +73,6 @@ typedef struct e_exec_info {
  * Arguments can also be passed using the args member
  * of info.
  */
-e_var e_exec(const e_exec_info* info);
+int e_exec(const e_exec_info* info, e_var* ret);
 
 #endif // E_VM_H

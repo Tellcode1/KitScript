@@ -136,6 +136,10 @@ fn main() {
       error = true;
    }
 
+   s = "I COUGH need to COUGH add COUGH dynamic compilation COUGH and execution COUGH support to the COUGH language";
+   let replaced = str::replace(s, " COUGH ", " ");
+   assert (replaced == "I need to add dynamic compilation and execution support to the language");
+
    if (!error) {
       io::println(io::STDERR, "Successful! No errors");
    } else {

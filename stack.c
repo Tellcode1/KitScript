@@ -13,12 +13,12 @@ e_stack_init(u32 capacity, u32 frame_capacity, u32 variable_capacity, e_stack* s
 
   stack->depth          = 0;
   stack->frame_capacity = frame_capacity;
-  stack->frames         = (e_stack_frame*)calloc(frame_capacity, sizeof(e_stack_frame));
+  stack->frames         = (e_stack_frame*)e_xalloc(frame_capacity, sizeof(e_stack_frame));
   if (stack->frames == nullptr) return E_EMALLOC;
 
   stack->variable_capacity = variable_capacity;
   stack->nvariables        = 0;
-  stack->variables         = (e_var_entry*)calloc(variable_capacity, sizeof(e_var_entry));
+  stack->variables         = (e_var_entry*)e_xalloc(variable_capacity, sizeof(e_var_entry));
   if (stack->variables == nullptr) return E_EMALLOC;
 
   stack->max_usage = 0;

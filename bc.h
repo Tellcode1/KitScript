@@ -350,9 +350,18 @@ typedef enum e_opcode_bck {
 
   /**
    * Assign to a member of a struct by name.
-   * * Usage(noattr) MEMBER_ACCESS [MemberNameHashed : u32], Top=Value, Top-1 = Namespace/Struct
+   *  MEMBER_ACCESS [MemberNameHashed : u32], Top=Value, Top-1 = Namespace/Struct
    */
   E_OPCODE_MEMBER_ASSIGN,
+
+  /**
+   * If the top of the stack is equal to false, print an error and bail out.
+   *
+   * Stack state before: [..., assertion]
+   * Stack state after: [...]
+   * Instruction signature: ASSERT [Error string literal ID : u32]
+   */
+  E_OPCODE_ASSERT,
 
   /**
    * Exit the program with the code specified in 1st operand.
@@ -367,6 +376,10 @@ typedef u8 e_opcode;
 
 static const u8 static_assert__e_opcode_must_have_less_than_256_entries__[E_OPCODE_COUNT <= 256 ? 1 : -1] = { 0 };
 
+/**
+ * An instruction loaded into memory.
+ * They are tightly packed on disk.
+ */
 typedef struct e_ins {
   u8 opcode;
   union {
@@ -378,7 +391,7 @@ typedef struct e_ins {
     u32 mk_list, mk_map;
     u32 index_assign;
     u32 label;
-    u32 literal;
+    u32 literal, assertion; // assert refers to the literal in which error string is stored.
     u8  has_return_value;
     struct {
       u16 nargs;
@@ -442,6 +455,7 @@ e_opcode_to_str(e_opcode_bck op)
     case E_OPCODE_HALT: return "HALT";
     case E_OPCODE_COUNT: return "COUNT";
     case E_OPCODE_INDEX_PEEK: return "INDEX_PEEK";
+    case E_OPCODE_ASSERT: return "ASSERT";
   }
   return "UNKNOWN";
 }

@@ -38,10 +38,13 @@ eb_str_equal(e_var* args, u32 nargs)
 e_var eb_str_cat(e_var* args, u32 nargs);
 e_var eb_str_substr(e_var* args, u32 nargs); // substring: string, int start, int length
 e_var eb_str_repeat(e_var* args, u32 nargs); // repeat: string, int times
+e_var eb_str_replace(e_var* args, u32 nargs);
 e_var eb_str_ltrim(e_var* args, u32 nargs);
 e_var eb_str_rtrim(e_var* args, u32 nargs);
 e_var eb_str_trim(e_var* args, u32 nargs);
 e_var eb_str_split(e_var* args, u32 nargs); // Get list of strings partition by args[1] (string)
 e_var eb_str_len(e_var* args, u32 nargs);
+e_var eb_str_find(e_var* args, u32 nargs);
+e_var eb_str_rfind(e_var* args, u32 nargs);
 
 #endif // E_STR_BUILTIN_FUNCTIONS_H

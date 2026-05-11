@@ -103,6 +103,22 @@ static const e_builtin_var eb_vars[] = {
   { .name = "io::LINK", .type = E_VARTYPE_INT, .value = { .i = EB_IO_LINK } },
   { .name = "io::DIRECTORY", .type = E_VARTYPE_INT, .value = { .i = EB_IO_DIRECTORY } },
   { .name = "io::UNKNOWN", .type = E_VARTYPE_INT, .value = { .i = EB_IO_UNKNOWN } },
+
+  { .name = "type::NULL", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_NULL } },
+  { .name = "type::VOID", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_VOID } },
+  { .name = "type::INT", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_INT } },
+  { .name = "type::BOOL", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_BOOL } },
+  { .name = "type::CHAR", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_CHAR } },
+  { .name = "type::FLOAT", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_FLOAT } },
+  { .name = "type::STRING", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_STRING } },
+  { .name = "type::LIST", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_LIST } },
+  { .name = "type::MAP", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_MAP } },
+  { .name = "type::STRUCT", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_STRUCT } },
+  { .name = "type::VEC2", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_VEC2 } },
+  { .name = "type::VEC3", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_VEC3 } },
+  { .name = "type::VEC4", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_VEC4 } },
+  { .name = "type::MAT3", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_MAT3 } },
+  { .name = "type::MAT4", .type = E_VARTYPE_INT, .value = { .i = E_VARTYPE_MAT4 } },
 };
 
 #endif // E_BUILTIN_VARIABLES_H

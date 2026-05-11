@@ -129,7 +129,7 @@ eb_vec3_zx(e_var* args, u32 nargs)
 {
   e_vec4 x;
   evector_zero_extend(&args[0], x);
-  return (e_var){ .type = E_VARTYPE_VEC3, .val.vec3 = E_VEC3_INIT(x) };
+  return (e_var){ .type = E_VARTYPE_VEC3, .val = { .vec3 = E_VEC3_INIT(x) } };
 }
 
 static inline e_var
@@ -137,7 +137,37 @@ eb_vec4_zx(e_var* args, u32 nargs)
 {
   e_vec4 x;
   evector_zero_extend(&args[0], x);
-  return (e_var){ .type = E_VARTYPE_VEC3, .val.vec4 = E_VEC4_INIT(x) };
+  return (e_var){ .type = E_VARTYPE_VEC3, .val = { .vec4 = E_VEC4_INIT(x) } };
+}
+
+static inline e_var
+eb_vec_dot(e_var* args, u32 nargs)
+{
+  e_vec4 x;
+  evector_zero_extend(&args[0], x);
+  e_vec4 y;
+  evector_zero_extend(&args[1], y);
+
+  double r = 0.0;
+  for (u32 i = 0; i < 4; i++) { r += x[i] * y[i]; }
+
+  return (e_var){ .type = E_VARTYPE_FLOAT, .val = { .f = r } };
+}
+
+static inline e_var
+eb_vec3_cross(e_var* args, u32 nargs)
+{
+  e_vec3 x;
+  e_vec3 y;
+  memcpy(x, args[0].val.vec3, sizeof(e_vec3));
+  memcpy(y, args[1].val.vec3, sizeof(e_vec3));
+
+  e_vec3 r;
+  r[0] = (x[1] * y[2]) - (x[2] * y[1]);
+  r[1] = (x[2] * y[0]) - (x[0] * y[2]);
+  r[2] = (x[0] * y[1]) - (x[1] * y[0]);
+
+  return (e_var){ .type = E_VARTYPE_VEC3, .val = { .vec3 = E_VEC3_INIT(r) } };
 }
 
 #endif // E_VECTOR_BUILTINS_H

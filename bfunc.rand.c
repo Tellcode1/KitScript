@@ -173,6 +173,15 @@ eb_rand_int(e_var* args, u32 nargs)
 }
 
 e_var
+eb_rand_range(e_var* args, u32 nargs)
+{
+  (void)nargs;
+  int min = e_cast_to_int(&args[0]);
+  int max = e_cast_to_int(&args[1]);
+  return (e_var){ .type = E_VARTYPE_INT, .val = { .i = ((int)xrand() * (max - min + 1)) + min } };
+}
+
+e_var
 eb_rand_float(e_var* args, u32 nargs)
 {
   (void)nargs;

@@ -134,8 +134,8 @@ validate_stream(const u8* code, u32 code_size, const u32* arg_slots, u32 nargs, 
         }
       }
 
-      if (!found) { fprintf(f, "CALL %s,%u: undefined function\n", find_name(id, info), func_nargs); }
-      if (invalid_arg_count) { fprintf(f, "CALL %s,%u: invalid argument count\n", find_name(id, info), func_nargs); }
+      if (!found) { fprintf(f, "CALL[%s,%u]: undefined function\n", find_name(id, info), func_nargs); }
+      if (invalid_arg_count) { fprintf(f, "CALL[%s,%u]: invalid argument count\n", find_name(id, info), func_nargs); }
 
       if (!found || invalid_arg_count) return -1;
     }

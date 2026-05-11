@@ -40,9 +40,9 @@ e_map_init(struct e_var* vars, u32 npairs, e_map* map)
 
   map->size     = npairs;
   map->capacity = capacity;
-  map->keys     = (e_var*)calloc(capacity, sizeof(e_var));
-  map->vals     = (e_var*)calloc(capacity, sizeof(e_var));
-  map->hashes   = (u32*)calloc(capacity, sizeof(u32));
+  map->keys     = (e_var*)e_xalloc(capacity, sizeof(e_var));
+  map->vals     = (e_var*)e_xalloc(capacity, sizeof(e_var));
+  map->hashes   = (u32*)e_xalloc(capacity, sizeof(u32));
   if (!map->keys || !map->vals || !map->hashes) goto err;
 
   for (u32 i = 0, j = 0; i < (npairs * 2); i += 2, j++) {

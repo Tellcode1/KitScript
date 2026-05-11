@@ -40,6 +40,7 @@ typedef enum e_ast_nodetype {
   E_AST_NODE_UNARYOP,
   E_AST_NODE_STATEMENT_LIST,
 
+  E_AST_NODE_ASSERT,
   E_AST_NODE_DEFER,
   E_AST_NODE_FOR,
   E_AST_NODE_WHILE,
@@ -252,6 +253,14 @@ typedef union e_ast_node_val {
   struct {
     e_ast_node_type type;
     e_filespan      span;
+    int             stmt;
+    char*           assertion_line; // The line in string form (like assert have_feature();)
+    // sorry for the bad comments im sleepy
+  } assertion;
+
+  struct {
+    e_ast_node_type type;
+    e_filespan      span;
     int*            stmts;
     u32             nstmts;
   } stmts, root, defer;
@@ -416,8 +425,9 @@ e_ast_make_node(e_ast* p)
 static inline bool
 e_ast_is_limiter_exempt(e_ast_node_type t)
 {
-  return (bool)(t == E_AST_NODE_IF || t == E_AST_NODE_WHILE || t == E_AST_NODE_FOR || t == E_AST_NODE_FUNCTION_DEFINITION || t == E_AST_NODE_DEFER
-                || t == E_AST_NODE_NOP);
+  return (
+      t == E_AST_NODE_IF || t == E_AST_NODE_WHILE || t == E_AST_NODE_FOR || t == E_AST_NODE_FUNCTION_DEFINITION || t == E_AST_NODE_DEFER
+      || t == E_AST_NODE_NOP);
 }
 
 int e_ast_parse(e_ast* p, int* root) ATTR_NODISCARD;

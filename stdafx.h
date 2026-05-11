@@ -55,7 +55,7 @@ extern "C" {
 #endif
 
 #ifndef E_ARR_ALLOC
-#  define E_ARR_ALLOC(elem_type, n) ((elem_type*)calloc((n), sizeof(elem_type)))
+#  define E_ARR_ALLOC(elem_type, n) ((elem_type*)e_xalloc((n), sizeof(elem_type)))
 #endif
 
 #ifndef E_ARR_REALLOC
@@ -148,9 +148,9 @@ e_xfree(void** pptr)
 // {
 //   printf("[%s:%zu] %zu bytes allocated\n", file, line, size);
 //   memory_usage += size;
-//   return calloc(size, 1);
+//   return e_xalloc(size, 1);
 // }
-// #define calloc(size, n) allocator_callback(__FILE__, __LINE__, (size) * (n))
+// #define e_xalloc(size, n) allocator_callback(__FILE__, __LINE__, (size) * (n))
 // #define malloc(size) allocator_callback(__FILE__, __LINE__, (size))
 
 static inline size_t
@@ -192,7 +192,7 @@ static inline char*
 e_strdup(const char* s)
 {
   size_t len = strlen(s) + 1;
-  char*  p   = calloc(1, len);
+  char*  p   = (char*)e_xalloc(1, len);
   if (p) { memcpy(p, s, len); }
   return p;
 }
@@ -237,7 +237,7 @@ static inline void  e_aligned_free(void* ptr);
 static inline void*
 e_align_ptr(void* ptr, size_t alignment)
 {
-  char* s = ptr;
+  char* s = (char*)ptr;
   while ((uintptr_t)s % alignment != 0) { s++; }
   return (void*)s;
 }
@@ -283,6 +283,7 @@ e_aligned_free(void* ptr)
 {
   if (ptr) free(((void**)ptr)[-1]);
 }
+
 #ifdef __cplusplus
 }
 #endif

@@ -208,7 +208,7 @@ parse_braces(e_ast* p, int** outstmts, u32* outnstmts)
 {
   u32  capacity = 16;
   u32  nstmts   = 0;
-  int* stmts    = calloc(capacity, sizeof(int));
+  int* stmts    = e_xalloc(capacity, sizeof(int));
   if (!stmts) goto err;
 
   while (peek(p) != nullptr && peek(p)->type != E_TOKEN_TYPE_CLOSEBRACE) {
@@ -290,7 +290,7 @@ parse_body(e_ast* p, int** outstmts, u32* outnstmts)
   }
   // Single line expressions ending with a semi colon.
   else {
-    stmts = calloc(1, sizeof(int));
+    stmts = e_xalloc(1, sizeof(int));
     if (!stmts) goto err;
 
     e_filespan prev_span = peek(p)->span;
@@ -362,7 +362,7 @@ parse_variable_decleration(e_ast* ast, bool is_const, int node)
 
   u32         capacity = 16;
   u32         ndecls   = 0;
-  int*        decls    = calloc(capacity, sizeof(int));
+  int*        decls    = e_xalloc(capacity, sizeof(int));
   const char* name     = nullptr;
   if (!decls) goto err;
 
@@ -454,7 +454,7 @@ parse_if(e_ast* p, int node)
 
   u32        cap_else_ifs = 4;
   u32        num_else_ifs = 0;
-  e_if_stmt* else_ifs     = calloc(cap_else_ifs, sizeof(e_if_stmt));
+  e_if_stmt* else_ifs     = e_xalloc(cap_else_ifs, sizeof(e_if_stmt));
 
   int* body   = nullptr;
   u32  nstmts = 0;
@@ -631,7 +631,7 @@ parse_for(e_ast* p, int node)
 
   u32  niterators = 0;
   u32  capacity   = 8;
-  int* iterators  = calloc(capacity, sizeof(int));
+  int* iterators  = e_xalloc(capacity, sizeof(int));
   if (!iterators) goto err;
 
   // (
@@ -765,7 +765,7 @@ parse_function(e_ast* p, bool external, int node)
 
   names_capacity = 8; // NON ZERO
   arg_names_size = 0;
-  arg_names      = (const char**)calloc(names_capacity, sizeof(char*));
+  arg_names      = (const char**)e_xalloc(names_capacity, sizeof(char*));
 
   while (peek(p) && peek(p)->type != E_TOKEN_TYPE_CLOSEPAREN) {
     e_token* tk = peek(p);
@@ -843,7 +843,7 @@ parse_function_call(e_ast* p, e_token* tk, int node)
 {
   u32  capacity = 16;
   u32  nargs    = 0;
-  int* args     = calloc(capacity, sizeof(int)); // argument nodes
+  int* args     = e_xalloc(capacity, sizeof(int)); // argument nodes
 
   const char* func_name = e_str_intern(tk->val.ident, p->interner);
 
@@ -931,7 +931,7 @@ parse_list(e_ast* p, int node)
 {
   u32  capelems = 16;
   u32  nelems   = 0;
-  int* elems    = calloc(capelems, sizeof(int));
+  int* elems    = e_xalloc(capelems, sizeof(int));
 
   while (peek(p) && peek(p)->type != E_TOKEN_TYPE_CLOSEBRACKET) {
     int elem = e_ast_expr(p, 0);
@@ -983,8 +983,8 @@ parse_map(e_ast* p, int node)
   u32 capacity = 8;
   u32 npairs   = 0;
 
-  int* keys   = calloc(capacity, sizeof(int));
-  int* values = calloc(capacity, sizeof(int));
+  int* keys   = e_xalloc(capacity, sizeof(int));
+  int* values = e_xalloc(capacity, sizeof(int));
 
   if (!keys || !values) goto ERR;
 
@@ -1121,7 +1121,7 @@ parse_namespace_call(e_ast* p, char* name, int node)
 {
   u32  capacity = 16;
   u32  nargs    = 0;
-  int* args     = calloc(capacity, sizeof(int));
+  int* args     = e_xalloc(capacity, sizeof(int));
   if (!args) { goto ERR; }
 
   next(p); // '('
@@ -1178,7 +1178,7 @@ parse_namespace_access(e_ast* p, int leftidx, int node)
   }
 
   size_t len      = strlen(left_name) + strlen(ident->val.ident) + 3; // +2 for ::, 1 for \0
-  char*  fullname = calloc(1, len);
+  char*  fullname = e_xalloc(1, len);
   if (!fullname) { return -1; }
 
   snprintf(fullname, len, "%s::%s", left_name, ident->val.ident);
@@ -1312,6 +1312,16 @@ e_ast_nud(e_ast* p, e_token* tk)
       E_GET_NODE(p, node)->type         = E_AST_NODE_DEFER;
       E_GET_NODE(p, node)->defer.nstmts = nstmts;
       E_GET_NODE(p, node)->defer.stmts  = stmts;
+      return node;
+    }
+
+    case E_TOKEN_TYPE_ASSERT: {
+      int expr = e_ast_expr(p, 0);
+      if (expr < 0) return -1;
+
+      E_GET_NODE(p, node)->type                     = E_AST_NODE_ASSERT;
+      E_GET_NODE(p, node)->assertion.stmt           = expr;
+      E_GET_NODE(p, node)->assertion.assertion_line = e_strdup(tk->val.assertion_line);
       return node;
     }
 
@@ -1719,7 +1729,7 @@ e_ast_parse(e_ast* p, int* root_node)
   u32  cap    = 16;
   u32  nstmts = 0;
   int  node   = -1;
-  int* stmts  = calloc(cap, sizeof(int));
+  int* stmts  = e_xalloc(cap, sizeof(int));
 
   int rootnode = e_ast_make_node(p);
   if (rootnode < 0) {
@@ -1790,7 +1800,7 @@ e_ast_init(e_token* toks, u32 ntoks, e_str_interner* interner, e_ast* prsr)
     const u32 init_nodes = 64;
 
     *prsr = (e_ast){
-      .nodes    = calloc(init_nodes, sizeof(e_ast_node)),
+      .nodes    = e_xalloc(init_nodes, sizeof(e_ast_node)),
       .nnodes   = 0,
       .capacity = init_nodes,
       .interner = interner,

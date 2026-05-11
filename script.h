@@ -51,7 +51,7 @@ typedef struct e_script {
  * Ignoring the root stream, find the function within
  * the bytecode, and try to execute it (if it exists.)
  */
-e_var e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs);
+int e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs, e_var* ret);
 
 static inline int
 e_script_init(

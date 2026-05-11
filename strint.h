@@ -42,8 +42,8 @@ static inline int
 e_str_interner_init(u32 capacity, e_str_interner* table)
 {
   if (capacity <= 0) capacity = 4;
-  table->string_hashes    = (u32*)calloc(capacity, sizeof(u32));
-  table->strings          = (char**)calloc(capacity, sizeof(char*));
+  table->string_hashes    = (u32*)e_xalloc(capacity, sizeof(u32));
+  table->strings          = (char**)e_xalloc(capacity, sizeof(char*));
   table->strings_count    = 0;
   table->strings_capacity = capacity;
   return 0;

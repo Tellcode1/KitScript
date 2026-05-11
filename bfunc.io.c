@@ -75,7 +75,7 @@ eb_io_read(e_var* args, u32 nargs)
   if (!f) return (e_var){ .type = E_VARTYPE_NULL };
 
   int   nbytes = args[1].val.i;
-  char* s      = calloc(1, nbytes + 1);
+  char* s      = e_xalloc(1, nbytes + 1);
 
   size_t nread = fread(s, 1, nbytes, f);
   if (nread < nbytes) s[nread] = 0;
@@ -296,4 +296,13 @@ eb_io_list_dir(e_var* args, u32 nargs)
 
   /* TODO: Implement*/
   return E_NULLVAR;
+}
+
+e_var
+eb_io_exists(e_var* args, u32 nargs)
+{
+  const char* path = E_VAR_AS_STRING(&args[0])->s;
+
+  FILE* f = fopen(path, "r");
+  return e_var_from_bool(f != 0);
 }

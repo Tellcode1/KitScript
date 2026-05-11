@@ -62,7 +62,7 @@ internal_advance(const char** s, int* line, int* col)
 static inline char*
 parse_backslash_sequences(const char* s, size_t max)
 {
-  char*  news = calloc(1, max + 1);
+  char*  news = e_xalloc(1, max + 1);
   size_t r    = 0;
   size_t w    = 0;
 
@@ -109,7 +109,7 @@ tklist_init(u32 capacity, struct tklist* list)
   if (capacity <= 0) { capacity = 1; }
 
   list->ntoks = 0;
-  list->toks  = calloc(capacity, sizeof(e_token));
+  list->toks  = e_xalloc(capacity, sizeof(e_token));
   if (!list->toks) { return -1; }
 
   list->capacity = capacity;
@@ -167,7 +167,7 @@ internal_strndup(const char* s, size_t n)
   size_t l  = strlen(s);
   size_t cp = MIN(l, n);
 
-  char* new = calloc(1, cp + 1);
+  char* new = e_xalloc(1, cp + 1);
   strncpy(new, s, cp);
   new[cp] = 0;
 
@@ -289,6 +289,19 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
         tk = (e_token){ .type = E_TOKEN_TYPE_EXTERN, .span = SPAN };
       } else if (len == strlen("struct") && strncmp(snap, "struct", len) == 0) {
         tk = (e_token){ .type = E_TOKEN_TYPE_STRUCT, .span = SPAN };
+      } else if (len == strlen("assert") && strncmp(snap, "assert", len) == 0) {
+        // Special case. Copy everything after the assert token until a semicolon.
+        // So the VM can print errors like 'assert e == 0: Assertion failed".
+        // Keep in mind we don't advance the actual head here, just a lookahead to get the statement
+        const char* head = s; // skip spaces
+        const char* leg  = head;
+        while (isspace(*head)) {
+          head++;
+          leg++;
+        }
+        while (*leg && *leg != ';') leg++;
+
+        tk = (e_token){ .type = E_TOKEN_TYPE_ASSERT, .val.assertion_line = internal_strndup(head, leg - head), .span = SPAN };
       } else {
         tk = (e_token){ .type = E_TOKEN_TYPE_IDENT, .val.ident = internal_strndup(snap, len), .span = SPAN };
       }

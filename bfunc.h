@@ -115,6 +115,7 @@ eb_var_dup(e_var* args, u32 nargs)
 e_var eb_get_command_line_args(e_var* args, u32 nargs);
 e_var eb_get_cwd(e_var* args, u32 nargs);
 e_var eb_shell(e_var* args, u32 nargs);
+e_var eb_sys_sleep(e_var* args, u32 nargs);
 
 e_var eb_vec2(e_var* args, u32 nargs);
 e_var eb_vec3(e_var* args, u32 nargs);
@@ -127,6 +128,7 @@ e_var eb_mat4(e_var* args, u32 nargs);
 
 e_var eb_rand_seed(e_var* args, u32 nargs);
 e_var eb_rand_int(e_var* args, u32 nargs);
+e_var eb_rand_range(e_var* args, u32 nargs);
 e_var eb_rand_float(e_var* args, u32 nargs);
 e_var eb_rand_vec2(e_var* args, u32 nargs);
 e_var eb_rand_vec3(e_var* args, u32 nargs);
@@ -148,6 +150,9 @@ eb_len(e_var* args, u32 nargs)
   }
   return (e_var){ .type = E_VARTYPE_INT, .val = { .i = len } };
 }
+static inline e_var
+eb_type_of(e_var* args, u32 nargs)
+{ return e_var_from_int(args[0].type); }
 
 #define E_ALL_TYPES (E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_LIST | E_VARTYPE_MAP | E_VARTYPE_STRING)
 
@@ -155,7 +160,9 @@ eb_len(e_var* args, u32 nargs)
 static const e_builtin_func eb_funcs[] = {
   /* Can print anything. */
   { "print", "Print all provided variables to stdout", "fn print(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_print },
+  { "printf", "Print formatted string to stdout", "fn printf(fmt, ...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_print },
   { "println", "Print all provided variables and a newline to stdout", "fn println(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_println },
+  { "printfln", "Print formatted line to stdout", "fn printfln(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_println },
 
   /* Read line from stdin */
   { "readln", "Read a line from stdin and retrieve it as a string. null on error.", "fn readln(...) -> string|null", 0, 0, 0, eb_readln },
@@ -163,33 +170,32 @@ static const e_builtin_func eb_funcs[] = {
   {"vec2", "Cast two floats in to a vec2", "fn vec2(x, y) -> vec2", E_VARTYPE_FLOAT, 2, 2, eb_vec2},
   {"vec3", "Cast two floats in to a vec3", "fn vec3(x, y, z) -> vec3", E_VARTYPE_FLOAT, 3, 3, eb_vec3},
   {"vec4", "Cast two floats in to a vec4", "fn vec4(x, y, z, w) -> vec4", E_VARTYPE_FLOAT, 4, 4, eb_vec4},
-  
-  {"vec2", "Create an empty vec2 (0 initialized)", "fn vec2::zero() -> vec2", 0, 0, 0, eb_vec2_zero},
-  {"vec3", "Create an empty vec3 (0 initialized)", "fn vec3::zero() -> vec3", 0, 0, 0, eb_vec3_zero},
-  {"vec4", "Create an empty vec4 (0 initialized)", "fn vec4::zero() -> vec4", 0, 0, 0, eb_vec4_zero},
-  
+
   {"mat3", "Cast three vector3's into a mat3", "fn mat3(row0, row1, row2) -> mat3", E_VARTYPE_VEC3, 3, 3, eb_mat3},
   {"mat4", "Cast three vector4's into a mat3", "fn mat4(row0, row1, row2, row3) -> mat4", E_VARTYPE_VEC4, 4, 4, eb_mat4},
   
     /* Can convert anything to string. */
   { "string", "Cast a variable to a string", "fn string(v) -> string", 0xFFFFFFFF, 1, 1, eb_cast_string },
 
+  { "type_of", "Get the type of the input, as an enumerator (see bvar.h, E_TYPE_* constants)", "fn type_of(input) -> int", 0xFFFFFFFF, 1, 1, eb_type_of },
+
   /* Scalar types */
   { "int", "Cast a variable to a int", "fn int(v) -> int", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_int },
   { "char", "Cast a variable to a char", "fn char(v) -> char", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_char },
   { "bool", "Cast a variable to a bool", "fn bool(v) -> bool", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_bool },
   { "float", "Cast a variable to a float", "fn float(v) -> float", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_float },
+  
+  /* Anything can be added as an element to a list */
+  { "list", "Make a list of provided elements", "fn list(...) -> list", 0xFFFFFF, 1, UINT32_MAX, eb_cast_list },
 
   { "rand::seed", "Seed the random number generator with a string.", "fn rand::seed(str) -> null", 0, 1, 1, eb_rand_seed },
   { "rand::list", "Get a random list of num integers between min and max (inclusive of both)", "fn rand::list(min, max, num) -> []", 0, 3, 3, eb_rand_list },
   { "rand::int", "Get a random integer between 0 and int::MAX (inclusive of both)", "fn rand::int() -> int", 0, 0, 0, eb_rand_int },
+  { "rand::range", "Get a random integer between min and max (inclusive of both)", "fn rand::range(min, max) -> int", 0, 2, 2, eb_rand_range },
   { "rand::float", "Get a random float between 0 and 1 (inclusive of both)", "fn rand::float() -> float", 0, 0, 0, eb_rand_float },
   { "rand::vec2", "Get a vector2 of two random floats between 0 and 1", "fn rand::vec2() -> vec2", 0, 0, 0, eb_rand_vec2 },
   { "rand::vec3", "Get a vector3 of three random floats between 0 and 1", "fn rand::vec3() -> vec3", 0, 0, 0, eb_rand_vec3 },
   { "rand::vec4", "Get a vector4 of four random floats between 0 and 1", "fn rand::vec4() -> vec4", 0, 0, 0, eb_rand_vec4 },
-
-  /* Anything can be added as an element to a list */
-  { "list", "Make a list of provided elements", "fn list(...) -> list", 0xFFFFFF, 1, UINT32_MAX, eb_cast_list },
 
   { "len", "Get the type dependant length of the given variable (String=Length, List=Size, Map=NPairs)", "fn len(v : string|list|map) -> int", E_VARTYPE_STRING | E_VARTYPE_LIST | E_VARTYPE_MAP,    1,    1, eb_len },
 
@@ -221,12 +227,16 @@ static const e_builtin_func eb_funcs[] = {
   { "math::hypot", "Compute the sqrt(x^2 + y^2), with maximum accuracy", "fn math::hypot(x, y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_hypot },
   { "math::signbit", "Get the sign bit of the given floating point input (0 positive, 1 negative)", "fn math::signbit(x) -> int", E_VARTYPE_FLOAT, 1, 1, eb_signbit },
   { "math::deg2rad", "Convert input degrees to radians", "fn math::deg2rad(x) -> float", E_VARTYPE_FLOAT, 1, 1, eb_deg2rad },
-  { "math::rad2deg", "Convert input radians to degrees", "fn math::deg2rad(x) -> float", E_VARTYPE_FLOAT, 1, 1, eb_rad2deg },
+  { "math::rad2deg", "Convert input radians to degrees", "fn math::rad2deg(x) -> float", E_VARTYPE_FLOAT, 1, 1, eb_rad2deg },
+  { "math::min", "Smallest between two given inputs", "fn math::min(x,y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_min },
+  { "math::max", "Largest between two given inputs", "fn math::max(x,y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_max },
+  { "math::clamp", "Largest between two given inputs", "fn math::clamp(x, min, max) -> float", E_VARTYPE_FLOAT, 3, 3, eb_clamp },
 
   { "io::open", "Open a file. null on error.", "fn io::open( path:string, mode:string ) -> fd", E_VARTYPE_INT, 2, 2, eb_io_open },
   { "io::close", "Close a file.", "fn io::close( fd ) -> null", E_VARTYPE_INT, 1, 1, eb_io_close },
-  { "io::putc", "\"Put\" a character into file.", "fn io::putc( fd, ch ) -> null", E_VARTYPE_INT, 1, 1, eb_io_close },
-  { "io::getc", "Get a character from file. null on error.", "fn io::getc( fd ) -> char|null", E_VARTYPE_INT, 1, 1, eb_io_close },
+  { "io::mkdir", "Create a directory. 0 on success, anything else otherwise.", "fn io::mkdir( path:string, mode ) -> int", E_VARTYPE_INT, 2, 2, eb_io_open },
+  { "io::putc", "\"Put\" a character into file.", "fn io::putc( fd, ch ) -> null", E_VARTYPE_INT, 1, 1, eb_io_putc },
+  { "io::getc", "Get a character from file. null on error.", "fn io::getc( fd ) -> char|null", E_VARTYPE_INT, 1, 1, eb_io_getc },
   { "io::read", "Read given number of bytes from file. null on error.", "fn io::read( fd, nbytes:int ) -> string|null", E_VARTYPE_INT, 2, 2, eb_io_read },
   { "io::readln", "Read a line from file. null on error.", "fn io::readln( fd ) -> string|null", E_VARTYPE_INT, 1, 1, eb_io_readln },
   { "io::write", "Write string to file. null on error. number of bytes written on success.", "fn io::write( fd, data : string ) -> int|null", E_VARTYPE_INT, 2, 2, eb_io_write },
@@ -235,6 +245,7 @@ static const e_builtin_func eb_funcs[] = {
   { "io::ptell", "Get location in file. null on error.", "fn io::ptell( fd ) -> int|null", E_VARTYPE_INT, 1, 1, eb_io_ptell },
   { "io::println", "Print all given variables and a newline to file. null on error. number of bytes written on success.", "fn io::println( fd, ... ) -> int|null", E_VARTYPE_INT,    1, UINT32_MAX, eb_io_println },
   { "io::print", "Print all given variables to file. null on error. number of bytes written on success.", "fn io::print( fd, ... ) -> int|null", E_VARTYPE_INT, 2, UINT32_MAX, eb_io_print },
+  { "io::exists", "Check whether a file exists or not.", "fn io::exists( path ) -> bool", E_VARTYPE_STRING, 1, 1, eb_io_exists },
   { "io::type", "Get the type of an object on the disk. Possible return values are io::FILE|io::LINK|io::DIRECTORY|io::UNKNOWN", "fn io::type( path ) -> int", E_VARTYPE_INT, 1, 1, eb_io_type },
   { "io::list_dir", "List a directory. Returns the file (and directory) paths as a list.", "fn io::list_dir( path ) -> list", E_VARTYPE_STRING, 1, 1, eb_io_list_dir },
   { "io::at_eof", "At the end of file? Boolean result only", "fn io::at_eof(fd) -> bool", E_VARTYPE_INT, 1, 1, eb_io_at_eof },
@@ -243,6 +254,8 @@ static const e_builtin_func eb_funcs[] = {
   { "str::dup", "Duplicate a string. Alias to generic::dup", "fn str::dup(s : string) -> string", E_VARTYPE_STRING, 1, 1, eb_var_dup },
   { "str::equal", "Compare two strings. Boolean result.", "fn str::equal(s1 : string, s2 : string) -> bool", E_VARTYPE_STRING, 2, 2, eb_str_equal },
   { "str::cat", "Catenate all given strings. null on error.", "fn str::cat(...) -> string", E_VARTYPE_STRING, 1, UINT32_MAX, eb_str_cat },
+  { "str::find", "Find a substring within a string. -1 if non existent, >=0 if found.", "fn str::find(hay, needle) -> int", E_VARTYPE_STRING, 2, 2, eb_str_find },
+  { "str::replace", "Replace all occurences of a substring within a string. Returns the number of occurences", "fn str::replace(string, replace_this, replace_with) -> int", E_VARTYPE_STRING, 3, 3, eb_str_replace },
   { "str::substr", "Make a substring of given string, starting from 'start' with the length 'len'", "fn str::substr(s : string, start : int, len : int) -> string", E_VARTYPE_STRING, 3, 3, eb_str_substr },
   { "str::repeat", "Repeat a string n times", "fn str::repeat(s : string, n : int) -> string", E_VARTYPE_STRING, 2, 2, eb_str_repeat },
   { "str::ltrim", "Trim all spaces from the left in the string and return a copy", "fn str::ltrim(s : string) -> string", E_VARTYPE_STRING,    1,    1, eb_str_ltrim },
@@ -266,15 +279,26 @@ static const e_builtin_func eb_funcs[] = {
   { "sys::get_command_line_args", "Get the command line arguments passed, as a list", "fn sys::get_command_line_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_get_command_line_args },
   { "sys::get_cwd", "Get the current working directory as a string. null if OS has no such concept (if there even is an OS)", "fn sys::get_cwd() -> string|null", E_VARTYPE_VOID, 0, 0, eb_get_cwd },
   { "sys::shell", "Execute the command through the system shell. Returns its return code, null if error outside of the command occurs.", "fn sys::shell(str) -> int|null", E_VARTYPE_VOID, 1, 1, eb_shell},
-
-  { "vec::norm", "Get the normalized vector", "fn vec::norm(vec) -> vec2|null", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec_norm },
-  { "vec::len", "Get the length (magnitude) of a vector", "fn vec::len(vec) -> float|null", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec_len },
-  { "vec::len2", "Get the squared length (magnitude) of a vector", "fn vec::len2(vec) -> float|null", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec_len2 },
-  { "vec::dist", "Get (euclidean) distance between two vectors", "fn vec::dist(v1,v2) -> float|null", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec_dist },
-  { "vec::dist2", "Get squared (euclidean) distance between two vectors", "fn vec::dist2(v1,v2) -> float|null", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec_dist2 },
-
+  { "sys::sleepms", "Sleep for the number of milliseconds given. Actual time slept may be larger.", "fn sys::sleepms(ms : int) -> null", E_VARTYPE_VOID, 1, 1, eb_sys_sleep},
+ 
+  // We dispatch to the correct length inside the function. Having each individual function for each vector type is bloat.
+#define X(d)\
+  { "vec"#d"::zero", "Create an empty vec"#d" (0 initialized)", "fn vec"#d"::zero() -> vec"#d, 0, 0, 0, eb_vec##d##_zero}, \
+  { "vec"#d"::norm", "Get the normalized vector", "fn vec"#d"::norm(vec) -> vec2|null", E_VARTYPE_VEC##d, 1, 1, eb_vec_norm },\
+  { "vec"#d"::len", "Get the length (magnitude) of a vector", "fn vec"#d"::len(vec) -> float|null", E_VARTYPE_VEC##d, 1, 1, eb_vec_len },\
+  { "vec"#d"::len2", "Get the squared length (magnitude) of a vector", "fn"#d" vec::len2(vec) -> float|null", E_VARTYPE_VEC##d, 1, 1, eb_vec_len2 },\
+  { "vec"#d"::dist", "Get (euclidean) distance between two vectors", "fn vec::"#d"dist(v1,v2) -> float|null", E_VARTYPE_VEC##d, 2, 2, eb_vec_dist },\
+  { "vec"#d"::dist2", "Get squared (euclidean) distance between two vectors", "fn vec"#d"::dist2(v1,v2) -> float|null", E_VARTYPE_VEC##d, 2, 2, eb_vec_dist2 },\
+  { "vec"#d"::dot", "Get the dot product of two vectors.", "fn vec::"#d"dot(v1,v2) -> float", E_VARTYPE_VEC##d, 2, 2, eb_vec_dot },
+  
+  X(2)
+  X(3)
+  X(4)
+#undef X
+  
   { "vec3::zx", "Zero extend given vector up to a vec3. If input is vec4, truncates 4th dimension", "fn vec3::zx(vec) -> vec3", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec3_zx },
   { "vec4::zx", "Zero extend given vector up to a vec4.", "fn vec4::zx(vec) -> vec4", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec4_zx },
+  { "vec3::cross", "Get the cross product of two vector3s.", "fn vec3::cross(v1,v2) -> vec3", E_VARTYPE_VEC3, 2, 2, eb_vec3_cross },
 
   { "time::now", "Get the number of seconds since unix epoch as a float", "fn time::now() -> float", 0, 0, 0, eb_time_now },
   { "time::mono", "Get the number of monotonic (stable) seconds since unix epoch as a float", "fn time::mono() -> float", 0, 0, 0, eb_time_mono },

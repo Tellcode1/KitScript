@@ -88,8 +88,8 @@ typedef struct ecc_info {
  * on break/continue and return statements inside loops.
  */
 typedef struct ecc_loop_location {
-  u32 continue_label;
-  u32 break_label;
+  u32 continue_label; // Where continue goes
+  u32 break_label;    // Where break goes
   u32 defer_depth;
 } ecc_loop_location;
 

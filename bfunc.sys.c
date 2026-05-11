@@ -22,8 +22,11 @@
  * SOFTWARE.
  */
 
+#define _POSIX_C_SOURCE 199309L
+
 #include "bfunc.h"
 
+#include "cast.h"
 #include "list.h"
 #include "pool.h"
 #include "stdafx.h"
@@ -31,6 +34,7 @@
 #include "var.h"
 
 #include <stdio.h>
+#include <time.h>
 
 char** e_argv = nullptr;
 int    e_argc = 0;
@@ -95,4 +99,27 @@ eb_shell(e_var* args, u32 nargs)
     .type  = E_VARTYPE_INT,
     .val.i = system(cmd),
   };
+}
+
+void
+sleep_ms(int milliseconds)
+{
+#ifdef WIN32
+  Sleep(milliseconds);
+#elif _POSIX_C_SOURCE >= 199309L
+  struct timespec ts;
+  ts.tv_sec  = milliseconds / 1000;
+  ts.tv_nsec = (milliseconds % 1000L) * 1000000L;
+  nanosleep(&ts, NULL);
+#else
+  usleep(milliseconds * 1000);
+#endif
+}
+
+e_var
+eb_sys_sleep(e_var* args, u32 nargs)
+{
+  int ms = e_cast_to_int(&args[0]);
+  sleep_ms(ms);
+  return E_NULLVAR;
 }

@@ -21,4 +21,11 @@ fn main() {
    while ((time::mono() - start) < 1);
 
    println("Done!");
+
+   print("Waiting for 1 second to pass (OS request): ");
+   io::flush(io::STDOUT);
+
+   sys::sleepms(1000);
+
+   println("Done!");
 }

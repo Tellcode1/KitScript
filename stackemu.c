@@ -12,10 +12,10 @@ e_stackemu_init(e_stackemu* emu)
 
   memset(emu, 0, sizeof *emu);
 
-  u32* new_frames = (u32*)calloc(new_capacity, sizeof(u32));
+  u32* new_frames = (u32*)e_xalloc(new_capacity, sizeof(u32));
   if (!new_frames) return -1;
 
-  struct ecc_variable_information* new_vars = calloc(new_capacity, sizeof(ecc_variable_information));
+  struct ecc_variable_information* new_vars = e_xalloc(new_capacity, sizeof(ecc_variable_information));
   if (!new_vars) {
     free(new_frames);
     return -1;

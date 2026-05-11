@@ -39,7 +39,7 @@ e_list_init(e_var* vars, u32 nvars, struct e_list* list)
 
   list->size     = nvars;
   list->capacity = capacity;
-  list->vars     = (e_var*)calloc(capacity, sizeof(e_var));
+  list->vars     = (e_var*)e_xalloc(capacity, sizeof(e_var));
   if (!list->vars) return -1;
 
   for (u32 i = 0; i < nvars; i++) {

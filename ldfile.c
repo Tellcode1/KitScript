@@ -22,7 +22,7 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
     fprintf(stderr, "[%s:%i] Warning: Loading a file with requested size > INT32_MAX. Possible file corruption. Continuing.\n", __FILE__, __LINE__);
   }
 
-  *root_allocation = calloc(bytes_req, 1);
+  *root_allocation = e_xalloc(bytes_req, 1);
   if (*root_allocation == nullptr) return E_FILE_READ_ERR_ROOT_ALLOCATION_FAILED;
 
   uchar* alloc = (uchar*)*root_allocation;
@@ -336,6 +336,7 @@ e_read_ins(const u8** ip)
     case E_OPCODE_RETURN: i.v.has_return_value = e_read_u8(ip); break;
 
     case E_OPCODE_LITERAL: i.v.literal = e_read_u32(ip); break;
+    case E_OPCODE_ASSERT: i.v.assertion = e_read_u32(ip); break;
     case E_OPCODE_LOAD: i.v.load = e_read_u32(ip); break;
     case E_OPCODE_ASSIGN: i.v.assign = e_read_u32(ip); break;
     case E_OPCODE_INIT: i.v.init = e_read_u32(ip); break;

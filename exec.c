@@ -51,7 +51,7 @@
 
 // clang-format off
 #define TRY(expr) do { int PASTE(__e__, __LINE__) = 0; if ((PASTE(__e__, __LINE__) = (expr))) { return PASTE(__e__, __LINE__); } } while (0)
-#define TRY_V(expr) do {   int PASTE(__e__, __LINE__) = (expr);   if (PASTE(__e__, __LINE__)) { return (e_var){ .type = E_VARTYPE_NULL }; } } while (0)
+#define TRY_V(expr) do {   int PASTE(__e__, __LINE__) = (expr);   if (PASTE(__e__, __LINE__)) { return -1; } } while (0)
 // clang-format on
 
 // static inline e_var*
@@ -72,15 +72,15 @@ get_builtin_func_hashed(u32 hash)
   return nullptr;
 }
 
-static e_var
-call(const e_exec_info* info, u32 hash, u32 nargs)
+static int
+call(const e_exec_info* info, u32 hash, u32 nargs, e_var* ret)
 {
-  e_var return_value = { .type = E_VARTYPE_NULL };
+  int e = 0;
 
   /**
    * Copy argumenst into a temporary array and remove them from the stack.
    */
-  e_var* args_copy = nargs > 0 ? calloc(nargs, sizeof(e_var)) : NULL;
+  e_var* args_copy = nargs > 0 ? e_xalloc(nargs, sizeof(e_var)) : NULL;
   if (nargs > 0) memcpy(args_copy, &info->stack->stack[info->stack->size - nargs], nargs * sizeof(e_var));
 
   for (u32 i = 0; i < nargs; i++) e_var_acquire(&args_copy[i]);
@@ -95,7 +95,7 @@ call(const e_exec_info* info, u32 hash, u32 nargs)
   // builtins
   const e_builtin_func* builtin = get_builtin_func_hashed(hash);
   if (builtin != nullptr) {
-    return_value = builtin->func(args_copy, nargs);
+    *ret = builtin->func(args_copy, nargs);
     goto pop_and_ret;
   }
 
@@ -103,7 +103,7 @@ call(const e_exec_info* info, u32 hash, u32 nargs)
   for (u32 i = 0; i < info->nextern_funcs; i++) {
     const char* name = info->extern_funcs[i].name;
     if (e_hash(name, strlen(name)) != hash) continue;
-    if (info->extern_funcs[i].func) { return_value = info->extern_funcs[i].func(args_copy, nargs); }
+    if (info->extern_funcs[i].func) { *ret = info->extern_funcs[i].func(args_copy, nargs); }
     goto pop_and_ret;
   }
 
@@ -133,7 +133,9 @@ call(const e_exec_info* info, u32 hash, u32 nargs)
       .nstructs        = info->nstructs,
       .structs         = info->structs,
     };
-    return_value = e_exec(&fi);
+
+    e = e_exec(&fi, ret);
+    if (e) return e;
 
     e_stack_free(&stack);
 
@@ -142,8 +144,8 @@ call(const e_exec_info* info, u32 hash, u32 nargs)
 
   fprintf(stderr, "Function %u not defined\n", hash);
 
-  e_var null_var = { .type = E_VARTYPE_NULL };
-  return null_var;
+  *ret = E_NULLVAR;
+  return -1;
 
 pop_and_ret:
   // #ifdef DEBUG_PRINT_STACK
@@ -162,7 +164,7 @@ pop_and_ret:
    */
   while (info->stack->depth > depth_restore) e_stack_pop_frame(info->stack);
 
-  return return_value;
+  return e;
 }
 
 static inline e_var*
@@ -208,20 +210,20 @@ find_name_in_syms(u32 hash, const e_exec_info* info)
   return "(symbol not found)";
 }
 
-e_var
-e_exec(const e_exec_info* info)
+int
+e_exec(const e_exec_info* info, e_var* ret)
 {
   /* Initial state check. */
   if (!info->stack || (info->nargs > 0 && (info->args == nullptr || info->arg_slots == nullptr)) || (info->code == nullptr && info->code_size != 0)
       || (info->extern_funcs == nullptr && info->nextern_funcs > 0) || (info->extern_vars == nullptr && info->nextern_vars > 0)
       || (info->funcs == nullptr && info->nfuncs > 0) || (info->literals == nullptr && info->nliterals > 0)) {
     fputs("Corrupted info during execution (broken fork?)\n", stderr);
-    return E_NULLVAR;
+    return -1;
   }
 
   for (u32 i = 0; i < info->nargs; i++) {
     e_var* slot = e_stack_push_variable(info->arg_slots[i], info->stack);
-    if (!slot) return (e_var){ .type = E_VARTYPE_NULL };
+    if (!slot) return -1;
 
     // Nothing should be on the stack but still...
     e_var_release(slot);
@@ -260,10 +262,16 @@ e_exec(const e_exec_info* info)
 
         if (info->stack->size < func_nargs) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
-        e_var r = call(info, hash, func_nargs);
+        e_var r = E_NULLVAR;
+
+        int e = call(info, hash, func_nargs, &r);
+        if (e) {
+          fprintf(stderr, "CALL returned error (%i), propogating error to callee\n", e);
+          return e;
+        }
 
         TRY_V(e_stack_push(info->stack, &r));
         e_var_release(&r);
@@ -277,7 +285,7 @@ e_exec(const e_exec_info* info)
         for (u32 i = 0; i < info->nliterals; i++) {
           if (id == info->literals_hashes[i]) {
             int e = e_var_deep_cpy(&info->literals[i], &v); // Deep copy the literal.
-            if (e) return (e_var){ .type = E_VARTYPE_NULL };
+            if (e) return -1;
             break;
           }
         }
@@ -291,7 +299,7 @@ e_exec(const e_exec_info* info)
         const u32 nelems = ins.v.mk_list;
 
         e_refdobj* obj = e_refdobj_pool_acquire(&ge_pool);
-        if (!obj) return E_NULLVAR;
+        if (!obj) return -1;
 
         // Convert the object
         e_list* list = E_OBJ_AS_LIST(obj);
@@ -307,7 +315,7 @@ e_exec(const e_exec_info* info)
 
         if (info->stack->size < nelems) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var* elems = &stack[stack_size - nelems];
@@ -326,7 +334,7 @@ e_exec(const e_exec_info* info)
         const u32 npairs = ins.v.mk_map;
 
         e_refdobj* obj = e_refdobj_pool_acquire(&ge_pool);
-        if (!obj) return E_NULLVAR;
+        if (!obj) return -1;
 
         // Convert the object
         e_map* map = E_OBJ_AS_MAP(obj);
@@ -341,7 +349,7 @@ e_exec(const e_exec_info* info)
 
         if (info->stack->size < (npairs * 2)) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var* elems = &stack[stack_size - (npairs * 2)];
@@ -367,21 +375,21 @@ e_exec(const e_exec_info* info)
         if (!lookup) {
           e_var tmp = E_NULLVAR;
           TRY_V(e_stack_push(info->stack, &tmp));
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var st = {
           .type      = E_VARTYPE_STRUCT,
           .val.struc = e_refdobj_pool_acquire(&ge_pool),
         };
-        if (!st.val.struc) return E_NULLVAR;
+        if (!st.val.struc) return -1;
 
-        E_VAR_AS_STRUCT(&st)->member_hashes = (u32*)calloc(lookup->fields_count, sizeof(u32));
-        E_VAR_AS_STRUCT(&st)->members       = (e_var*)calloc(lookup->fields_count, sizeof(e_var));
+        E_VAR_AS_STRUCT(&st)->member_hashes = (u32*)e_xalloc(lookup->fields_count, sizeof(u32));
+        E_VAR_AS_STRUCT(&st)->members       = (e_var*)e_xalloc(lookup->fields_count, sizeof(e_var));
         E_VAR_AS_STRUCT(&st)->member_count  = lookup->fields_count;
 
         for (u32 i = 0; i < lookup->fields_count; i++) { E_VAR_AS_STRUCT(&st)->member_hashes[i] = lookup->field_hashes[i]; }
-        for (u32 i = 0; i < lookup->fields_count; i++) { E_VAR_AS_STRUCT(&st)->members[i] = (e_var){ .type = E_VARTYPE_NULL }; }
+        for (u32 i = 0; i < lookup->fields_count; i++) { E_VAR_AS_STRUCT(&st)->members[i] = E_NULLVAR; }
 
         TRY_V(e_stack_push(info->stack, &st));
         e_var_release(&st); // Stack owns it now
@@ -390,7 +398,7 @@ e_exec(const e_exec_info* info)
       }
 
       case E_OPCODE_MEMBER_ACCESS: {
-        if (!info->stack) return E_NULLVAR;
+        if (!info->stack) return -1;
 
         const u32 member = ins.v.member;
 
@@ -412,7 +420,7 @@ e_exec(const e_exec_info* info)
             d = v[3];
           } else {
             fprintf(stderr, "No such member %s in vec2\n", find_name_in_syms(member, info));
-            return E_NULLVAR;
+            return -1;
           }
 
           // Vectors are not ref counted. This is safe.
@@ -453,7 +461,7 @@ e_exec(const e_exec_info* info)
 
         if (info->stack->size < 2) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var* value = e_stack_top(info->stack);
@@ -497,7 +505,7 @@ e_exec(const e_exec_info* info)
       case E_OPCODE_DIV:
         if (e_cast_to_int(&info->stack->stack[info->stack->size - 1]) == 0) {
           fputs("*** Divide by zero ***\n", stderr);
-          return (e_var){ .type = E_VARTYPE_NULL };
+          return -1;
         }
       case E_OPCODE_ADD:
       case E_OPCODE_SUB:
@@ -517,7 +525,7 @@ e_exec(const e_exec_info* info)
       case E_OPCODE_GTE: {
         if (info->stack->size < 2) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
         // Since we compile left first, right next
         // right will be at the top of the stack and left will be below it
@@ -560,7 +568,7 @@ e_exec(const e_exec_info* info)
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
           fputs("JZ OOB\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         const e_var* cnd  = e_stack_top(info->stack);
@@ -571,11 +579,33 @@ e_exec(const e_exec_info* info)
         break;
       }
 
+      case E_OPCODE_ASSERT: {
+        const u32 error_str_id = ins.v.assertion;
+
+        const e_var* cnd  = e_stack_top(info->stack);
+        bool         eval = evar_to_bool(*cnd);
+
+        // Find the error string
+        const char* error_str = "(error string not found in literal table)";
+        for (u32 i = 0; i < info->nliterals; i++) {
+          if (error_str_id == info->literals_hashes[i]) {
+            error_str = E_VAR_AS_STRING(&info->literals[i])->s;
+            break;
+          }
+        }
+
+        if (!eval) {
+          fprintf(stderr, "-- ASSERTION FAILED :: Propogating error -- '%s'\n", error_str);
+          return -1; // Return an error
+        }
+        break;
+      }
+
       case E_OPCODE_JNZ: {
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
           fputs("JNZ OOB\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         const e_var* cnd  = e_stack_top(info->stack);
@@ -610,7 +640,7 @@ e_exec(const e_exec_info* info)
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
           fputs("JMP OOB\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
         ip = info->code + target;
       } break;
@@ -645,7 +675,7 @@ e_exec(const e_exec_info* info)
         e_var* slot = get_variable_from_id(info->stack, id);
         if (!slot) {
           fprintf(stderr, "*** undeclared variable (id=%u) LOAD'd ***\n", id);
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var v;
@@ -662,14 +692,14 @@ e_exec(const e_exec_info* info)
         size_t stack_size = info->stack->size;
         if (stack_size < 2) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var* left = &stack[stack_size - 2];
 
         if (left->type == E_VARTYPE_LIST) {
           e_list* list = left->type == E_VARTYPE_LIST ? E_VAR_AS_LIST(left) : NULL;
-          if (!list) { return (e_var){ .type = E_VARTYPE_NULL }; }
+          if (!list) { return -1; }
 
           int idx = e_cast_to_int(&stack[stack_size - 1]);
 
@@ -681,7 +711,7 @@ e_exec(const e_exec_info* info)
           e_map* map = E_VAR_AS_MAP(left);
           e_var  key = stack[stack_size - 1];
 
-          if (!map) { return (e_var){ .type = E_VARTYPE_NULL }; }
+          if (!map) { return -1; }
 
           e_var* find = e_map_find(map, &key);
           if (find) {
@@ -707,7 +737,7 @@ e_exec(const e_exec_info* info)
         u32    stack_size = info->stack->size;
         if (stack_size < 3) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var  base  = stack[stack_size - 3];
@@ -729,7 +759,7 @@ e_exec(const e_exec_info* info)
           e_map* map  = E_VAR_AS_MAP(&base);
           e_var* slot = e_map_find_or_insert(map, index);
 
-          if (!map || !slot) { return (e_var){ .type = E_VARTYPE_NULL }; }
+          if (!map || !slot) { return -1; }
 
           e_var_release(slot);
           TRY_V(e_var_shallow_cpy(&value, slot));
@@ -747,11 +777,11 @@ e_exec(const e_exec_info* info)
 
         /* Push value */
         int e = e_stack_push(info->stack, &value);
-        if (e) return E_NULLVAR;
+        if (e) return -1;
 
         /* Push base */
         e = e_stack_push(info->stack, &base);
-        if (e) return E_NULLVAR;
+        if (e) return -1;
 
         /* [.. value, base] */
         /* base will be assigned back after this and popped, so resulting value can be chained in assignments */
@@ -768,14 +798,14 @@ e_exec(const e_exec_info* info)
         size_t stack_size = info->stack->size;
         if (stack_size < 2) {
           fputs("*** stack corruption ***\n", stderr);
-          return E_NULLVAR;
+          return -1;
         }
 
         e_var* left = &stack[stack_size - 2];
 
         if (left->type == E_VARTYPE_LIST) {
           e_list* list = left->type == E_VARTYPE_LIST ? E_VAR_AS_LIST(left) : NULL;
-          if (!list) { return (e_var){ .type = E_VARTYPE_NULL }; }
+          if (!list) { return -1; }
 
           int idx = e_cast_to_int(&stack[stack_size - 1]);
 
@@ -787,7 +817,7 @@ e_exec(const e_exec_info* info)
           e_map* map = E_VAR_AS_MAP(left);
           e_var  key = stack[stack_size - 1];
 
-          if (!map) { return (e_var){ .type = E_VARTYPE_NULL }; }
+          if (!map) { return -1; }
 
           e_var* find = e_map_find(map, &key);
           if (find) {
@@ -809,7 +839,7 @@ e_exec(const e_exec_info* info)
 
         e_var* slot = get_variable_from_id(info->stack, id);
 
-        if (!slot) { return (e_var){ .type = E_VARTYPE_NULL }; }
+        if (!slot) { return -1; }
 
         e_var_release(slot); // free old value in slot
 
@@ -853,12 +883,13 @@ _RETURN: {
   /**
    * Everything is externally managed. Don't need to free anything.
    */
-  return retval;
+  *ret = retval;
+  return 0;
 }
 }
 
-e_var
-e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs)
+int
+e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs, e_var* ret)
 {
   u32 hash = e_hash(func_name, strlen(func_name));
 
@@ -884,16 +915,22 @@ e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs)
 
       if (s->compiled.functions[i].nargs != nargs) {
         fprintf(stderr, "Function expects %u arguments (%u were provided)\n", s->compiled.functions[i].nargs, nargs);
-        return (e_var){ .type = E_VARTYPE_NULL };
+        return -1;
       }
 
-      if ((e_stack_push_frame(info.stack))) { return (e_var){ .type = E_VARTYPE_NULL }; }
-      e_var r = e_exec(&info);
+      int e = e_stack_push_frame(info.stack);
+      if (e) {
+        e_stack_pop_frame(info.stack);
+        return e;
+      }
+
+      e = e_exec(&info, ret);
+
       e_stack_pop_frame(info.stack);
 
-      return r;
+      return e;
     }
   }
 
-  return (e_var){ .type = E_VARTYPE_NULL };
+  return -1;
 }

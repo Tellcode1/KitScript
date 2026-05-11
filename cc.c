@@ -118,7 +118,7 @@ static inline void                compiler_join_fork(const e_compiler* copy, e_c
 static inline RETURNS_ERRCODE int emit_lvalue_assign_prologue(e_compiler* cc, e_lval lv);
 static inline RETURNS_ERRCODE int emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv);
 
-static RETURNS_ERRCODE int compile_literal_variable(e_compiler* cc, e_var v);
+static RETURNS_ERRCODE int compile_and_push_literal_variable(e_compiler* cc, e_var v);
 static RETURNS_ERRCODE int compile_literal(e_compiler* cc, int node);
 static RETURNS_ERRCODE int compile_list(e_compiler* cc, int node);
 static RETURNS_ERRCODE int compile_map(e_compiler* cc, int node);
@@ -156,10 +156,11 @@ does_node_push_to_stack(const e_compiler* cc, int node)
     case E_AST_NODE_WHILE:
     case E_AST_NODE_BREAK:
     case E_AST_NODE_CONTINUE:
+    case E_AST_NODE_ASSERT: // pushes and immediately pops
     case E_AST_NODE_IF:
     case E_AST_NODE_NAMESPACE_DECL:
     case E_AST_NODE_RETURN: /* No need to optimize this! */
-    case E_AST_NODE_DEFER:  /* Doesn't push anything: its actual statement does, which is optimized */
+    case E_AST_NODE_DEFER:  /* Doesn't push anything: statements inside do (which are handled) */
     case E_AST_NODE_FUNCTION_DEFINITION:
     case E_AST_NODE_STRUCT_DECL: return false;
 
@@ -739,6 +740,19 @@ e_emit_lvalue_load(e_compiler* cc, e_lval lv)
 
   return 0;
 }
+
+static inline RETURNS_ERRCODE int
+make_string_variable(char* s, e_var* v) // s will be onwed by variable after this
+{
+  e_refdobj* obj = e_refdobj_pool_acquire(&ge_pool);
+  if (!obj) return -1;
+
+  E_OBJ_AS_STRING(obj)->s = s;
+
+  *v = (e_var){ .type = E_VARTYPE_STRING, .val.s = obj };
+  return 0;
+}
+
 static inline RETURNS_ERRCODE int
 lower_node_to_literal(const e_compiler* cc, int node, e_var* o)
 {
@@ -748,15 +762,7 @@ lower_node_to_literal(const e_compiler* cc, int node, e_var* o)
     case E_AST_NODE_FLOAT: *o = (e_var){ .type = E_VARTYPE_FLOAT, .val.f = E_GET_NODE(p, node)->f.f }; return 0;
     case E_AST_NODE_CHAR: *o = (e_var){ .type = E_VARTYPE_CHAR, .val.c = E_GET_NODE(p, node)->c.c }; return 0;
     case E_AST_NODE_BOOL: *o = (e_var){ .type = E_VARTYPE_BOOL, .val.b = E_GET_NODE(p, node)->b.b }; return 0;
-    case E_AST_NODE_STRING: {
-      e_refdobj* obj = e_refdobj_pool_acquire(&ge_pool);
-      if (!obj) return -1;
-
-      E_OBJ_AS_STRING(obj)->s = e_arnstrdup(cc->arena, E_GET_NODE(p, node)->s.s);
-
-      *o = (e_var){ .type = E_VARTYPE_STRING, .val.s = obj };
-      return 0;
-    }
+    case E_AST_NODE_STRING: return make_string_variable(e_arnstrdup(cc->arena, E_GET_NODE(p, node)->s.s), o);
 
     case E_AST_NODE_LIST:
     case E_AST_NODE_MAP: /* TODO: Implement */ abort(); break;
@@ -816,10 +822,9 @@ qualify_name(const e_compiler* cc, const char* name)
   return out;
 }
 
-static int
-compile_literal_variable(e_compiler* cc, e_var v)
+static RETURNS_ERRCODE int
+append_literal_variable(ecc_literal_table* literals, const e_var* v)
 {
-  ecc_literal_table* literals = cc->lit_table;
   if (literals->literals_count >= literals->literals_capacity) {
     u32 new_c = MAX(literals->literals_capacity * 2, 4);
 
@@ -837,6 +842,21 @@ compile_literal_variable(e_compiler* cc, e_var v)
     literals->literals_capacity = new_c;
   }
 
+  u32 id = literals->literals_count;
+
+  memcpy(&literals->literals[id], v, sizeof(e_var));
+  literals->literal_hashes[id] = e_var_hash(v);
+
+  literals->literals_count++;
+
+  return 0;
+}
+
+static int
+compile_and_push_literal_variable(e_compiler* cc, e_var v)
+{
+  ecc_literal_table* literals = cc->lit_table;
+
   bool found = false;
 
   /* Search for the literal in our table. */
@@ -849,22 +869,15 @@ compile_literal_variable(e_compiler* cc, e_var v)
   }
 
   if (!found) {
-    // Add it to our list
-    u32 id = literals->literals_count;
-
-    literals->literals[id]       = v;
-    literals->literal_hashes[id] = e_var_hash(&v);
-
-    literals->literals_count++;
-  } else {
+    int e = append_literal_variable(literals, &v);
+    if (e) return e;
+  } else if (v.type == E_VARTYPE_STRING) {
     /**
      * We allocate strings on the ge_pool ourselves
      * And so need to free them.
      */
-    if (v.type == E_VARTYPE_STRING) {
-      // free(E_VAR_AS_STRING(&v)->s);
-      e_refdobj_pool_return(&ge_pool, v.val.s);
-    }
+    // free(E_VAR_AS_STRING(&v)->s);
+    e_refdobj_pool_return(&ge_pool, v.val.s);
 
     /**
      * Since the variables all have the same lifetime, using the refcounter
@@ -879,7 +892,7 @@ compile_literal_variable(e_compiler* cc, e_var v)
   }
 
   e_emit_instruction(cc, E_OPCODE_LITERAL);
-  e_emit_u32(cc, e_var_hash(&v)); // Its hash!
+  e_emit_u32(cc, hash); // Its hash!
 
   return 0;
 }
@@ -892,7 +905,7 @@ compile_literal(e_compiler* cc, int node)
   if (lower_node_to_literal(cc, node, &v)) return -1;
 
   // Compile it
-  return compile_literal_variable(cc, v);
+  return compile_and_push_literal_variable(cc, v);
 }
 
 static int
@@ -2118,7 +2131,7 @@ compile_variable_load(e_compiler* cc, int node)
         .val  = builtin_var->value,
       };
 
-      return compile_literal_variable(cc, v); // compile_literal_variable loads the value! Return.
+      return compile_and_push_literal_variable(cc, v); // compile_literal_variable loads the value! Return.
     }
   }
 
@@ -2172,6 +2185,28 @@ compile(e_compiler* cc, int node)
 
     case E_AST_NODE_ROOT: {
       if (compile_root(cc, node) < 0) { return -1; }
+      return 0;
+    }
+
+    case E_AST_NODE_ASSERT: {
+      const char* error_string = E_GET_NODE(cc->ast, node)->assertion.assertion_line;
+
+      e_var error_string_var = { 0 };
+
+      int e = make_string_variable(e_arnstrdup(cc->arena, error_string), &error_string_var);
+      if (e) return e;
+
+      // add the error string to the literal table
+      e = append_literal_variable(cc->lit_table, &error_string_var);
+      if (e) return e;
+
+      // Compile statement and emit assert with error string ID
+      e = compile(cc, E_GET_NODE(cc->ast, node)->assertion.stmt);
+      if (e) return e;
+
+      e_emit_instruction(cc, E_OPCODE_ASSERT);
+      e_emit_u32(cc, e_var_hash(&error_string_var));
+
       return 0;
     }
 

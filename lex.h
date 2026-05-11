@@ -65,6 +65,7 @@ typedef enum e_token_type {
   E_TOKEN_TYPE_CONTINUE,
   E_TOKEN_TYPE_RETURN,
   E_TOKEN_TYPE_NAMESPACE,
+  E_TOKEN_TYPE_ASSERT,
 
   E_TOKEN_TYPE_PLUS,       // +
   E_TOKEN_TYPE_MINUS,      // -
@@ -102,6 +103,7 @@ typedef union e_token_val {
   bool   b;
   double f;
   char*  s;
+  char*  assertion_line;
   char*  ident;
   struct {
     char c;
@@ -160,6 +162,7 @@ e_token_type_to_string(e_token_type e)
     case E_TOKEN_TYPE_IF: return "if";
     case E_TOKEN_TYPE_ELSE: return "else";
     case E_TOKEN_TYPE_WHILE: return "while";
+    case E_TOKEN_TYPE_ASSERT: return "assert";
     case E_TOKEN_TYPE_FOR: return "for";
     case E_TOKEN_TYPE_BREAK: return "break";
     case E_TOKEN_TYPE_CONTINUE: return "continue";

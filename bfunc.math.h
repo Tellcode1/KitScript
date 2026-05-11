@@ -31,6 +31,12 @@
 #include <math.h>
 
 // clang-format off
+static inline double ex_clamp(double x, double min, double max)  {
+   return fmax(min, fmin(x, max));
+}
+static inline double ex_lerp(double a, double b, double t)  {
+   return a + ((b-a) * t);
+}
 static inline e_var eb_sin(e_var* args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = sin(e_cast_to_float(&args[0]))}}; }
 static inline e_var eb_cos(e_var* args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = cos(e_cast_to_float(&args[0]))}}; }
 static inline e_var eb_tan(e_var* args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = tan(e_cast_to_float(&args[0]))}}; }
@@ -59,6 +65,10 @@ static inline e_var eb_hypot(e_var*args, u32 nargs) { (void)nargs; return (e_var
 static inline e_var eb_signbit(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_INT, .val = {.i = signbit(e_cast_to_float(&args[0]))}}; }
 static inline e_var eb_deg2rad(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = e_cast_to_float(&args[0]) * 3.14159265358979323846 / 180.0}}; }
 static inline e_var eb_rad2deg(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = {.f = e_cast_to_float(&args[0]) * 180.0 / 3.14159265358979323846}}; }
+static inline e_var eb_min(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = fmin(e_cast_to_float(&args[0]), e_cast_to_float(&args[1])) }}; }
+static inline e_var eb_max(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = fmax(e_cast_to_float(&args[0]), e_cast_to_float(&args[1])) }}; }
+static inline e_var eb_clamp(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = ex_clamp(e_cast_to_float(&args[0]), e_cast_to_float(&args[1]), e_cast_to_float(&args[2])) }}; }
+static inline e_var eb_lerp(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = ex_lerp(e_cast_to_float(&args[0]), e_cast_to_float(&args[1]), e_cast_to_float(&args[2])) }}; }
 // clang-format on
 
 #endif // E_MATH_BUILTIN_FUNCTIONS_H

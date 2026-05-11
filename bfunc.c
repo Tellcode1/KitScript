@@ -34,7 +34,7 @@ char*
 e_read_full_line(FILE* fp)
 {
   size_t size = 128;
-  char*  line = (char*)calloc(1, size);
+  char*  line = (char*)e_xalloc(1, size);
   line[0]     = 0;
 
   if (line == nullptr) return NULL;
@@ -119,7 +119,7 @@ eb_cast_string(e_var* args, u32 nargs)
   (void)nargs;
 
   size_t len = e_var_to_string_size(&args[0]);
-  char*  s   = calloc(1, len + 1);
+  char*  s   = e_xalloc(1, len + 1);
   s[len]     = 0;
 
   e_var_to_string(&args[0], s, len + 1);

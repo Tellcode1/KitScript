@@ -60,11 +60,11 @@ is_float(e_var v)
 
 static inline bool
 is_vector(const e_var* v)
-{ return (bool)(v->type == E_VARTYPE_VEC2 || v->type == E_VARTYPE_VEC3 || v->type == E_VARTYPE_VEC4); }
+{ return (v->type == E_VARTYPE_VEC2 || v->type == E_VARTYPE_VEC3 || v->type == E_VARTYPE_VEC4); }
 
 static inline bool
 is_scalar(const e_var* v)
-{ return (bool)(v->type == E_VARTYPE_INT || v->type == E_VARTYPE_FLOAT || v->type == E_VARTYPE_CHAR || v->type == E_VARTYPE_BOOL); }
+{ return (v->type == E_VARTYPE_INT || v->type == E_VARTYPE_FLOAT || v->type == E_VARTYPE_CHAR || v->type == E_VARTYPE_BOOL); }
 
 static inline e_var
 v4_operate(e_var l, e_var r, e_opcode op)

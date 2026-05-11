@@ -1,4 +1,5 @@
 #include "ast.h"
+
 #include <string.h>
 
 static void
@@ -88,8 +89,12 @@ e_ast_node_free(e_ast* p, int id)
       free(node->call.args);
       break;
 
-    case E_AST_NODE_FUNCTION_DEFINITION:
+    case E_AST_NODE_ASSERT:
+      free(node->assertion.assertion_line);
+      e_ast_node_free(p, node->assertion.stmt);
+      break;
 
+    case E_AST_NODE_FUNCTION_DEFINITION:
       // Strings are interned. Don't free.
       // for (u32 i = 0; i < node->func.nargs; i++) free(node->func.args[i]);
       free((void*)node->func.args);
