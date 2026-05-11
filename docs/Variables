@@ -1,0 +1,42 @@
+EScript is a dynamic language.
+
+In most compiled languages like C/++, variables can only have one type which must be determinable at compile time.
+Say, int x;
+x = "im evil"; // Produces a compiler error
+x = 1.2; // Silently truncates to 1
+
+In EScript, akin to Python, variables are just labels on containers.
+Say our container (where we put our "data" in) is an integer, or a list, it doesn't matter. We label it "x".
+This is all our variable really is.
+
+Variables however, must be assigned valid values only. Variables can not have an indeterminate value
+at any point. For example:
+let y = x^2
+where x hasn't been declared yet. We ~may~ expect our language to form an equation, y = x^2, and plug
+in the value of x when it gets it. But that isn't how it works.
+Our variable can have ~any~ value! An integer, a float, list, string, map, even custom structures! It just needs to have
+some concrete value.
+
+Variables in EScript, as you have seen in the above example, can be declared using the 'let' prefix.
+When variables are declared without an initializer, they are given the value 'null'. See 'BuiltinTypes' for info on what null is.
+A variable's name must not start with an integer (though it can start with any other *valid* character, even underscore).
+The name ("identifier") must only include alphabets(a-zA-Z) or integers(0-9) and the humber underscore.
+
+let x; => valid
+let xy; => valid
+let lakjsdlfkjaklsdjflkjalkjdfkljalsdlfklkj; => valid
+let 123abc; => NOT valid
+let C.Users.Hackler; => NOT valid (only a-Z,0-9 and _ are allowed!)
+let abc123; => valid
+let _gaming; => valid (Remember, only integers at the start aren't valid)
+let _; => valid (Did we ever say this wasn't valid?)
+
+Now you may ask about the seemingly arbitrary restriction that variable names can not start with numbers.
+This is more or less a historical artifact from old languages like C. Compilers back then couldn't read ahead to determine if 123abc
+was a complete variable name or an integer literal. Memory was a very big constraint back then. It couldn't just read in the whole string
+and decide. Also, not allowing this let the compiler just know that if a "token" starts with an integer, then it can only be an integer.
+No ambiguity. Less complexity. Faster compilation. Yay :3
+
+Two variables can not be declared in the same "scope" (you will learn later what that is) with the same name. This is will produce a compiler error.
+However, a local variable decleration can overshadow a decleration from a higher scope. This is defined behaviour, though not recommended.
+Overshadowing isn't recommended because it can complicate the execution flow for yourself.

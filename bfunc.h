@@ -29,6 +29,7 @@
 #include "bfunc.list.h"
 #include "bfunc.math.h"
 #include "bfunc.str.h"
+#include "bfunc.time.h"
 #include "bfunc.vec.h"
 #include "stdafx.h"
 #include "var.h"
@@ -163,9 +164,9 @@ static const e_builtin_func eb_funcs[] = {
   {"vec3", "Cast two floats in to a vec3", "fn vec3(x, y, z) -> vec3", E_VARTYPE_FLOAT, 3, 3, eb_vec3},
   {"vec4", "Cast two floats in to a vec4", "fn vec4(x, y, z, w) -> vec4", E_VARTYPE_FLOAT, 4, 4, eb_vec4},
   
-  {"vec2", "Create an empty vec2 (0 initialized)", "fn vec2::zero() -> vec2", E_VARTYPE_FLOAT, 0, 0, eb_vec2_zero},
-  {"vec3", "Create an empty vec3 (0 initialized)", "fn vec3::zero() -> vec3", E_VARTYPE_FLOAT, 0, 0, eb_vec3_zero},
-  {"vec4", "Create an empty vec4 (0 initialized)", "fn vec4::zero() -> vec4", E_VARTYPE_FLOAT, 0, 0, eb_vec4_zero},
+  {"vec2", "Create an empty vec2 (0 initialized)", "fn vec2::zero() -> vec2", 0, 0, 0, eb_vec2_zero},
+  {"vec3", "Create an empty vec3 (0 initialized)", "fn vec3::zero() -> vec3", 0, 0, 0, eb_vec3_zero},
+  {"vec4", "Create an empty vec4 (0 initialized)", "fn vec4::zero() -> vec4", 0, 0, 0, eb_vec4_zero},
   
   {"mat3", "Cast three vector3's into a mat3", "fn mat3(row0, row1, row2) -> mat3", E_VARTYPE_VEC3, 3, 3, eb_mat3},
   {"mat4", "Cast three vector4's into a mat3", "fn mat4(row0, row1, row2, row3) -> mat4", E_VARTYPE_VEC4, 4, 4, eb_mat4},
@@ -274,6 +275,11 @@ static const e_builtin_func eb_funcs[] = {
 
   { "vec3::zx", "Zero extend given vector up to a vec3. If input is vec4, truncates 4th dimension", "fn vec3::zx(vec) -> vec3", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec3_zx },
   { "vec4::zx", "Zero extend given vector up to a vec4.", "fn vec4::zx(vec) -> vec4", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec4_zx },
+
+  { "time::now", "Get the number of seconds since unix epoch as a float", "fn time::now() -> float", 0, 0, 0, eb_time_now },
+  { "time::mono", "Get the number of monotonic (stable) seconds since unix epoch as a float", "fn time::mono() -> float", 0, 0, 0, eb_time_mono },
+  { "time::local", "Get a time::timestamp structure containing current system time", "fn time::local() -> time::timestamp", 0, 0, 0, eb_time_local },
+  { "time::utc", "Get a time::timestamp structure containing UTC relative system time", "fn time::utc() -> time::timestamp", 0, 0, 0, eb_time_utc },
 };
 // clang-format on
 

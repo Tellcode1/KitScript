@@ -166,11 +166,11 @@ e_var_type_to_string(e_vartype type)
 
 static inline e_var
 e_var_from_int(int x)
-{ return (e_var){ .type = E_VARTYPE_INT, .val.i = x }; }
+{ return (e_var){ .type = E_VARTYPE_INT, .val = { .i = x } }; }
 
 static inline e_var
 e_var_from_float(double x)
-{ return (e_var){ .type = E_VARTYPE_FLOAT, .val.f = x }; }
+{ return (e_var){ .type = E_VARTYPE_FLOAT, .val = { .f = x } }; }
 
 static inline int
 evar_to_int(e_var v)
@@ -228,9 +228,9 @@ evar_to_bool(e_var v)
     case E_VARTYPE_LIST: return E_VAR_AS_LIST(&v)->size != 0;
     case E_VARTYPE_MAP: return E_VAR_AS_MAP(&v)->size != 0;
     case E_VARTYPE_STRUCT: return E_VAR_AS_STRUCT(&v)->member_count != 0;
-    case E_VARTYPE_VEC2: return (bool)(v.val.vec2[0] != 0 && v.val.vec2[1] != 0);
-    case E_VARTYPE_VEC3: return (bool)(v.val.vec3[0] != 0 && v.val.vec3[1] != 0 && v.val.vec3[2] != 0);
-    case E_VARTYPE_VEC4: return (bool)(v.val.vec4[0] != 0 && v.val.vec4[1] != 0 && v.val.vec4[2] != 0 && v.val.vec4[3] != 0);
+    case E_VARTYPE_VEC2: return (v.val.vec2[0] != 0 && v.val.vec2[1] != 0);
+    case E_VARTYPE_VEC3: return (v.val.vec3[0] != 0 && v.val.vec3[1] != 0 && v.val.vec3[2] != 0);
+    case E_VARTYPE_VEC4: return (v.val.vec4[0] != 0 && v.val.vec4[1] != 0 && v.val.vec4[2] != 0 && v.val.vec4[3] != 0);
     default: return false;
   }
 }
@@ -239,8 +239,8 @@ static inline e_var
 e_make_vec4(double x, double y, double z, double w)
 {
   e_var out = {
-    .type     = E_VARTYPE_VEC4,
-    .val.vec4 = { x, y, z, w },
+    .type = E_VARTYPE_VEC4,
+    .val  = { .vec4 = { x, y, z, w } },
   };
   return out;
 }
@@ -249,8 +249,8 @@ static inline e_var
 e_make_vec3(double x, double y, double z)
 {
   e_var out = {
-    .type     = E_VARTYPE_VEC3,
-    .val.vec3 = { x, y, z },
+    .type = E_VARTYPE_VEC3,
+    .val  = { .vec3 = { x, y, z } },
   };
   return out;
 }
@@ -259,8 +259,8 @@ static inline e_var
 e_make_vec2(double x, double y)
 {
   e_var out = {
-    .type     = E_VARTYPE_VEC2,
-    .val.vec2 = { x, y },
+    .type = E_VARTYPE_VEC2,
+    .val  = { .vec2 = { x, y } },
   };
   return out;
 }

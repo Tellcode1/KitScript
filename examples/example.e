@@ -223,9 +223,9 @@ fn main() {
     println("This function was called before it was declared!");
   }
 
-  say_hello_from_c();
+  // say_hello_from_c();
 
-  file_test();
+  // file_test();
 
   let multi_assign_test1 = 2;
   let multi_assign_test2 = 1;
@@ -439,6 +439,10 @@ fn main() {
   let piss = [[16]];
   piss[0][0] = 42;
   io::println(io::STDOUT, "HELP: ", piss);
+
+  // no this is not a cryptographic seed or anything
+  // i just mashed my keyboard and this was born
+  rand::seed("2309823498230948092384098234809283");
 
   let random_nums = rand::list(0, int::MAX, 32);
   println("Generating 32 random numbers for no reason at all: ", random_nums);

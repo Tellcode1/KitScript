@@ -60,6 +60,20 @@ static const e_builtin_struct eb_structs[] = {
       .fields       = (const char*[]){ "x", "y", "z", "w" },
       .fields_count = 4,
   },
+
+  // seconds are 0-59
+  // minutes are 0-59
+  // hours are 0-23
+  // days are 1-31
+  // wdays are 1-7
+  // ydays are 1-366
+  // mon is 1-12
+  // year is 2026 right now
+  {
+      .name         = "time::timestamp",
+      .fields       = (const char*[]){ "sec", "min", "hour", "day", "wday", "yday", "mon", "year" },
+      .fields_count = 8,
+  },
 };
 
 #endif // E_BUILTIN_STRUCT_H
