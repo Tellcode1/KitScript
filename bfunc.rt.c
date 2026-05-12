@@ -77,7 +77,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
     const char* cmd_arg = E_VAR_AS_STRING(&cmd_arguments->vars[i])->s;
     e_argv[2 + i]       = e_arnstrdup(&arena, cmd_arg);
   }
-  e_argv[2 + e_argc] = NULL;
+  e_argv[e_argc] = NULL;
 
   e = e_tokenize(code, "<JIT compiled>", &interner, &tokens, &ntoks);
   if (e) {
