@@ -166,6 +166,10 @@ static const e_builtin_func eb_funcs[] = {
 
   /* Read line from stdin */
   { "readln", "Read a line from stdin and retrieve it as a string. null on error.", "fn readln(...) -> string|null", 0, 0, 0, eb_readln },
+
+  // If you intend to change the name here, goto exec.c and replace the name there too. 
+  // Only kept here for signature.
+  { "PANIC", "Error out and stop execution", "fn PANIC() -> null (noreturn)", 0, 0, 0, NULL }, // Function pointer is NULL, handled by VM itself.
   
   {"vec2", "Cast two floats in to a vec2", "fn vec2(x, y) -> vec2", E_VARTYPE_FLOAT, 2, 2, eb_vec2},
   {"vec3", "Cast two floats in to a vec3", "fn vec3(x, y, z) -> vec3", E_VARTYPE_FLOAT, 3, 3, eb_vec3},

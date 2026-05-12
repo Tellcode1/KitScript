@@ -22,20 +22,25 @@
  * SOFTWARE.
  */
 
-#ifndef E_STRUCT_H
-#define E_STRUCT_H
+#ifndef E_TAGGING_PASS_H
+#define E_TAGGING_PASS_H
 
 #include "stdafx.h"
 
-struct e_var;
+typedef enum e_func_tags {
+  /**
+   * Does not access any global or external variables.
+   * All used variables are local.
+   * Can aid in inlining.
+   */
+  E_FUNC_TAG_LOCAL = 1 << 0,
 
-typedef struct e_struct {
-  struct e_var* members;
-  u32*          member_hashes;
-  const char**  member_names; // strings owned by literal table
-  u32           member_count;
-} e_struct;
+  /**
+   * Function isn't used anywhere in the code.
+   * Can be removed if the user tells us that
+   * no function can be called from outside the file.
+   */
+  E_FUNC_TAG_UNUSED = 1 << 1,
+} e_func_tags;
 
-struct e_var* e_struct_get_member(u32 hash, const e_struct* s);
-
-#endif // E_STRUCT_H
+#endif // E_OPTIMIZATION_PASSES_H

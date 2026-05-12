@@ -6,6 +6,8 @@
 #include "stdafx.h"
 #include "var.h"
 
+static const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
+
 #if defined(_WIN32)
 
 #  define WIN32_LEAN_AND_MEAN
@@ -129,9 +131,13 @@ eb_time_local(e_var* args, u32 nargs)
 
   E_VAR_AS_STRUCT(&s)->member_count  = E_ARRLEN(members);
   E_VAR_AS_STRUCT(&s)->member_hashes = e_xalloc(E_ARRLEN(members), sizeof(u32));
+  E_VAR_AS_STRUCT(&s)->member_names  = (const char**)e_xalloc(E_ARRLEN(members), sizeof(char*));
   E_VAR_AS_STRUCT(&s)->members       = e_xalloc(E_ARRLEN(members), sizeof(e_var));
 
-  for (u32 i = 0; i < E_ARRLEN(members); i++) { E_VAR_AS_STRUCT(&s)->member_hashes[i] = e_hash(members[i], strlen(members[i])); }
+  for (u32 i = 0; i < E_ARRLEN(members); i++) {
+    E_VAR_AS_STRUCT(&s)->member_hashes[i] = e_hash(members[i], strlen(members[i]));
+    E_VAR_AS_STRUCT(&s)->member_names[i]  = members[i];
+  }
 
   extract_time_from_tm(&t, &s);
 
@@ -153,13 +159,15 @@ eb_time_utc(e_var* args, u32 nargs)
   s.type      = E_VARTYPE_STRUCT;
   s.val.struc = e_refdobj_pool_acquire(&ge_pool);
 
-  const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
-
   E_VAR_AS_STRUCT(&s)->member_count  = E_ARRLEN(members);
   E_VAR_AS_STRUCT(&s)->member_hashes = e_xalloc(E_ARRLEN(members), sizeof(u32));
+  E_VAR_AS_STRUCT(&s)->member_names  = (const char**)e_xalloc(E_ARRLEN(members), sizeof(char*));
   E_VAR_AS_STRUCT(&s)->members       = e_xalloc(E_ARRLEN(members), sizeof(e_var));
 
-  for (u32 i = 0; i < E_ARRLEN(members); i++) { E_VAR_AS_STRUCT(&s)->member_hashes[i] = e_hash(members[i], strlen(members[i])); }
+  for (u32 i = 0; i < E_ARRLEN(members); i++) {
+    E_VAR_AS_STRUCT(&s)->member_hashes[i] = e_hash(members[i], strlen(members[i]));
+    E_VAR_AS_STRUCT(&s)->member_names[i]  = members[i];
+  }
 
   extract_time_from_tm(&t, &s);
 

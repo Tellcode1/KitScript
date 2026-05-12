@@ -44,7 +44,7 @@
  * Applies both to malloc and realloc.
  */
 #ifndef E_ARENA_MINIMUM_ALIGNMENT
-#  define E_ARENA_MINIMUM_ALIGNMENT (8)
+#  define E_ARENA_MINIMUM_ALIGNMENT (16)
 #endif
 
 /**

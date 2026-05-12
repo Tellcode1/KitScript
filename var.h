@@ -84,7 +84,6 @@ typedef union e_varval {
   int  i;
   char c;
   bool b;
-  int  errcode;
 
   /* No 32 bit floats :) */
   double f;
@@ -100,10 +99,6 @@ typedef union e_varval {
   struct e_refdobj* list;  // Use E_VAR_AS_LIST to access as e_list*
   struct e_refdobj* map;   // Use E_VAR_AS_MAP to access as e_map*
   struct e_refdobj* struc; // Use E_VAR_AS_STRUCT to access as e_struct*
-
-  /* Compiler info for variables, not stored in runtime. */
-  struct e_refdobj* var_info;
-  struct e_refdobj* struct_info;
 
   void* generic_ptr;
 } e_varval;

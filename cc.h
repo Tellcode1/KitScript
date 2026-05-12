@@ -125,10 +125,11 @@ typedef struct ecc_variable_information {
  * Data deposit for a structure.
  */
 typedef struct ecc_struct_information {
-  u32* field_hashes;
-  u32  fields_count;
-  u32  field_capacity;
-  u32  name_hash;
+  char** field_names; // Array allocated. Strings arena allocated.
+  u32*   field_hashes;
+  u32    fields_count;
+  u32    field_capacity;
+  u32    name_hash;
 } ecc_struct_information;
 
 /**
@@ -324,7 +325,10 @@ e_compilation_result_free(e_compilation_result* r)
 {
   for (u32 i = 0; i < r->functions_count; i++) { free(r->functions[i].code); }
   for (u32 i = 0; i < r->names_count; i++) { free(r->names[i]); }
-  for (u32 i = 0; i < r->structs_count; i++) { free(r->structs[i].field_hashes); }
+  for (u32 i = 0; i < r->structs_count; i++) {
+    free(r->structs[i].field_hashes);
+    free((void*)r->structs[i].field_names);
+  }
   free((void*)r->names);
   free((void*)r->names_hashes);
   free(r->literals);

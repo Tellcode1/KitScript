@@ -22,20 +22,14 @@
  * SOFTWARE.
  */
 
-#ifndef E_STRUCT_H
-#define E_STRUCT_H
+#ifndef E_FORMAT_BUILTIN_FUNCTIONS_H
+#define E_FORMAT_BUILTIN_FUNCTIONS_H
 
-#include "stdafx.h"
+#include "var.h"
 
-struct e_var;
+char* e_fmt_print(const e_var* args, u32 nargs);
 
-typedef struct e_struct {
-  struct e_var* members;
-  u32*          member_hashes;
-  const char**  member_names; // strings owned by literal table
-  u32           member_count;
-} e_struct;
+e_var eb_fmt_format(e_var* args, u32 nargs);  // Format and return a string
+e_var eb_fmt_extract(e_var* args, u32 nargs); // Return all variables in a list.
 
-struct e_var* e_struct_get_member(u32 hash, const e_struct* s);
-
-#endif // E_STRUCT_H
+#endif // E_FORMAT_BUILTIN_FUNCTIONS_H

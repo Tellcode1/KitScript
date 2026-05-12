@@ -33,6 +33,7 @@
 #include "map.h"
 #include "mathstrucs.h"
 #include "operate.h"
+#include "perr.h"
 #include "pool.h"
 #include "rwhelp.h"
 #include "script.h"
@@ -72,10 +73,17 @@ get_builtin_func_hashed(u32 hash)
   return nullptr;
 }
 
-static int
+static e_ecode
 call(const e_exec_info* info, u32 hash, u32 nargs, e_var* ret)
 {
   int e = 0;
+
+  // Special handling
+  // builtin functions can not return errors...
+  if (hash == e_hash("PANIC", strlen("PANIC"))) {
+    fprintf(stderr, "---> PANIC <---\n");
+    return E_EPANIC;
+  }
 
   /**
    * Copy argumenst into a temporary array and remove them from the stack.
@@ -112,7 +120,9 @@ call(const e_exec_info* info, u32 hash, u32 nargs, e_var* ret)
     if (info->funcs[f].name_hash != hash) continue;
 
     e_stack stack = { 0 };
-    if (e_stack_init(32, 4, 8, &stack)) goto pop_and_ret;
+
+    e = e_stack_init(32, 4, 8, &stack);
+    if (e) goto pop_and_ret;
 
     e_exec_info fi = {
       .code            = info->funcs[f].code,
@@ -210,7 +220,7 @@ find_name_in_syms(u32 hash, const e_exec_info* info)
   return "(symbol not found)";
 }
 
-int
+e_ecode
 e_exec(const e_exec_info* info, e_var* ret)
 {
   /* Initial state check. */
@@ -218,12 +228,12 @@ e_exec(const e_exec_info* info, e_var* ret)
       || (info->extern_funcs == nullptr && info->nextern_funcs > 0) || (info->extern_vars == nullptr && info->nextern_vars > 0)
       || (info->funcs == nullptr && info->nfuncs > 0) || (info->literals == nullptr && info->nliterals > 0)) {
     fputs("Corrupted info during execution (broken fork?)\n", stderr);
-    return -1;
+    return E_EBADARG;
   }
 
   for (u32 i = 0; i < info->nargs; i++) {
     e_var* slot = e_stack_push_variable(info->arg_slots[i], info->stack);
-    if (!slot) return -1;
+    if (!slot) return E_EBADARG;
 
     // Nothing should be on the stack but still...
     e_var_release(slot);
@@ -262,14 +272,14 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         if (info->stack->size < func_nargs) {
           fputs("*** stack corruption ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
 
         e_var r = E_NULLVAR;
 
         int e = call(info, hash, func_nargs, &r);
         if (e) {
-          fprintf(stderr, "CALL returned error (%i), propogating error to callee\n", e);
+          fprintf(stderr, "Call execution failed: %s\n", e_ecode_str(e));
           return e;
         }
 
@@ -285,7 +295,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         for (u32 i = 0; i < info->nliterals; i++) {
           if (id == info->literals_hashes[i]) {
             int e = e_var_deep_cpy(&info->literals[i], &v); // Deep copy the literal.
-            if (e) return -1;
+            if (e) return e;
             break;
           }
         }
@@ -299,7 +309,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 nelems = ins.v.mk_list;
 
         e_refdobj* obj = e_refdobj_pool_acquire(&ge_pool);
-        if (!obj) return -1;
+        if (!obj) return E_EMALLOC;
 
         // Convert the object
         e_list* list = E_OBJ_AS_LIST(obj);
@@ -315,7 +325,7 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         if (info->stack->size < nelems) {
           fputs("*** stack corruption ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
 
         e_var* elems = &stack[stack_size - nelems];
@@ -334,7 +344,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 npairs = ins.v.mk_map;
 
         e_refdobj* obj = e_refdobj_pool_acquire(&ge_pool);
-        if (!obj) return -1;
+        if (!obj) return E_EMALLOC;
 
         // Convert the object
         e_map* map = E_OBJ_AS_MAP(obj);
@@ -349,7 +359,7 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         if (info->stack->size < (npairs * 2)) {
           fputs("*** stack corruption ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
 
         e_var* elems = &stack[stack_size - (npairs * 2)];
@@ -375,7 +385,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         if (!lookup) {
           e_var tmp = E_NULLVAR;
           TRY_V(e_stack_push(info->stack, &tmp));
-          return -1;
+          return E_EMALFORM;
         }
 
         e_var st = {
@@ -385,11 +395,15 @@ e_exec(const e_exec_info* info, e_var* ret)
         if (!st.val.struc) return -1;
 
         E_VAR_AS_STRUCT(&st)->member_hashes = (u32*)e_xalloc(lookup->fields_count, sizeof(u32));
+        E_VAR_AS_STRUCT(&st)->member_names  = (const char**)e_xalloc(lookup->fields_count, sizeof(char*));
         E_VAR_AS_STRUCT(&st)->members       = (e_var*)e_xalloc(lookup->fields_count, sizeof(e_var));
         E_VAR_AS_STRUCT(&st)->member_count  = lookup->fields_count;
 
-        for (u32 i = 0; i < lookup->fields_count; i++) { E_VAR_AS_STRUCT(&st)->member_hashes[i] = lookup->field_hashes[i]; }
-        for (u32 i = 0; i < lookup->fields_count; i++) { E_VAR_AS_STRUCT(&st)->members[i] = E_NULLVAR; }
+        for (u32 i = 0; i < lookup->fields_count; i++) {
+          E_VAR_AS_STRUCT(&st)->member_hashes[i] = lookup->field_hashes[i];
+          E_VAR_AS_STRUCT(&st)->member_names[i]  = lookup->field_names[i];
+          E_VAR_AS_STRUCT(&st)->members[i]       = E_NULLVAR;
+        }
 
         TRY_V(e_stack_push(info->stack, &st));
         e_var_release(&st); // Stack owns it now
@@ -461,7 +475,7 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         if (info->stack->size < 2) {
           fputs("*** stack corruption ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
 
         e_var* value = e_stack_top(info->stack);
@@ -505,7 +519,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_DIV:
         if (e_cast_to_int(&info->stack->stack[info->stack->size - 1]) == 0) {
           fputs("*** Divide by zero ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
       case E_OPCODE_ADD:
       case E_OPCODE_SUB:
@@ -525,7 +539,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_GTE: {
         if (info->stack->size < 2) {
           fputs("*** stack corruption ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
         // Since we compile left first, right next
         // right will be at the top of the stack and left will be below it
@@ -568,7 +582,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
           fputs("JZ OOB\n", stderr);
-          return -1;
+          return E_ERANGE;
         }
 
         const e_var* cnd  = e_stack_top(info->stack);
@@ -596,7 +610,7 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         if (!eval) {
           fprintf(stderr, "-- ASSERTION FAILED :: Propogating error -- '%s'\n", error_str);
-          return -1; // Return an error
+          return E_EASSERT; // Return an error
         }
         break;
       }
@@ -605,7 +619,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
           fputs("JNZ OOB\n", stderr);
-          return -1;
+          return E_ERANGE;
         }
 
         const e_var* cnd  = e_stack_top(info->stack);
@@ -640,7 +654,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
           fputs("JMP OOB\n", stderr);
-          return -1;
+          return E_ERANGE;
         }
         ip = info->code + target;
       } break;
@@ -737,7 +751,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32    stack_size = info->stack->size;
         if (stack_size < 3) {
           fputs("*** stack corruption ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
 
         e_var  base  = stack[stack_size - 3];
@@ -798,14 +812,14 @@ e_exec(const e_exec_info* info, e_var* ret)
         size_t stack_size = info->stack->size;
         if (stack_size < 2) {
           fputs("*** stack corruption ***\n", stderr);
-          return -1;
+          return E_EMALFORM;
         }
 
         e_var* left = &stack[stack_size - 2];
 
         if (left->type == E_VARTYPE_LIST) {
           e_list* list = left->type == E_VARTYPE_LIST ? E_VAR_AS_LIST(left) : NULL;
-          if (!list) { return -1; }
+          if (!list) { return E_EMALFORM; }
 
           int idx = e_cast_to_int(&stack[stack_size - 1]);
 
@@ -817,7 +831,7 @@ e_exec(const e_exec_info* info, e_var* ret)
           e_map* map = E_VAR_AS_MAP(left);
           e_var  key = stack[stack_size - 1];
 
-          if (!map) { return -1; }
+          if (!map) { return E_EMALFORM; }
 
           e_var* find = e_map_find(map, &key);
           if (find) {
@@ -839,7 +853,7 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e_var* slot = get_variable_from_id(info->stack, id);
 
-        if (!slot) { return -1; }
+        if (!slot) { return E_EUNDEFINED; }
 
         e_var_release(slot); // free old value in slot
 
@@ -888,7 +902,7 @@ _RETURN: {
 }
 }
 
-int
+e_ecode
 e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs, e_var* ret)
 {
   u32 hash = e_hash(func_name, strlen(func_name));

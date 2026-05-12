@@ -291,7 +291,7 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
         tk = (e_token){ .type = E_TOKEN_TYPE_STRUCT, .span = SPAN };
       } else if (len == strlen("assert") && strncmp(snap, "assert", len) == 0) {
         // Special case. Copy everything after the assert token until a semicolon.
-        // So the VM can print errors like 'assert e == 0: Assertion failed".
+        // So the VM can print errors like 'e == 0: Assertion failed".
         // Keep in mind we don't advance the actual head here, just a lookahead to get the statement
         const char* head = s; // skip spaces
         const char* leg  = head;
@@ -300,6 +300,12 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
           leg++;
         }
         while (*leg && *leg != ';') leg++;
+
+        // Simplify bracketed expressions
+        if (*head == '(' && *leg == ';' && *(leg - 1) == ')') { // leg is at ;, and previous character is closing paren
+          head++;
+          leg--;
+        }
 
         tk = (e_token){ .type = E_TOKEN_TYPE_ASSERT, .val.assertion_line = internal_strndup(head, leg - head), .span = SPAN };
       } else {
@@ -481,7 +487,11 @@ void
 e_freetoks(e_token* toks, u32 ntoks)
 {
   for (u32 i = 0; i < ntoks; i++) {
-    if (toks[i].type == E_TOKEN_TYPE_STRING || toks[i].type == E_TOKEN_TYPE_IDENT) { free(toks[i].val.s); }
+    if (toks[i].type == E_TOKEN_TYPE_STRING || toks[i].type == E_TOKEN_TYPE_IDENT) {
+      free(toks[i].val.s);
+    } else if (toks[i].type == E_TOKEN_TYPE_ASSERT) {
+      free(toks[i].val.assertion_line);
+    }
   }
   free(toks);
 }

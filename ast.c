@@ -1086,16 +1086,16 @@ parse_namespace_decleration(e_ast* p, int node)
       for (u32 j = 0; j < list_nstmts; j++) {
         type = E_GET_NODE(p, list_stmts[j])->common.type;
         if (type != E_AST_NODE_FUNCTION_DEFINITION && type != E_AST_NODE_STRUCT_DECL && type != E_AST_NODE_NAMESPACE_DECL
-            && type != E_AST_NODE_VARIABLE_DECL) {
-          asterror(span, "Expected only function definitions, variable declerations or namespace declerations in namespace scope\n");
+            && type != E_AST_NODE_VARIABLE_DECL && type != E_AST_NODE_ASSERT) {
+          asterror(span, "Expected only function definitions, variable declerations, namespace declerations or assertions in namespace scope\n");
 
           goto ERR;
         }
       }
     } else if (
         type != E_AST_NODE_FUNCTION_DEFINITION && type != E_AST_NODE_STRUCT_DECL && type != E_AST_NODE_NAMESPACE_DECL
-        && type != E_AST_NODE_VARIABLE_DECL) {
-      asterror(span, "Expected only function definitions, variable declerations or namespace declerations in namespace scope\n");
+        && type != E_AST_NODE_VARIABLE_DECL && type != E_AST_NODE_ASSERT) {
+      asterror(span, "Expected only function definitions, variable declerations, namespace declerations or assertions in namespace scope\n");
 
       goto ERR;
     }
@@ -1756,11 +1756,12 @@ e_ast_parse(e_ast* p, int* root_node)
 
     e_ast_node_type type = E_GET_NODE(p, node)->type;
     if (type != E_AST_NODE_FUNCTION_DEFINITION && type != E_AST_NODE_NAMESPACE_DECL && type != E_AST_NODE_STRUCT_DECL
-        && type != E_AST_NODE_VARIABLE_DECL) {
+        && type != E_AST_NODE_VARIABLE_DECL && type != E_AST_NODE_ASSERT) {
       // asterror(take_span, "Expected function definition or variable declerations in global scope\n");
       asterror(
           take_span,
-          "Expected only function definitions, variable declerations, namespace declerations or struct declerations in global scope (%i)\n",
+          "Expected only function definitions, variable declerations, namespace declerations, struct declerations or assertions in global scope "
+          "(%i)\n",
           type);
       goto ERR;
     }

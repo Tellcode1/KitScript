@@ -30,11 +30,33 @@ typedef enum e_ecode {
   E_EMALLOC      = -1,
   E_EMALFORM     = -2, // Malformed input
   E_EILLINS      = -3, // Illegal instruction
-  E_EOUTOFRANGE  = -4, // JMP to hell / Structure index too big
-  E_ENONEXISTENT = -5, // Non existent variable / structure.
+  E_ENONEXISTENT = -4, // Non existent variable / structure.
   E_EUNDEFINED   = -5, // Undefined function
   E_EUNKNOWN     = -6,
   E_EPANIC       = -7,
+  E_EBADARG      = -8,  // Bad arguments to executor
+  E_ERANGE       = -9,  //  Out of range. JMP, etc.
+  E_EASSERT      = -10, // Assertion failed
 } e_ecode;
+
+static inline const char*
+e_ecode_str(e_ecode e)
+{
+  switch (e) {
+    case E_OK: return "Success";
+    case E_EMALLOC: return "Allocation failed, Out of memory";
+    case E_EMALFORM: return "Malformed or invalid input";
+    case E_EILLINS: return "Illegal instruction";
+    case E_ENONEXISTENT: return "Undeclared variable";
+    case E_EUNDEFINED: return "Undefined function";
+    case E_EUNKNOWN: return "Unknown error";
+    case E_EPANIC: return "PANIC was called";
+    case E_EBADARG: return "Invalid arguments passed to executor";
+    case E_ERANGE: return "JMP out of range";
+    case E_EASSERT: return "Assertion failed";
+    default: break;
+  }
+  return "Unknown error code";
+}
 
 #endif // E_PROGRAM_ERROR_H

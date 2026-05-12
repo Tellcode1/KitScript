@@ -26,6 +26,7 @@
 #include "cc.h"
 #include "exec.h"
 #include "fn.h"
+#include "perr.h"
 #include "pool.h"
 #include "rwhelp.h"
 #include "stack.h"
@@ -192,13 +193,7 @@ main(int argc, char* argv[])
    */
   e = e_exec(&info, &v);
   if (e) {
-    fprintf(stderr, "Program initialization: Execution error\n");
-    goto RET;
-  }
-
-  if (v.type != E_VARTYPE_NULL) {
-    fputs("Program initialization returned non-null variable: ", stderr);
-    eb_println(&v, 1);
+    fprintf(stderr, "Program initialization failed: %s\n", e_ecode_str(e));
     goto RET;
   }
 
@@ -214,7 +209,7 @@ main(int argc, char* argv[])
   /* Execute main function. */
   e = e_exec(&info, &v);
   if (e) {
-    fprintf(stderr, "Error in execution. Bailing out\n");
+    fprintf(stderr, "Entry point execution failed: %s\n", e_ecode_str(e));
     goto RET;
   }
 

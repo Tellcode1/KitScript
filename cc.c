@@ -37,6 +37,7 @@
 #include "rwhelp.h"
 #include "stackemu.h"
 #include "stdafx.h"
+#include "strint.h"
 #include "var.h"
 
 #include <error.h>
@@ -108,9 +109,11 @@ static inline void                define_and_emit_label(e_compiler* cc, u32 labe
 static RETURNS_ERRCODE int           append_defer_entry(e_compiler* cc, int* exprs, u32 nexprs);
 static RETURNS_ERRCODE int           append_function_entry(e_arena* a, ecc_function_table* funcs, const e_function* func);
 static RETURNS_ERRCODE int           append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* deposit);
+static RETURNS_ERRCODE int           append_literal_variable(ecc_literal_table* literals, const e_var* v);
 static inline ecc_label_jumps_table* append_label_entry(e_arena* a, u32 label_id, ecc_label_table* table);
 
 static RETURNS_ERRCODE int collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_information* deposit);
+static RETURNS_ERRCODE int append_struct_info(e_compiler* cc, const ecc_struct_information* data);
 
 static inline RETURNS_ERRCODE int compiler_make_fork(const e_compiler* old_c, e_compiler* new_c);
 static inline void                compiler_join_fork(const e_compiler* copy, e_compiler* cc);
@@ -822,7 +825,7 @@ qualify_name(const e_compiler* cc, const char* name)
   return out;
 }
 
-static RETURNS_ERRCODE int
+static int
 append_literal_variable(ecc_literal_table* literals, const e_var* v)
 {
   if (literals->literals_count >= literals->literals_capacity) {
@@ -852,7 +855,7 @@ append_literal_variable(ecc_literal_table* literals, const e_var* v)
   return 0;
 }
 
-static int
+static RETURNS_ERRCODE int
 compile_and_push_literal_variable(e_compiler* cc, e_var v)
 {
   ecc_literal_table* literals = cc->lit_table;
@@ -897,7 +900,7 @@ compile_and_push_literal_variable(e_compiler* cc, e_var v)
   return 0;
 }
 
-static int
+static RETURNS_ERRCODE int
 compile_literal(e_compiler* cc, int node)
 {
   // Convert the node to a variable and
@@ -908,7 +911,7 @@ compile_literal(e_compiler* cc, int node)
   return compile_and_push_literal_variable(cc, v);
 }
 
-static int
+static RETURNS_ERRCODE int
 compile_list(e_compiler* cc, int node)
 {
   u32 nelems = E_GET_NODE(cc->ast, node)->list.nelems;
@@ -924,7 +927,7 @@ compile_list(e_compiler* cc, int node)
   return 0;
 }
 
-static int
+static RETURNS_ERRCODE int
 compile_map(e_compiler* cc, int node)
 {
   int e = 0;
@@ -1842,17 +1845,18 @@ append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* 
   if (deposit->fields_count >= deposit->field_capacity || !deposit->field_hashes) {
     u32  field_cap_new    = MAX(deposit->field_capacity * 2, 4);
     u32* field_hashes_new = (u32*)realloc(deposit->field_hashes, field_cap_new * sizeof(u32));
+    if (!field_hashes_new) { return -1; }
 
-    if (!field_hashes_new) {
-      if (field_hashes_new) free(field_hashes_new);
-      return -1;
-    }
+    char** field_names_new = (char**)realloc((void*)deposit->field_names, field_cap_new * sizeof(char*));
+    if (!field_names_new) { return -1; }
 
     deposit->field_capacity = field_cap_new;
     deposit->field_hashes   = field_hashes_new;
+    deposit->field_names    = field_names_new;
   }
 
   deposit->field_hashes[deposit->fields_count] = hash;
+  deposit->field_names[deposit->fields_count]  = e_arnstrdup(a, name);
 
   deposit->fields_count++;
 
@@ -1890,20 +1894,21 @@ collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_i
   return 0;
 }
 
-static inline int
+static int
 append_struct_info(e_compiler* cc, const ecc_struct_information* data)
 {
-  if (cc->struct_table->structs_count >= cc->struct_table->structs_capacity) {
-    u32                     new_capacity = MAX(cc->struct_table->structs_capacity * 2, 4);
-    ecc_struct_information* new_structs  = realloc(cc->struct_table->structs, sizeof(ecc_struct_information));
+  ecc_struct_table* table = cc->struct_table;
+  if (table->structs_count >= table->structs_capacity) {
+    u32                     new_capacity = MAX(table->structs_capacity * 2, 4);
+    ecc_struct_information* new_structs  = realloc(table->structs, new_capacity * sizeof(ecc_struct_information));
     if (!new_structs) return -1;
 
-    cc->struct_table->structs_capacity = new_capacity;
-    cc->struct_table->structs          = new_structs;
+    table->structs_capacity = new_capacity;
+    table->structs          = new_structs;
   }
 
-  memcpy(&cc->struct_table->structs[cc->struct_table->structs_count], data, sizeof(ecc_struct_information));
-  cc->struct_table->structs_count++;
+  memcpy(&table->structs[table->structs_count], data, sizeof(ecc_struct_information));
+  table->structs_count++;
 
   return 0;
 }
@@ -1987,6 +1992,7 @@ compile_struct_decleration(e_compiler* cc, int node)
   struct_data = (ecc_struct_information){
     .name_hash      = struct_name_hash,
     .field_hashes   = (u32*)e_xalloc(init_fields_capacity, sizeof(u32)),
+    .field_names    = (char**)e_xalloc(init_fields_capacity, sizeof(char**)),
     .field_capacity = init_fields_capacity,
     .fields_count   = 0,
   };
@@ -2020,6 +2026,7 @@ compile_struct_decleration(e_compiler* cc, int node)
 
 ERR:
   if (struct_data.field_hashes) free(struct_data.field_hashes);
+  if (struct_data.field_names) free((void*)struct_data.field_names);
   compiler_free_fork_entirely(&fork);
   return e ? e : -1;
 }
@@ -2191,7 +2198,7 @@ compile(e_compiler* cc, int node)
     case E_AST_NODE_ASSERT: {
       const char* error_string = E_GET_NODE(cc->ast, node)->assertion.assertion_line;
 
-      e_var error_string_var = { 0 };
+      e_var error_string_var = E_NULLVAR;
 
       int e = make_string_variable(e_arnstrdup(cc->arena, error_string), &error_string_var);
       if (e) return e;
@@ -2394,17 +2401,19 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
   e_compiler fork = { 0 };
   int        e    = 0;
 
+  /* we don't store these. */
   ecc_struct_information st = {
     .field_hashes   = e_arnalloc(cc->arena, b->fields_count * sizeof(u32)),
+    .field_names    = (char**)e_arnalloc(cc->arena, b->fields_count * sizeof(char*)),
     .fields_count   = b->fields_count,
     .field_capacity = b->fields_count,
     .name_hash      = e_hash(b->name, strlen(b->name)),
   };
-  if (!st.field_hashes) { goto ERR; }
+  if (!st.field_hashes || !st.field_names) { goto ERR; }
 
   for (u32 j = 0; j < b->fields_count; j++) {
     st.field_hashes[j] = e_hash(b->fields[j], strlen(b->fields[j]));
-    if (!st.field_hashes[j]) goto ERR;
+    st.field_names[j]  = (char*)b->fields[j]; // again, we won't store or use this later. won't modify the string.
   }
 
   /**
@@ -2488,8 +2497,8 @@ e_compile(const ecc_info* info, e_compilation_result* result)
 
   u32*           builtin_variable_hashes = (u32*)e_arnalloc(info->arena, sizeof(u32) * total_builtin_variable_count);
   e_builtin_var* builtin_variables       = (e_builtin_var*)e_arnalloc(info->arena, sizeof(e_builtin_var) * total_builtin_variable_count);
-  if (!builtin_variable_hashes) return -1;
-  if (!builtin_variables) return -1;
+  if (!builtin_variable_hashes) goto ERR;
+  if (!builtin_variables) goto ERR;
 
   /**
    * Load up every hash and variable into the arrays.

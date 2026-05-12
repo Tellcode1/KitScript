@@ -304,5 +304,6 @@ eb_io_exists(e_var* args, u32 nargs)
   const char* path = E_VAR_AS_STRING(&args[0])->s;
 
   FILE* f = fopen(path, "r");
+  if (f) fclose(f);
   return e_var_from_bool(f != 0);
 }

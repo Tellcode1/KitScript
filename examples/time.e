@@ -1,5 +1,6 @@
 fn main() {
    let timestamp = time::local();
+   println("Timestamp returned by time::local is: ", timestamp);
 
    let day_table = #{ 1 : "Sunday", 2 : "Monday", 3 : "Tuesday", 4 : "Wednesday", 5 : "Thursday", 6 : "Friday", 7 : "Saturday" };
 

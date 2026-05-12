@@ -90,18 +90,21 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
     case E_VARTYPE_STRUCT: {
       e_struct* s = E_VAR_AS_STRUCT(var);
 
-      e_var* members = calloc(s->member_count, sizeof(e_var));
-      u32*   hashes  = calloc(s->member_count, sizeof(u32));
+      e_var*       members = calloc(s->member_count, sizeof(e_var));
+      const char** names   = (const char**)calloc(s->member_count, sizeof(char*));
+      u32*         hashes  = calloc(s->member_count, sizeof(u32));
 
       for (u32 i = 0; i < s->member_count; i++) {
         e_var_deep_cpy(&s->members[i], &members[i]);
         hashes[i] = s->member_hashes[i];
+        names[i]  = s->member_names[i];
       }
 
       dst->val.struc = e_refdobj_pool_acquire(&ge_pool);
       if (dst->val.struc) {
         E_VAR_AS_STRUCT(dst)->members       = members;
         E_VAR_AS_STRUCT(dst)->member_hashes = hashes;
+        E_VAR_AS_STRUCT(dst)->member_names  = names;
         E_VAR_AS_STRUCT(dst)->member_count  = s->member_count;
       }
 
@@ -203,6 +206,7 @@ e_var_free(e_var* var)
 
       free(E_VAR_AS_STRUCT(var)->members);
       free(E_VAR_AS_STRUCT(var)->member_hashes);
+      free((void*)E_VAR_AS_STRUCT(var)->member_names);
       e_refdobj_pool_return(&ge_pool, var->val.struc);
       break;
 
@@ -255,7 +259,11 @@ e_var_print(const struct e_var* v, FILE* f)
     case E_VARTYPE_STRUCT: {
       fputc('{', f);
       for (u32 i = 0; i < E_VAR_AS_STRUCT(v)->member_count; i++) {
-        const e_var* elem = &E_VAR_AS_STRUCT(v)->members[i];
+        const e_var* elem        = &E_VAR_AS_STRUCT(v)->members[i];
+        const char*  member_name = E_VAR_AS_STRUCT(v)->member_names[i];
+
+        fputs(member_name, f);
+        fputs(":", f);
 
         if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
         e_var_print(elem, f);
