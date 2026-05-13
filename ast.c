@@ -1464,8 +1464,8 @@ e_ast_nud(e_ast* p, e_token* tk)
     }
 
     case E_TOKEN_TYPE_STRUCT: {
-      if (parse_struct_decleration(p, node) < 0) e_ast_node_free(p, node);
-      {
+      if (parse_struct_decleration(p, node) < 0) {
+        e_ast_node_free(p, node);
         return -1;
       }
       return node;
@@ -1791,7 +1791,7 @@ e_ast_parse(e_ast* p, int* root_node)
   e_ast_get_node(p, rootnode)->type = E_AST_NODE_ROOT;
 
   // for (int i = 0; i < p->ntoks; i++) // Only run from 0 to ntoks-1 because the last token is EOF.
-  while (peek(p) && peek(p)->type != E_TOKEN_TYPE_EOF) {
+  while (peek(p)) {
     e_filespan take_span = peek(p)->span;
 
     node = e_ast_expr(p, 0);

@@ -1,9 +1,39 @@
 #include "cvt.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdbool.h>
 
-const char*
+static inline bool
+will_mul_overflow(int a, int b)
+{
+  if (a > 0) {
+    if (b > 0) return a > INT_MAX / b;
+    return b < INT_MIN / a;
+  }
+  if (a < 0) {
+    if (a == -1) return b == INT_MIN;
+    if (b > 0) return a < INT_MIN / b;
+    return b < INT_MAX / a;
+  }
+  return false;
+}
+
+static inline bool
+will_add_overflow(int a, int b)
+{
+  if ((b > 0) && (a > INT_MAX - b)) return true;
+  return false;
+}
+
+static inline bool
+will_add_underflow(int a, int b)
+{
+  if ((b < 0) && (a < INT_MIN - b)) return true;
+  return false;
+}
+
+static inline const char*
 lstrip(const char* s)
 {
   while (*s && isspace(*s)) s++;
@@ -31,7 +61,7 @@ e_cvt_int(const char* s, const char** end, int* o)
     base = 8;
     s++;
 
-    if (tolower(*s) == 'x') {
+    if (tolower(*s) == 'x') { // 0X is valid too
       // num = 0x600
       base = 16;
       s++;
@@ -57,6 +87,10 @@ e_cvt_int(const char* s, const char** end, int* o)
       return E_CVT_ERROR_MALFORMED_INPUT;
     }
 
+    if (will_mul_overflow(cvt, base)) return E_CVT_ERROR_OVERFLOW;
+    if (will_add_overflow(cvt * base, dig)) return E_CVT_ERROR_OVERFLOW;
+    if (will_add_underflow(cvt * base, dig)) return E_CVT_ERROR_UNDERFLOW;
+
     cvt = (cvt * base) + dig;
     s++;
   }
@@ -71,5 +105,4 @@ e_cvt_int(const char* s, const char** end, int* o)
 
 e_cvt_err
 e_cvt_double(const char* s, const char** end, double* o)
-{
-}
+{ return E_CVT_ERROR_EOF; }

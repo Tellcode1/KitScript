@@ -39,6 +39,7 @@ typedef enum e_ast_nodetype {
   E_AST_NODE_BINARYOP,
   E_AST_NODE_UNARYOP,
   E_AST_NODE_STATEMENT_LIST,
+  // E_AST_NODE_INITIALIZER_LIST,
 
   E_AST_NODE_ASSERT,
   E_AST_NODE_DEFER,
@@ -264,6 +265,15 @@ typedef union e_ast_node_val {
     int*            stmts;
     u32             nstmts;
   } stmts, root, defer;
+
+  struct {
+    e_ast_node_type type;
+    e_filespan      span;
+    const char*     struct_name;
+    const char**    member_names;
+    int*            stmts;
+    u32             nstmts;
+  } initializer_list;
 
   struct {
     e_ast_node_type type;

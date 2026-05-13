@@ -38,6 +38,7 @@
 #  include <windows.h>
 #else
 #  include <sys/stat.h>
+#  include <sys/types.h>
 #  include <unistd.h>
 #endif
 
@@ -49,7 +50,7 @@ file_from_var(const e_var* v)
     f = (FILE*)v->val.descriptor;
   } else if (v->type == E_VARTYPE_INT) {
     if (v->val.i == EB_IO_STDOUT) {
-      f = stdout;
+      f = stdout; // you can change the stdout/in/err pointer btw!
     } else if (v->val.i == EB_IO_STDIN) {
       f = stdin;
     } else if (v->val.i == EB_IO_STDERR) {
@@ -267,7 +268,7 @@ eb_io_type(e_var* args, u32 nargs)
   (void)nargs;
   const char* path = E_VAR_AS_STRING(&args[0])->s;
 #ifdef _WIN32
-  DWORD attr = GetFileAttributes(path);
+  DWORD attr = GetFileAttributesA(path);
   if (attr == INVALID_FILE_ATTRIBUTES) { return (e_var){ .type = E_VARTYPE_INT, .val.i = EB_IO_UNKNOWN }; }
 
   if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
@@ -304,9 +305,13 @@ eb_io_exists(e_var* args, u32 nargs)
 {
   const char* path = E_VAR_AS_STRING(&args[0])->s;
 
-  FILE* f = fopen(path, "r");
-  if (f) fclose(f);
-  return e_var_from_bool(f != 0);
+  /* fopen returns null for directories on windows. won't blame em. */
+#ifdef _WIN32
+  DWORD attr = GetFileAttributesA(path);
+  return e_var_from_bool(attr != INVALID_FILE_ATTRIBUTES);
+#else
+  return e_var_from_bool(access(path, F_OK) == 0);
+#endif
 }
 
 e_var
@@ -317,8 +322,6 @@ eb_io_mkdir(e_var* args, u32 nargs)
 #ifdef _WIN32
 #  define xmkdir(path) _mkdir(path)
 #else
-#  include <sys/stat.h>
-#  include <sys/types.h>
 #  define xmkdir(path) mkdir(path, 0755)
 #endif
 

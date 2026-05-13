@@ -249,8 +249,8 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
         if (err != E_CVT_OK) {
           switch (err) {
             case E_CVT_ERROR_MALFORMED_INPUT: lexerror(span.line, span.col, "Malformed integer literal\n"); return -1;
-            case E_CVT_ERROR_OVERFLOW: lexerror(span.line, span.col, "Integer literal will overflow in 32 bits\n"); return -1;
-            case E_CVT_ERROR_UNDERFLOW: lexerror(span.line, span.col, "Integer literal will underflow in 32 bits\n"); return -1;
+            case E_CVT_ERROR_OVERFLOW: lexerror(span.line, span.col, "Can not represent integer in 32 bits: will overflow\n"); return -1;
+            case E_CVT_ERROR_UNDERFLOW: lexerror(span.line, span.col, "Can not represent integer in 32 bits: will underflow\n"); return -1;
             case E_CVT_ERROR_EOF: return -1;
             case E_CVT_OK: break;
           }
@@ -383,8 +383,8 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
       e_token tk = (e_token){ .type = E_TOKEN_TYPE_CHAR, .val.c = ch, .span = SPAN };
       tklist_append(&toks, &tk);
     } else {
-      const char   ch          = *s;
-      e_token_type type        = E_TOKEN_TYPE_EOF;
+      const char   ch = *s;
+      e_token_type type;
       bool         is_compound = false;
 
       if (s[1] == '=') // non compound

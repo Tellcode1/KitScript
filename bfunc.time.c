@@ -6,11 +6,14 @@
 #include "stdafx.h"
 #include "var.h"
 
+#include <time.h>
+
 static const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
 
 #if defined(_WIN32)
 
 #  define WIN32_LEAN_AND_MEAN
+#  include <fileapi.h>
 #  include <windows.h>
 
 static double
@@ -34,7 +37,7 @@ pl_now(void)
 static double
 pl_mono(void)
 {
-  static LARGE_INTEGER freq        = 0;
+  static LARGE_INTEGER freq;
   static bool          initialized = 0;
 
   if (!initialized) {
@@ -49,8 +52,6 @@ pl_mono(void)
 }
 
 #else
-
-#  include <time.h>
 
 static double
 pl_now(void)
@@ -126,8 +127,6 @@ eb_time_local(e_var* args, u32 nargs)
   e_var s     = { 0 };
   s.type      = E_VARTYPE_STRUCT;
   s.val.struc = e_refdobj_pool_acquire(&ge_pool);
-
-  const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
 
   E_VAR_AS_STRUCT(&s)->member_count  = E_ARRLEN(members);
   E_VAR_AS_STRUCT(&s)->member_hashes = e_xalloc(E_ARRLEN(members), sizeof(u32));

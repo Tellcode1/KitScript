@@ -30,6 +30,7 @@
 #include "bfunc.math.h"
 #include "bfunc.rt.h"
 #include "bfunc.str.h"
+#include "bfunc.sys.h"
 #include "bfunc.time.h"
 #include "bfunc.vec.h"
 #include "stdafx.h"
@@ -112,11 +113,6 @@ eb_var_dup(e_var* args, u32 nargs)
   e_var_deep_cpy(&args[0], &v);
   return v;
 }
-
-e_var eb_get_cmd_args(e_var* args, u32 nargs);
-e_var eb_get_cwd(e_var* args, u32 nargs);
-e_var eb_shell(e_var* args, u32 nargs);
-e_var eb_sys_sleep(e_var* args, u32 nargs);
 
 e_var eb_vec2(e_var* args, u32 nargs);
 e_var eb_vec3(e_var* args, u32 nargs);
@@ -293,10 +289,12 @@ static const e_builtin_func eb_funcs[] = {
   { "list::resize", "Resize the list to n elements, truncating or adding new if necessary.", "fn list::resize(list, new_size:int) -> null", E_VARTYPE_LIST | E_VARTYPE_INT, 2, 2, eb_list_resize },
   { "list::len", "Get number of elements in list.", "fn list::len(list) -> int", E_VARTYPE_LIST, 1, 1, eb_list_len },
 
-  { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_cmd_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_get_cmd_args },
-  { "sys::get_cwd", "Get the current working directory as a string. null if OS has no such concept (if there even is an OS)", "fn sys::get_cwd() -> string|null", E_VARTYPE_VOID, 0, 0, eb_get_cwd },
-  { "sys::shell", "Execute the command through the system shell. Returns its return code, null if error outside of the command occurs.", "fn sys::shell(str) -> int|null", E_VARTYPE_VOID, 1, 1, eb_shell},
+  { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_cmd_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_sys_get_cmd_args },
+  { "sys::get_cwd", "Get the current working directory as a string. null if OS has no such concept (if there even is an OS)", "fn sys::get_cwd() -> string|null", E_VARTYPE_VOID, 0, 0, eb_sys_get_cwd },
+  { "sys::shell", "Execute the command through the system shell. Returns its return code, null if error outside of the command occurs.", "fn sys::shell(str) -> int|null", E_VARTYPE_VOID, 1, 1, eb_sys_shell},
   { "sys::sleepms", "Sleep for the number of milliseconds given. Actual time slept may be larger.", "fn sys::sleepms(ms : int) -> null", E_VARTYPE_VOID, 1, 1, eb_sys_sleep},
+  { "sys::getenv", "Get the value of the enivronment variable as a string. NULL if no such env var.", "fn sys::getenv(name : string) -> string|null", E_VARTYPE_STRING, 1, 1, eb_sys_getenv},
+  { "sys::setenv", "Set the environment variable to given value, creating if it doesn't exist, overwriting if it does.", "fn sys::setenv(name : string, value : string) -> null", E_VARTYPE_STRING, 1, 1, eb_sys_setenv},
  
   // We dispatch to the correct length inside the function. Having each individual function for each vector type is bloat.
 #define X(d)\
@@ -322,7 +320,7 @@ static const e_builtin_func eb_funcs[] = {
   { "time::local", "Get a time::timestamp structure containing current system time", "fn time::local() -> time::timestamp", 0, 0, 0, eb_time_local },
   { "time::utc", "Get a time::timestamp structure containing UTC relative system time", "fn time::utc() -> time::timestamp", 0, 0, 0, eb_time_utc },
 
-  { "rt::compile_and_exec", "Compile and execute the given rt::exec_info. Returns the return value", "fn rt::compile_and_exec(info : rt::exec_info) -> any", E_VARTYPE_STRUCT, 1, 1, eb_rt_compile_and_exec }
+  { "jit::compile_and_exec", "Compile and execute the given jit::exec_info. Returns the return value", "fn jit::compile_and_exec(info : jit::exec_info) -> any", E_VARTYPE_STRUCT, 1, 1, eb_rt_compile_and_exec }
 };
 // clang-format on
 

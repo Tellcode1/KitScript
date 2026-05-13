@@ -34,32 +34,12 @@ typedef struct e_builtin_struct {
 } e_builtin_struct;
 
 static const e_builtin_struct eb_structs[] = {
-  {
-      .name         = "vec2",
-      .fields       = (const char*[]){ "x", "y" },
-      .fields_count = 2,
-  },
-  {
-      .name         = "vec3",
-      .fields       = (const char*[]){ "x", "y", "z" },
-      .fields_count = 3,
-  },
-  {
-      .name         = "vec4",
-      .fields       = (const char*[]){ "x", "y", "z", "w" },
-      .fields_count = 4,
-  },
+  { .name = "vec2", .fields = (const char*[]){ "x", "y" }, .fields_count = 2 },
+  { .name = "vec3", .fields = (const char*[]){ "x", "y", "z" }, .fields_count = 3 },
+  { .name = "vec4", .fields = (const char*[]){ "x", "y", "z", "w" }, .fields_count = 4 },
 
-  {
-      .name         = "mat3",
-      .fields       = (const char*[]){ "x", "y", "z" },
-      .fields_count = 3,
-  },
-  {
-      .name         = "mat4",
-      .fields       = (const char*[]){ "x", "y", "z", "w" },
-      .fields_count = 4,
-  },
+  { .name = "mat3", .fields = (const char*[]){ "x", "y", "z" }, .fields_count = 3 },
+  { .name = "mat4", .fields = (const char*[]){ "x", "y", "z", "w" }, .fields_count = 4 },
 
   // seconds are 0-59
   // minutes are 0-59
@@ -69,23 +49,11 @@ static const e_builtin_struct eb_structs[] = {
   // ydays are 1-366
   // mon is 1-12
   // year is 2026 right now
-  {
-      .name         = "time::timestamp",
-      .fields       = (const char*[]){ "sec", "min", "hour", "day", "wday", "yday", "mon", "year" },
-      .fields_count = 8,
-  },
-  {
-      .name = "rt::exec_info",
-      .fields =
-          (const char*[]){
-              "source_code",
-              "entry_point",
-              "optimization_level",
-              "arguments",
-              "command_line_arguments",
-          },
-      .fields_count = 5,
-  },
+  { .name = "time::timestamp", .fields = (const char*[]){ "sec", "min", "hour", "day", "wday", "yday", "mon", "year" }, .fields_count = 8 },
+  { .name         = "jit::exec_info",
+    .fields       = (const char*[]){ "source_code", "entry_point", "optimization_level", "arguments", "command_line_arguments" },
+    .fields_count = 5 },
+
 };
 
 #endif // E_BUILTIN_STRUCT_H

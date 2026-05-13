@@ -48,14 +48,14 @@
 
 struct e_lval;
 
-static const u32 init_code_capacity        = 256;
+static const u32 init_code_capacity        = 1024;
 static const u32 init_literal_capacity     = 64;
-static const u32 init_function_capacity    = 64;
+static const u32 init_function_capacity    = 32;
 static const u32 init_namespaces_capacity  = 16;
-static const u32 init_label_jump_capacity  = 64;
+static const u32 init_label_jump_capacity  = 128;
 static const u32 init_structs_capacity     = 64;
-static const u32 init_fields_capacity      = 16;
-static const u32 init_defer_entry_capacity = 8;
+static const u32 init_fields_capacity      = 32;
+static const u32 init_defer_entry_capacity = 32;
 static const u32 init_jumps_capacity       = 64;
 
 /**
@@ -184,7 +184,7 @@ typedef struct e_lval {
 } e_lval;
 
 static inline bool
-e_can_make_value(const e_ast* ast, int node)
+can_make_value(const e_ast* ast, int node)
 {
   if (ast == nullptr || node < 0) return false;
   return E_GET_NODE(ast, node)->type == E_AST_NODE_VARIABLE || E_GET_NODE(ast, node)->type == E_AST_NODE_INDEX
@@ -651,7 +651,7 @@ emit_lvalue_assign_prologue(e_compiler* cc, e_lval lv)
   }
   /* LVAL_INDEX handles all three of INDEX, INDEX_ASSIGN and INDEX_COMPOUND */
   else if (lv.type == E_LVAL_INDEX) {
-    if (!e_can_make_value(cc->ast, lv.val.index.left_node)) {
+    if (!can_make_value(cc->ast, lv.val.index.left_node)) {
       cerror(*lv.span, "Can not assign back to indexed structure\n");
       return -1;
     }
@@ -665,7 +665,7 @@ emit_lvalue_assign_prologue(e_compiler* cc, e_lval lv)
     if (e) return e;
 
   } else if (lv.type == E_LVAL_MEMBER) {
-    if (!e_can_make_value(cc->ast, lv.val.member.base)) {
+    if (!can_make_value(cc->ast, lv.val.member.base)) {
       cerror(*lv.span, "Can not assign back to structure member\n");
       return -1;
     }
@@ -867,6 +867,7 @@ qualify_name(const e_compiler* cc, const char* name)
   }
 
   p = e_strlpcat(p, name, out, len);
+  (void)p;
   return out;
 }
 
@@ -1143,7 +1144,7 @@ compile_binary_op(e_compiler* cc, int node)
     goto err;
   }
 
-  if (is_compound && !e_can_make_value(cc->ast, left)) {
+  if (is_compound && !can_make_value(cc->ast, left)) {
     cerror(E_GET_NODE(cc->ast, left)->common.span, "Can not assign to left\n");
     goto err;
   }
@@ -1214,7 +1215,7 @@ compile_unary_op(e_compiler* cc, int node)
   if (is_compound) {
     e_lval lv = { 0 };
 
-    if (!e_can_make_value(cc->ast, right)) {
+    if (!can_make_value(cc->ast, right)) {
       cerror(E_GET_NODE(cc->ast, right)->common.span, "Can not assign to right\n");
       return -1;
     }
@@ -1272,7 +1273,7 @@ compile_index_assign(e_compiler* cc, int node)
 {
   int value = E_GET_NODE(cc->ast, node)->index_assign.value;
 
-  if (!e_can_make_value(cc->ast, node)) {
+  if (!can_make_value(cc->ast, node)) {
     e_filespan left_span = E_GET_NODE(cc->ast, node)->index_assign.span;
     cerror(left_span, "Can not assign to indexed expression: Failed to lower to lvalue\n");
     return -1;
@@ -1290,7 +1291,7 @@ compile_index_compound(e_compiler* cc, int node)
 {
   int value = E_GET_NODE(cc->ast, node)->index_compound.value;
 
-  if (!e_can_make_value(cc->ast, node)) {
+  if (!can_make_value(cc->ast, node)) {
     e_filespan left_span = E_GET_NODE(cc->ast, node)->common.span;
     cerror(left_span, "Can not assign to indexed compound expression: Failed to lower to lvalue\n");
     return -1;
@@ -1780,7 +1781,7 @@ ERR:
 static int
 compile_member_access(e_compiler* cc, int node)
 {
-  if (!e_can_make_value(cc->ast, node)) {
+  if (!can_make_value(cc->ast, node)) {
     e_filespan span = E_GET_NODE(cc->ast, node)->common.span;
     cerror(span, "Failed to compile member access: Failed to lower to rvalue\n");
     return -1;
@@ -1796,7 +1797,7 @@ compile_assign(e_compiler* cc, int node)
   int right = E_GET_NODE(cc->ast, node)->assign.right;
   int left  = E_GET_NODE(cc->ast, node)->assign.left;
 
-  if (!e_can_make_value(cc->ast, left)) {
+  if (!can_make_value(cc->ast, left)) {
     e_filespan left_span = E_GET_NODE(cc->ast, left)->common.span;
     cerror(left_span, "Can not assign to left: Failed to lower to lvalue\n");
     return -1;
@@ -1843,7 +1844,7 @@ compile_member_assign(e_compiler* cc, int node)
 {
   int value = E_GET_NODE(cc->ast, node)->member_assign.value;
 
-  if (!e_can_make_value(cc->ast, node)) {
+  if (!can_make_value(cc->ast, node)) {
     cerror(E_GET_NODE(cc->ast, node)->common.span, "Can not assign to member access: Failed to lower to lvalue\n");
     return -1;
   }
@@ -1893,7 +1894,10 @@ append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* 
     if (!field_hashes_new) { return -1; }
 
     char** field_names_new = (char**)realloc((void*)deposit->field_names, field_cap_new * sizeof(char*));
-    if (!field_names_new) { return -1; }
+    if (!field_names_new) {
+      free(field_hashes_new);
+      return -1;
+    }
 
     deposit->field_capacity = field_cap_new;
     deposit->field_hashes   = field_hashes_new;
@@ -2111,7 +2115,7 @@ compile_variable_decleration(e_compiler* cc, int node)
   e_emit_u32(cc, hash);
 
   /* make_value has a specialized path for variable decleration nodes */
-  if (!e_can_make_value(cc->ast, node)) {
+  if (!can_make_value(cc->ast, node)) {
     fprintf(stderr, "Fatal error (possible memory corruption)\n");
     return -1;
   }

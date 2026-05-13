@@ -3,6 +3,7 @@
 #include "arena.h"
 #include "ast.h"
 #include "cc.h"
+#include "cerr.h"
 #include "exec.h"
 #include "fn.h"
 #include "list.h"
@@ -13,8 +14,6 @@
 #include "struct.h"
 #include "sysexpose.h"
 #include "var.h"
-
-#include <stdio.h>
 
 static inline int
 find_func(const char* name, const e_compilation_result* r, e_function* out)
@@ -48,7 +47,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e = e_arena_init(1, &arena);
   if (e) {
-    fprintf(stderr, "rt::exec: Failed to initialize arena\n");
+    e_xerror("jit::exec: Failed to initialize arena\n");
     goto RET;
   }
 
@@ -81,19 +80,19 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e = e_tokenize(code, "<JIT compiled>", &interner, &tokens, &ntoks);
   if (e) {
-    fprintf(stderr, "rt::exec: Failed to tokenize source code\n");
+    e_xerror("jit::exec: Failed to tokenize source code\n");
     goto RET;
   }
 
   e = e_ast_init(tokens, ntoks, &interner, &ast);
   if (e) {
-    fprintf(stderr, "rt::exec: AST initialization failed\n");
+    e_xerror("jit::exec: AST initialization failed\n");
     goto RET;
   }
 
   e = e_ast_parse(&ast, &root);
   if (root < 0 || e) {
-    fprintf(stderr, "rt::exec: AST parsing failed\n");
+    e_xerror("jit::exec: AST parsing failed\n");
     goto RET;
   }
 
@@ -107,13 +106,13 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e = e_compile(&info, &compiled);
   if (e) {
-    fprintf(stderr, "rt::exec: Compilation failed\n");
+    e_xerror("jit::exec: Compilation failed\n");
     goto RET;
   }
 
   e_function entry_func = { 0 };
   if (find_func(entry_point, &compiled, &entry_func)) {
-    fprintf(stderr, "rt::exec: Entry point not in code\n");
+    e_xerror("jit::exec: Entry point not in code\n");
     goto RET;
   }
 
@@ -123,7 +122,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e = e_stack_init(init_stack_capacity, init_frame_capacity, init_variable_capacity, &stack);
   if (e) {
-    fprintf(stderr, "rt::exec: Failed to initialize stack\n");
+    e_xerror("jit::exec: Failed to initialize stack\n");
     goto RET;
   }
 
@@ -159,7 +158,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   /* Execute main function. */
   err = e_exec(&exec_info, &ret);
-  if (err) { fprintf(stderr, "rt::compile_and_exec(): Function returned error: %s\n", e_ecode_str(err)); }
+  if (err) { e_xerror("jit::compile_and_exec(): Function returned error: %s\n", e_ecode_str(err)); }
 
   e_argc = save_argc;
   e_argv = save_argv;

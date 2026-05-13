@@ -30,8 +30,6 @@
 #include "strint.h"
 
 typedef enum e_token_type {
-  E_TOKEN_TYPE_EOF,
-
   E_TOKEN_TYPE_SEMICOLON,
   E_TOKEN_TYPE_COLON,
   E_TOKEN_TYPE_DOUBLE_COLON,
@@ -130,7 +128,6 @@ static inline const char*
 e_token_type_to_string(e_token_type e)
 {
   switch (e) {
-    case E_TOKEN_TYPE_EOF: return "EOF";
     case E_TOKEN_TYPE_SEMICOLON: return ";";
     case E_TOKEN_TYPE_COLON: return ":";
     case E_TOKEN_TYPE_COMMA: return ",";

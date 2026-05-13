@@ -1,14 +1,15 @@
 CC ?= cc
-CFLAGS ?= -std=c99 -g3 -Wall -Wpedantic -fsanitize=undefined
-LDFLAGS ?= -g3 -lm -fsanitize=undefined
+AR ?= ar
+CFLAGS ?= -std=c99 -g -Wall -Wpedantic -fsanitize=address,undefined
+LDFLAGS ?= -g -lm -fsanitize=address,undefined
 
 SRC_DIR=.
 BUILD_DIR?=build
 
 SOURCES=ast.c ast.free.c lex.c var.c list.c map.c bfunc.c bfunc.rt.c bfunc.str.c bfunc.list.c bfunc.io.c bfunc.sys.c bfunc.math.c bfunc.rand.c bfunc.log.c bfunc.time.c pool.c ldfile.c validate.c stackemu.c stack.c arena.c cfold.c cvt.c
-COMPILER_SOURCES=cc.c frontend.c $(SOURCES)
-DECOMPILER_SOURCES=dc.c $(SOURCES)
-RUNTIME_SOURCES=exec.c execprog.c $(SOURCES)
+COMPILER_SOURCES=frontend.c
+DECOMPILER_SOURCES=dc.c
+RUNTIME_SOURCES=execprog.c
 
 OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
 
@@ -23,7 +24,7 @@ COMPILED_SCRIPTS = $(patsubst tests/%.e,$(BUILD_DIR)/%.eb,$(SCRIPTS))
 all: $(BUILD_DIR) $(BUILD_DIR)/libesl.a $(BUILD_DIR)/ec $(BUILD_DIR)/dc $(BUILD_DIR)/eexec
 
 $(BUILD_DIR)/libesl.a: $(OBJ) $(BUILD_DIR)/cc.o $(BUILD_DIR)/exec.o
-	ar rcs $@ $^	
+	$(AR) rcs $@ $^	
 
 $(BUILD_DIR)/ec: $(COMPILER_OBJ) $(BUILD_DIR)/libesl.a
 	$(CC) $(LDFLAGS) $^ -o $@

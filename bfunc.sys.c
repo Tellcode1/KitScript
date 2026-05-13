@@ -21,9 +21,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#define _POSIX_C_SOURCE 199309L
-
-#include "bfunc.h"
+// #define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200112L
 
 #include "cast.h"
 #include "list.h"
@@ -33,6 +32,7 @@
 #include "var.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -40,7 +40,7 @@ char** e_argv = nullptr;
 int    e_argc = 0;
 
 e_var
-eb_get_cmd_args(e_var* args, u32 nargs)
+eb_sys_get_cmd_args(e_var* args, u32 nargs)
 {
   (void)args;
   (void)nargs;
@@ -72,7 +72,7 @@ eb_get_cmd_args(e_var* args, u32 nargs)
 #endif
 
 e_var
-eb_get_cwd(e_var* args, u32 nargs)
+eb_sys_get_cwd(e_var* args, u32 nargs)
 {
 #ifdef NO_CWD_SUPPORT
   return E_NULLVAR;
@@ -102,7 +102,7 @@ eb_get_cwd(e_var* args, u32 nargs)
 }
 
 e_var
-eb_shell(e_var* args, u32 nargs)
+eb_sys_shell(e_var* args, u32 nargs)
 {
   const char* cmd = E_VAR_AS_STRING(&args[0])->s;
   return (e_var){
@@ -131,5 +131,27 @@ eb_sys_sleep(e_var* args, u32 nargs)
 {
   int ms = e_cast_to_int(&args[0]);
   sleep_ms(ms);
+  return E_NULLVAR;
+}
+
+e_var
+eb_sys_getenv(e_var* args, u32 nargs)
+{
+  const char* s = E_VAR_AS_STRING(&args[0])->s;
+  return e_make_var_from_string(e_strdup(getenv(s)));
+}
+
+e_var
+eb_sys_setenv(e_var* args, u32 nargs)
+{
+  const char* name  = E_VAR_AS_STRING(&args[0])->s;
+  const char* value = E_VAR_AS_STRING(&args[1])->s;
+
+#ifdef _WIN32
+  _putenv_s(name, value);
+#else
+  setenv(name, value, 1);
+#endif
+
   return E_NULLVAR;
 }

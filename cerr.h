@@ -49,9 +49,27 @@ static inline ATTR_FORMAT(printf, 4, 5) int e_internal_cerror(const char* file, 
   return 0;
 }
 
+static inline ATTR_FORMAT(printf, 3, 4) int e_internal_xerror(const char* file, size_t line, const char* msg, ...)
+{
+  va_list ap;
+  va_start(ap, msg);
+
+  fprintf(stderr, "[%s:%zu] [error] ", file, line);
+  vfprintf(stderr, msg, ap);
+
+  va_end(ap);
+
+  return 0;
+}
+
 #define cerror(span, ...)                                                                                                                            \
   do {                                                                                                                                               \
     e_internal_cerror(__FILE__, __LINE__, span, __VA_ARGS__);                                                                                        \
+  } while (0)
+
+#define e_xerror(...)                                                                                                                                \
+  do {                                                                                                                                               \
+    e_internal_xerror(__FILE__, __LINE__, __VA_ARGS__);                                                                                              \
   } while (0)
 
 #endif // E_CERR_H

@@ -22,31 +22,16 @@
  * SOFTWARE.
  */
 
-#ifndef E_RUNTIME_BUILTIN_FUNCTIONS_H
-#define E_RUNTIME_BUILTIN_FUNCTIONS_H
+#ifndef E_SYS_BUILTIN_FUNCTIONS_H
+#define E_SYS_BUILTIN_FUNCTIONS_H
 
 #include "var.h"
 
-/**
- * Compile and execute the source code (code must be given as a string).
- * This involves the usual compilation and then execution.
- * Execution does not inherit the stack frame of the caller.
- * However, arguments can be passed to the entry point.
- */
-e_var eb_rt_compile_and_exec(e_var* args, u32 nargs);
+e_var eb_sys_get_cmd_args(e_var* args, u32 nargs);
+e_var eb_sys_get_cwd(e_var* args, u32 nargs);
+e_var eb_sys_shell(e_var* args, u32 nargs);
+e_var eb_sys_sleep(e_var* args, u32 nargs);
+e_var eb_sys_getenv(e_var* args, u32 nargs);
+e_var eb_sys_setenv(e_var* args, u32 nargs);
 
-/**
- * Perform lexical analysis on the text using the builtin E lexicalizer.
- * Returned is a list of tokens (See jit::token structure in bstructs.h)
- */
-e_var e_rt_lex(e_var* args, u32 nargs);
-
-/**
- * Parse and compile the given list of tokens (from jit::lex).
- * Returned is a list containing the bytecode.
- */
-e_var e_rt_compile(e_var* args, u32 nargs);
-
-e_var e_rt_eval(e_var* args, u32 nargs);
-
-#endif // E_STR_BUILTIN_FUNCTIONS_H
+#endif // E_SYS_BUILTIN_FUNCTIONS_H
