@@ -866,7 +866,7 @@ qualify_name(const e_compiler* cc, const char* name)
     p = e_strlpcat(p, "::", out, len);
   }
 
-  e_strlpcat(p, name, out, len);
+  p = e_strlpcat(p, name, out, len);
   return out;
 }
 

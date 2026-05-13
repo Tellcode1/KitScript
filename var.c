@@ -361,7 +361,7 @@ e_var_to_string(const struct e_var* v, char* buffer, size_t buffer_size)
       break;
     case E_VARTYPE_LIST: {
       strncpy(buffer, "[", buffer_size - 1);
-      buffer[buffer_size] = 0;
+      buffer[buffer_size - 1] = 0;
 
       size_t offset = strlen(buffer);
 

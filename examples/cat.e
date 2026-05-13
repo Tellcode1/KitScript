@@ -3,9 +3,11 @@ fn main()
   let args = sys::get_cmd_args();
   if (list::len(args) == 0) return;
 
+  io::println(io::STDERR, args);
+
   for (let i = 0; i < list::len(args); i++)
   {
-    let fd = io::open(args[i], "r");
+    let fd = io::open(args[i], "rb");
     if (fd == null)
     {
       io::println(io::STDERR, "cat: Failed to open file: ", args[i]);
@@ -17,7 +19,6 @@ fn main()
 
     // why this no work?
     let line = null;
-    // for (let line = io::readln(fd); line != null; line = io::readln(fd))
     while (line = io::readln(fd))
     {
       println(line);

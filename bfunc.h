@@ -113,7 +113,7 @@ eb_var_dup(e_var* args, u32 nargs)
   return v;
 }
 
-e_var eb_get_command_line_args(e_var* args, u32 nargs);
+e_var eb_get_cmd_args(e_var* args, u32 nargs);
 e_var eb_get_cwd(e_var* args, u32 nargs);
 e_var eb_shell(e_var* args, u32 nargs);
 e_var eb_sys_sleep(e_var* args, u32 nargs);
@@ -252,7 +252,7 @@ static const e_builtin_func eb_funcs[] = {
   { "io::open", "Open a file. null on error. File descriptor (integer) on success.", "fn io::open( path:string, mode:string ) -> fd", E_VARTYPE_INT, 2, 2, eb_io_open },
   { "io::close", "Close a file.", "fn io::close( fd ) -> null", E_VARTYPE_INT, 1, 1, eb_io_close },
   { "io::mkdir", "Create a directory. 0 on success, anything else otherwise.", "fn io::mkdir( path:string, mode ) -> int", E_VARTYPE_INT, 1, 1, eb_io_mkdir },
-  { "io::putc", "\"Put\" a character into file.", "fn io::putc( fd, ch ) -> null", E_VARTYPE_INT, 1, 1, eb_io_putc },
+  { "io::putc", "\"Put\" a character into file.", "fn io::putc( fd, ch ) -> null", E_VARTYPE_INT, 2, 2, eb_io_putc },
   { "io::getc", "Get a character from file. null on error.", "fn io::getc( fd ) -> char|null", E_VARTYPE_INT, 1, 1, eb_io_getc },
   { "io::read", "Read given number of bytes from file. null on error.", "fn io::read( fd, nbytes:int ) -> string|null", E_VARTYPE_INT, 2, 2, eb_io_read },
   { "io::readln", "Read a line from file. null on error.", "fn io::readln( fd ) -> string|null", E_VARTYPE_INT, 1, 1, eb_io_readln },
@@ -293,7 +293,7 @@ static const e_builtin_func eb_funcs[] = {
   { "list::resize", "Resize the list to n elements, truncating or adding new if necessary.", "fn list::resize(list, new_size:int) -> null", E_VARTYPE_LIST | E_VARTYPE_INT, 2, 2, eb_list_resize },
   { "list::len", "Get number of elements in list.", "fn list::len(list) -> int", E_VARTYPE_LIST, 1, 1, eb_list_len },
 
-  { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_command_line_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_get_command_line_args },
+  { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_cmd_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_get_cmd_args },
   { "sys::get_cwd", "Get the current working directory as a string. null if OS has no such concept (if there even is an OS)", "fn sys::get_cwd() -> string|null", E_VARTYPE_VOID, 0, 0, eb_get_cwd },
   { "sys::shell", "Execute the command through the system shell. Returns its return code, null if error outside of the command occurs.", "fn sys::shell(str) -> int|null", E_VARTYPE_VOID, 1, 1, eb_shell},
   { "sys::sleepms", "Sleep for the number of milliseconds given. Actual time slept may be larger.", "fn sys::sleepms(ms : int) -> null", E_VARTYPE_VOID, 1, 1, eb_sys_sleep},

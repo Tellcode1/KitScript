@@ -3,9 +3,9 @@ fn main() {
   defer io::close(fd);
 
   let file_contents = "";
-  for (let line = io::readln(fd); line != null; line = io::readln(fd)) {
-    file_contents = str::cat(file_contents, line);
-    file_contents = str::cat(file_contents, "\n");
+  let line = null;
+  while (line = io::readln(fd)) {
+    file_contents = str::cat(file_contents, line, "\n");
   }
 
   let exec_info = rt::exec_info(
@@ -13,7 +13,7 @@ fn main() {
       /* entry_point */ "main",
       /* optimization_level */ 0,
       /* arguments */ [],
-      /* command_line_arguments */ ["examples/cat.e"],
+      /* command_line_arguments */ [ "examples/cat.e" ],
   );
   let r = rt::compile_and_exec(exec_info);
   println("we just executed cat.e (presumably) dynamically!!!");

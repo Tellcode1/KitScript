@@ -168,23 +168,25 @@ e_strlcat(char* d, const char* s, size_t dsize)
   return dl + sl;
 }
 
-static inline char*
+static inline ATTR_NODISCARD char*
 e_strlpcat(char* d, const char* s, const char* dabs, size_t dsize)
 {
-  size_t off = d - dabs;
+  size_t off = (size_t)(d - dabs);
+
   if (off >= dsize) return d;
-  dsize -= off;
 
-  size_t dl = strlen(d);
+  size_t remaining = dsize - off;
+
   size_t sl = strlen(s);
-  size_t i;
 
-  if (dsize <= dl) { return d; }
+  size_t copy_len = sl;
+  if (copy_len >= remaining) copy_len = remaining - 1;
 
-  for (i = 0; i < sl && (dl + i) < dsize - 1; i++) { d[dl + i] = s[i]; }
-  d[dl + i] = 0;
+  memcpy(d, s, copy_len);
 
-  return &d[dl + i];
+  d[copy_len] = '\0';
+
+  return d + copy_len;
 }
 
 /* strdup not in C99. */

@@ -28,7 +28,9 @@
 #include "stdafx.h"
 #include "var.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 char*
 e_read_full_line(FILE* fp)
@@ -67,13 +69,14 @@ e_read_full_line(FILE* fp)
     }
   }
 
-  if (len == 0 && feof(fp)) {
+  if (len == 0) {
     free(line);
     return NULL;
   }
 
   return line;
 }
+
 e_var
 eb_print(e_var* args, u32 nargs)
 {

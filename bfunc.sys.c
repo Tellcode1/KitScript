@@ -21,7 +21,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
 #define _POSIX_C_SOURCE 199309L
 
 #include "bfunc.h"
@@ -34,13 +33,14 @@
 #include "var.h"
 
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 char** e_argv = nullptr;
 int    e_argc = 0;
 
 e_var
-eb_get_command_line_args(e_var* args, u32 nargs)
+eb_get_cmd_args(e_var* args, u32 nargs)
 {
   (void)args;
   (void)nargs;
@@ -55,6 +55,8 @@ eb_get_command_line_args(e_var* args, u32 nargs)
   for (u32 i = 2; i < e_argc; i++) {
     e_var arg = e_make_var_from_string(e_strdup(e_argv[i]));
     e_list_append(&arg, E_VAR_AS_LIST(&l));
+
+    e_var_release(&arg);
   }
 
   return l;
@@ -82,11 +84,19 @@ eb_get_cwd(e_var* args, u32 nargs)
     return E_NULLVAR;
   }
 
+  const size_t len = strlen(buffer);
+
+  // Add a backslash at the end
+  char* s = malloc(len + 2);
+  memcpy(s, buffer, len + 1);
+  s[len]     = '/';
+  s[len + 1] = 0;
+
   e_var cwd = {
     .type  = E_VARTYPE_STRING,
     .val.s = e_refdobj_pool_acquire(&ge_pool),
   };
-  E_VAR_AS_STRING(&cwd)->s = e_strdup(buffer);
+  E_VAR_AS_STRING(&cwd)->s = s;
 
   return cwd;
 }
