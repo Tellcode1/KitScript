@@ -107,7 +107,7 @@ main(int argc, char* argv[])
       interpret_return_value_as_error = true;
     } else if (strcmp(opt, "no-validate") == 0 || strcmp(opt, "novalidate") == 0) {
       no_validate = true;
-    } else {
+    } else if (!file) { // interpret first non option string as file
       file = argv[i];
     }
   }
@@ -188,6 +188,9 @@ main(int argc, char* argv[])
     }
   }
 
+  // e = e_stack_push_frame(&stack);
+  // if (e) return e;
+
   /**
    * Global variable initialization
    */
@@ -197,8 +200,8 @@ main(int argc, char* argv[])
     goto RET;
   }
 
-  e = e_stack_push_frame(&stack);
-  if (e) goto RET;
+  // e = e_stack_push_frame(&stack);
+  // if (e) return e;
 
   info.code      = entry_point_func.code;
   info.code_size = entry_point_func.code_size;
@@ -213,7 +216,8 @@ main(int argc, char* argv[])
     goto RET;
   }
 
-  e_stack_pop_frame(&stack);
+  // e_stack_pop_frame(&stack);
+  // e_stack_pop_frame(&stack);
 
   if (wants_to_print_return_value) { eb_println(&v, 1); }
 

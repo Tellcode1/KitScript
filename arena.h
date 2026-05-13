@@ -57,7 +57,7 @@
  *
  * Can be disabled on memory tight systems to reduce overallocation.
  *
- * Default threshold is 80%
+ * Default threshold is 80% (on 80% page full, a new page is added)
  */
 #ifndef E_ARENA_DISABLE_ALLOCATION_AMORTIZATION
 #  define E_ARENA_DISABLE_ALLOCATION_AMORTIZATION (false)

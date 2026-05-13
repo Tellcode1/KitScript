@@ -123,7 +123,7 @@ e_hash(const void* data, size_t size)
  * Allocate a pointer with the gurantee that you will get a valid memory block in return
  * or a crash.
  */
-static inline void*
+static inline ATTR_NODISCARD void*
 e_xalloc(size_t nmembers, size_t size)
 {
   void* p;

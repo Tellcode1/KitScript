@@ -97,7 +97,7 @@ validate_stream(const u8* code, u32 code_size, const u32* arg_slots, u32 nargs, 
       if (e_stackemu_find_var(emu, id) != NULL) { found = true; }
 
       if (!found) {
-        fprintf(f, "ASSIGN: target %s undeclared/external\n", find_name(id, info));
+        fprintf(f, "ASSIGN [%s]: target undeclared\n", find_name(id, info));
         e = -1;
       }
 

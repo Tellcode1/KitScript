@@ -33,43 +33,47 @@
 char*
 e_read_full_line(FILE* fp)
 {
-  size_t size = 128;
-  char*  line = (char*)e_xalloc(1, size);
-  line[0]     = 0;
+  if (fp == NULL) return NULL;
 
-  if (line == nullptr) return NULL;
+  size_t size = 128;
+  size_t len  = 0;
+
+  char* line = (char*)calloc(1, size);
+  if (line == NULL) return NULL;
 
   char tmp[128] = { 0 };
 
-  while (fgets(tmp, sizeof(tmp), fp) != nullptr) {
+  while (fgets(tmp, sizeof(tmp), fp) != NULL) {
     size_t tmp_len = strlen(tmp);
-    size_t cur_len = strlen(line);
 
-    if (cur_len + tmp_len + 1 > size) {
+    while (len + tmp_len + 1 > size) {
       size *= 2;
+
       char* new_line = (char*)realloc(line, size);
-      if (new_line == nullptr) {
+      if (new_line == NULL) {
         free(line);
         return NULL;
       }
+
       line = new_line;
     }
 
-    e_strlcat(line, tmp, size);
+    memcpy(line + len, tmp, tmp_len + 1);
+    len += tmp_len;
 
-    if (tmp[tmp_len - 1] == '\n') {
-      tmp[tmp_len - 1] = 0;
+    if (len > 0 && line[len - 1] == '\n') {
+      line[len - 1] = '\0';
       break;
     }
   }
 
-  if (strlen(line) == 0) {
+  if (len == 0 && feof(fp)) {
     free(line);
     return NULL;
   }
+
   return line;
 }
-
 e_var
 eb_print(e_var* args, u32 nargs)
 {

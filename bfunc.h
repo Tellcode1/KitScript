@@ -28,6 +28,7 @@
 #include "bfunc.io.h"
 #include "bfunc.list.h"
 #include "bfunc.math.h"
+#include "bfunc.rt.h"
 #include "bfunc.str.h"
 #include "bfunc.time.h"
 #include "bfunc.vec.h"
@@ -135,6 +136,10 @@ e_var eb_rand_vec3(e_var* args, u32 nargs);
 e_var eb_rand_vec4(e_var* args, u32 nargs);
 e_var eb_rand_list(e_var* args, u32 nargs);
 
+e_var eb_log_err(e_var* args, u32 nargs);
+e_var eb_log_warn(e_var* args, u32 nargs);
+e_var eb_log_info(e_var* args, u32 nargs);
+
 static inline e_var
 eb_len(e_var* args, u32 nargs)
 {
@@ -170,10 +175,15 @@ static const e_builtin_func eb_funcs[] = {
   // If you intend to change the name here, goto exec.c and replace the name there too. 
   // Only kept here for signature.
   { "PANIC", "Error out and stop execution", "fn PANIC() -> null (noreturn)", 0, 0, 0, NULL }, // Function pointer is NULL, handled by VM itself.
+
+  { "log::info", "Print an informational message to either the log file (or stderr if unset)", "fn log::info(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_log_info },
+  { "log::error", "Print an error message to either the log file (or stderr if unset)", "fn log::err(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_log_err },
+  { "log::err", "Print an error message to either the log file (or stderr if unset) (alias to log::error)", "fn log::err(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_log_err },
+  { "log::warn", "Print a warning message to either the log file (or stderr if unset)", "fn log::warn(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, eb_log_warn },
   
-  {"vec2", "Cast two floats in to a vec2", "fn vec2(x, y) -> vec2", E_VARTYPE_FLOAT, 2, 2, eb_vec2},
-  {"vec3", "Cast two floats in to a vec3", "fn vec3(x, y, z) -> vec3", E_VARTYPE_FLOAT, 3, 3, eb_vec3},
-  {"vec4", "Cast two floats in to a vec4", "fn vec4(x, y, z, w) -> vec4", E_VARTYPE_FLOAT, 4, 4, eb_vec4},
+  { "vec2", "Cast two floats in to a vec2", "fn vec2(x, y) -> vec2", E_VARTYPE_FLOAT, 2, 2, eb_vec2 },
+  { "vec3", "Cast two floats in to a vec3", "fn vec3(x, y, z) -> vec3", E_VARTYPE_FLOAT, 3, 3, eb_vec3 },
+  { "vec4", "Cast two floats in to a vec4", "fn vec4(x, y, z, w) -> vec4", E_VARTYPE_FLOAT, 4, 4, eb_vec4 },
 
   {"mat3", "Cast three vector3's into a mat3", "fn mat3(row0, row1, row2) -> mat3", E_VARTYPE_VEC3, 3, 3, eb_mat3},
   {"mat4", "Cast three vector4's into a mat3", "fn mat4(row0, row1, row2, row3) -> mat4", E_VARTYPE_VEC4, 4, 4, eb_mat4},
@@ -186,7 +196,7 @@ static const e_builtin_func eb_funcs[] = {
   /* Scalar types */
   { "int", "Cast a variable to a int", "fn int(v) -> int", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_int },
   { "char", "Cast a variable to a char", "fn char(v) -> char", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_char },
-  { "bool", "Cast a variable to a bool", "fn bool(v) -> bool", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_bool },
+  { "bool", "Cast a variable to a bool", "fn bool(v) -> bool", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING | E_VARTYPE_VEC2 | E_VARTYPE_VEC3 | E_VARTYPE_VEC4,    1,    1, eb_cast_bool },
   { "float", "Cast a variable to a float", "fn float(v) -> float", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_float },
   
   /* Anything can be added as an element to a list */
@@ -201,7 +211,10 @@ static const e_builtin_func eb_funcs[] = {
   { "rand::vec3", "Get a vector3 of three random floats between 0 and 1", "fn rand::vec3() -> vec3", 0, 0, 0, eb_rand_vec3 },
   { "rand::vec4", "Get a vector4 of four random floats between 0 and 1", "fn rand::vec4() -> vec4", 0, 0, 0, eb_rand_vec4 },
 
-  { "len", "Get the type dependant length of the given variable (String=Length, List=Size, Map=NPairs)", "fn len(v : string|list|map) -> int", E_VARTYPE_STRING | E_VARTYPE_LIST | E_VARTYPE_MAP,    1,    1, eb_len },
+  /* Anything can be added as an element to a list */
+  { "list", "Make a list of provided elements", "fn list(...) -> list", 0xFFFFFFFF, 1, UINT32_MAX, eb_cast_list },
+
+  { "len", "Get the type dependant length of the given variable (String => Length, List -> length, Map => Number of pairs)", "fn len(v : string|list|map) -> int", E_VARTYPE_STRING | E_VARTYPE_LIST | E_VARTYPE_MAP,    1,    1, eb_len },
 
   /* Math builtins */
   { "math::sin", "Compute the sine of the given argument (radians)", "fn math::sin(x) -> float", E_VARTYPE_FLOAT, 1, 1, eb_sin },
@@ -236,9 +249,9 @@ static const e_builtin_func eb_funcs[] = {
   { "math::max", "Largest between two given inputs", "fn math::max(x,y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_max },
   { "math::clamp", "Largest between two given inputs", "fn math::clamp(x, min, max) -> float", E_VARTYPE_FLOAT, 3, 3, eb_clamp },
 
-  { "io::open", "Open a file. null on error.", "fn io::open( path:string, mode:string ) -> fd", E_VARTYPE_INT, 2, 2, eb_io_open },
+  { "io::open", "Open a file. null on error. File descriptor (integer) on success.", "fn io::open( path:string, mode:string ) -> fd", E_VARTYPE_INT, 2, 2, eb_io_open },
   { "io::close", "Close a file.", "fn io::close( fd ) -> null", E_VARTYPE_INT, 1, 1, eb_io_close },
-  { "io::mkdir", "Create a directory. 0 on success, anything else otherwise.", "fn io::mkdir( path:string, mode ) -> int", E_VARTYPE_INT, 2, 2, eb_io_open },
+  { "io::mkdir", "Create a directory. 0 on success, anything else otherwise.", "fn io::mkdir( path:string, mode ) -> int", E_VARTYPE_INT, 1, 1, eb_io_mkdir },
   { "io::putc", "\"Put\" a character into file.", "fn io::putc( fd, ch ) -> null", E_VARTYPE_INT, 1, 1, eb_io_putc },
   { "io::getc", "Get a character from file. null on error.", "fn io::getc( fd ) -> char|null", E_VARTYPE_INT, 1, 1, eb_io_getc },
   { "io::read", "Read given number of bytes from file. null on error.", "fn io::read( fd, nbytes:int ) -> string|null", E_VARTYPE_INT, 2, 2, eb_io_read },
@@ -280,7 +293,7 @@ static const e_builtin_func eb_funcs[] = {
   { "list::resize", "Resize the list to n elements, truncating or adding new if necessary.", "fn list::resize(list, new_size:int) -> null", E_VARTYPE_LIST | E_VARTYPE_INT, 2, 2, eb_list_resize },
   { "list::len", "Get number of elements in list.", "fn list::len(list) -> int", E_VARTYPE_LIST, 1, 1, eb_list_len },
 
-  { "sys::get_command_line_args", "Get the command line arguments passed, as a list", "fn sys::get_command_line_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_get_command_line_args },
+  { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_command_line_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_get_command_line_args },
   { "sys::get_cwd", "Get the current working directory as a string. null if OS has no such concept (if there even is an OS)", "fn sys::get_cwd() -> string|null", E_VARTYPE_VOID, 0, 0, eb_get_cwd },
   { "sys::shell", "Execute the command through the system shell. Returns its return code, null if error outside of the command occurs.", "fn sys::shell(str) -> int|null", E_VARTYPE_VOID, 1, 1, eb_shell},
   { "sys::sleepms", "Sleep for the number of milliseconds given. Actual time slept may be larger.", "fn sys::sleepms(ms : int) -> null", E_VARTYPE_VOID, 1, 1, eb_sys_sleep},
@@ -308,6 +321,8 @@ static const e_builtin_func eb_funcs[] = {
   { "time::mono", "Get the number of monotonic (stable) seconds since unix epoch as a float", "fn time::mono() -> float", 0, 0, 0, eb_time_mono },
   { "time::local", "Get a time::timestamp structure containing current system time", "fn time::local() -> time::timestamp", 0, 0, 0, eb_time_local },
   { "time::utc", "Get a time::timestamp structure containing UTC relative system time", "fn time::utc() -> time::timestamp", 0, 0, 0, eb_time_utc },
+
+  { "rt::compile_and_exec", "Compile and execute the given rt::exec_info. Returns the return value", "fn rt::compile_and_exec(info : rt::exec_info) -> any", E_VARTYPE_STRUCT, 1, 1, eb_rt_compile_and_exec }
 };
 // clang-format on
 

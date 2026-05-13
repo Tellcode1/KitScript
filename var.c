@@ -69,6 +69,7 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
     case E_VARTYPE_VEC2:
     case E_VARTYPE_VEC3:
     case E_VARTYPE_VEC4:
+    case E_VARTYPE_DESCRIPTOR: /* we don't have enough data to deep copy */
     case E_VARTYPE_FLOAT: dst->val = var->val; break;
     case E_VARTYPE_STRING:
       dst->val.s = e_refdobj_pool_acquire(&ge_pool);
@@ -185,6 +186,7 @@ e_var_free(e_var* var)
     case E_VARTYPE_VOID:
     case E_VARTYPE_INT:
     case E_VARTYPE_CHAR:
+    case E_VARTYPE_DESCRIPTOR:
     case E_VARTYPE_BOOL:
     case E_VARTYPE_VEC2:
     case E_VARTYPE_VEC3:
@@ -238,6 +240,7 @@ e_var_print(const struct e_var* v, FILE* f)
     case E_VARTYPE_NULL: fprintf(f, "null"); break;
     case E_VARTYPE_VOID: fprintf(f, "void"); break;
     case E_VARTYPE_INT: fprintf(f, "%i", v->val.i); break;
+    case E_VARTYPE_DESCRIPTOR: fprintf(f, "%p", v->val.descriptor); break;
     case E_VARTYPE_CHAR: fprintf(f, "%c", v->val.c); break;
     case E_VARTYPE_BOOL: fprintf(f, "%s", (int)v->val.b ? "true" : "false"); break;
     case E_VARTYPE_FLOAT: fprintf(f, "%g", v->val.f); break;
@@ -346,6 +349,7 @@ e_var_to_string(const struct e_var* v, char* buffer, size_t buffer_size)
     case E_VARTYPE_NULL: strncpy(buffer, "null", buffer_size - 1); break;
     case E_VARTYPE_VOID: strncpy(buffer, "void", buffer_size - 1); break;
     case E_VARTYPE_INT: snprintf(buffer, buffer_size, "%i", v->val.i); break;
+    case E_VARTYPE_DESCRIPTOR: snprintf(buffer, buffer_size, "%p", v->val.descriptor); break;
     case E_VARTYPE_CHAR: snprintf(buffer, buffer_size, "%c", v->val.c); break;
     case E_VARTYPE_BOOL: snprintf(buffer, buffer_size, "%s", (int)v->val.b ? "true" : "false"); break;
     case E_VARTYPE_FLOAT: snprintf(buffer, buffer_size, "%g", v->val.f); break;
@@ -448,6 +452,7 @@ e_var_hash(const e_var* var)
     case E_VARTYPE_BOOL: return e_hash(&var->val.b, sizeof(bool));
     case E_VARTYPE_CHAR: return e_hash(&var->val.c, sizeof(char));
     case E_VARTYPE_FLOAT: return e_hash(&var->val.f, sizeof(var->val.f));
+    case E_VARTYPE_DESCRIPTOR: return e_hash((void*)&var->val.descriptor, sizeof(var->val.descriptor)); // hash the pointer.
     case E_VARTYPE_STRING: return e_hash(E_VAR_AS_STRING(var)->s, strlen(E_VAR_AS_STRING(var)->s));
     case E_VARTYPE_VEC2: return e_hash(var->val.vec2, sizeof(e_vec2));
     case E_VARTYPE_VEC3: return e_hash(var->val.vec3, sizeof(e_vec3));
@@ -493,6 +498,7 @@ e_var_equal(const e_var* a, const e_var* b)
     case E_VARTYPE_BOOL: return is_integral(b->type) && (a->val.b == e_cast_to_bool(b));
     case E_VARTYPE_CHAR: return is_integral(b->type) && (a->val.c == e_cast_to_char(b));
     case E_VARTYPE_FLOAT: return is_integral(b->type) && (a->val.f == e_cast_to_float(b));
+    case E_VARTYPE_DESCRIPTOR: return (a->type == b->type) && a->val.descriptor == b->val.descriptor;
     case E_VARTYPE_STRING: return a->type == b->type ? strcmp(E_VAR_AS_STRING(a)->s, E_VAR_AS_STRING(b)->s) == 0 : false;
 
     case E_VARTYPE_VEC2: {

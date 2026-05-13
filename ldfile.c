@@ -110,8 +110,6 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
 
       if (fread(st->field_names[j], len, 1, f) != 1) goto ERR;
       st->field_names[j][len] = 0;
-
-      printf("Loaded: %s\n", st->field_names[j]);
     }
   }
 
@@ -164,9 +162,14 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
 
   for (u32 i = 0; i < r->names_count; i++) {
     u32 len = 0;
+
     if (fread(&len, sizeof(len), 1, f) != 1) goto ERR;
+
+    alloc = e_align_ptr(alloc, 8);
+
     char* name = (char*)alloc;
     alloc += len + 1;
+
     if (fread(name, sizeof(char), len, f) != len) goto ERR;
     name[len] = 0;
 
@@ -214,6 +217,7 @@ e_file_bytes_required(const e_compilation_result* r)
     u32 fields_count = r->structs[i].fields_count;
     size             = e_align_size(size, 4);
     size += fields_count * sizeof(u32);
+    size = e_align_size(size, 8);
     size += fields_count * sizeof(char*);
     for (u32 j = 0; j < fields_count; j++) {
       size = e_align_size(size, 8);
@@ -293,11 +297,11 @@ e_file_write(const e_compilation_result* r, FILE* f)
     ecc_struct_information* st = &r->structs[i];
     fwrite(&st->name_hash, sizeof(u32), 1, f);
     fwrite(&st->fields_count, sizeof(u32), 1, f);
-    fwrite(st->field_hashes, sizeof(u32), r->structs[i].fields_count, f);
+    fwrite(st->field_hashes, sizeof(u32), st->fields_count, f);
     for (u32 j = 0; j < st->fields_count; j++) {
-      u32 len = (u32)strlen(st->field_names[i]);
+      u32 len = (u32)strlen(st->field_names[j]);
       fwrite(&len, sizeof(u32), 1, f);
-      fwrite(st->field_names[i], 1, len, f);
+      fwrite(st->field_names[j], 1, len, f);
     }
   }
 

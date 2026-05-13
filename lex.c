@@ -25,6 +25,7 @@
 #include "lex.h"
 
 #include "cerr.h"
+#include "cvt.h"
 #include "stdafx.h"
 #include "strint.h"
 
@@ -242,9 +243,20 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
         e_token tk = { .type = E_TOKEN_TYPE_FLOAT, .val.f = f, .span = SPAN };
         tklist_append(&toks, &tk);
       } else {
-        long i = strtol(s, NULL, 10);
+        int i = 0;
 
-        e_token tk = { .type = E_TOKEN_TYPE_INT, .val.i = (int)i, .span = SPAN };
+        e_cvt_err err = e_cvt_int(s, NULL, &i);
+        if (err != E_CVT_OK) {
+          switch (err) {
+            case E_CVT_ERROR_MALFORMED_INPUT: lexerror(span.line, span.col, "Malformed integer literal\n"); return -1;
+            case E_CVT_ERROR_OVERFLOW: lexerror(span.line, span.col, "Integer literal will overflow in 32 bits\n"); return -1;
+            case E_CVT_ERROR_UNDERFLOW: lexerror(span.line, span.col, "Integer literal will underflow in 32 bits\n"); return -1;
+            case E_CVT_ERROR_EOF: return -1;
+            case E_CVT_OK: break;
+          }
+        }
+
+        e_token tk = { .type = E_TOKEN_TYPE_INT, .val.i = i, .span = SPAN };
         tklist_append(&toks, &tk);
       }
 
@@ -319,7 +331,10 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
       advance(s, line, col);
 
       const char* snap = s;
-      while (*s && *s != '"' && *s != '\n' && *s != '\r') { advance(s, line, col); }
+      while (*s && *s != '"' && *s != '\n' && *s != '\r') {
+        if (*s == '\\') advance(s, line, col);
+        advance(s, line, col);
+      }
 
       // reached end of file
       if (!*s || *s == '\n' || *s == '\r') {
@@ -351,6 +366,7 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
           case 't': ch = '\t'; break;
           case 'r': ch = '\r'; break;
           case 'b': ch = '\b'; break;
+          case '\\': ch = '\\'; break;
           case '0': ch = '\0'; break;
           default: lexerror(line, col, "Expected one of [n,r,b,t,0]. Invalid backslash escaped sequence\n"); goto err;
         }
@@ -470,12 +486,6 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
     e_freetoks(toks.toks, toks.ntoks);
     return -1;
   }
-
-  // e_token tk = {
-  //   .type = E_TOKEN_TYPE_EOF,
-  //   .span = { .file = e_strdup(advertised_file), .line = line, .col = col, },
-  // };
-  // tklist_append(&toks, &tk);
 
   if (outtoks) { *outtoks = toks.toks; }
   if (ntoks) { *ntoks = toks.ntoks; }

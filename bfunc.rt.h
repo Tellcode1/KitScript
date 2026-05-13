@@ -22,18 +22,29 @@
  * SOFTWARE.
  */
 
-#ifndef E_SYSTEM_VARIABLES_EXPOSE_H
-#define E_SYSTEM_VARIABLES_EXPOSE_H
+#ifndef E_RUNTIME_BUILTIN_FUNCTIONS_H
+#define E_RUNTIME_BUILTIN_FUNCTIONS_H
 
-/* These variables are used by the builtin functions to retrieve the values. Set by the executor frontend. */
-#include <stdio.h>
+#include "var.h"
 
-extern char** e_argv;
-extern int    e_argc;
+/**
+ * Compile and execute the source code (code must be given as a string).
+ * This involves the usual compilation and then execution.
+ * Execution does not inherit the stack frame of the caller.
+ * However, arguments can be passed to the entry point.
+ */
+e_var eb_rt_compile_and_exec(e_var* args, u32 nargs); // rt::exec(code, entry_point, args...)
 
-extern FILE* e_log_file;
+/**
+ * Perform lexical analysis on the text using the builtin E lexicalizer.
+ * Returned is a list of tokens (See rt::token structure in bstructs.h)
+ */
+e_var e_rt_lex(e_var* args, u32 nargs);
 
-// extern char** e_env;
-// extern int    e_envc;
+/**
+ * Parse and compile the given list of tokens (from rt::lex).
+ * Returned is a list containing the bytecode.
+ */
+e_var e_rt_compile(e_var* args, u32 nargs);
 
-#endif // E_SYSTEM_VARIABLES_EXPOSE_H
+#endif // E_STR_BUILTIN_FUNCTIONS_H

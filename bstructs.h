@@ -74,6 +74,18 @@ static const e_builtin_struct eb_structs[] = {
       .fields       = (const char*[]){ "sec", "min", "hour", "day", "wday", "yday", "mon", "year" },
       .fields_count = 8,
   },
+  {
+      .name = "rt::exec_info",
+      .fields =
+          (const char*[]){
+              "source_code",
+              "entry_point",
+              "optimization_level",
+              "arguments",
+              "command_line_arguments",
+          },
+      .fields_count = 5,
+  },
 };
 
 #endif // E_BUILTIN_STRUCT_H

@@ -59,21 +59,22 @@ struct e_refdobj_pool;
  * bit set though.
  */
 typedef enum e_vartype {
-  E_VARTYPE_NULL   = 1 << 0, // unset
-  E_VARTYPE_VOID   = 1 << 1,
-  E_VARTYPE_INT    = 1 << 2,
-  E_VARTYPE_BOOL   = 1 << 3,
-  E_VARTYPE_CHAR   = 1 << 4,
-  E_VARTYPE_FLOAT  = 1 << 5,
-  E_VARTYPE_STRING = 1 << 6,
-  E_VARTYPE_LIST   = 1 << 7,
-  E_VARTYPE_MAP    = 1 << 8,
-  E_VARTYPE_STRUCT = 1 << 9,
-  E_VARTYPE_VEC2   = 1 << 10,
-  E_VARTYPE_VEC3   = 1 << 11,
-  E_VARTYPE_VEC4   = 1 << 12,
-  E_VARTYPE_MAT3   = 1 << 13,
-  E_VARTYPE_MAT4   = 1 << 14,
+  E_VARTYPE_NULL       = 1 << 0, // unset
+  E_VARTYPE_VOID       = 1 << 1,
+  E_VARTYPE_INT        = 1 << 2,
+  E_VARTYPE_BOOL       = 1 << 3,
+  E_VARTYPE_CHAR       = 1 << 4,
+  E_VARTYPE_FLOAT      = 1 << 5,
+  E_VARTYPE_STRING     = 1 << 6,
+  E_VARTYPE_LIST       = 1 << 7,
+  E_VARTYPE_MAP        = 1 << 8,
+  E_VARTYPE_STRUCT     = 1 << 9,
+  E_VARTYPE_VEC2       = 1 << 10,
+  E_VARTYPE_VEC3       = 1 << 11,
+  E_VARTYPE_VEC4       = 1 << 12,
+  E_VARTYPE_MAT3       = 1 << 13,
+  E_VARTYPE_MAT4       = 1 << 14,
+  E_VARTYPE_DESCRIPTOR = 1 << 15, // pointer, internally
 } e_vartype;
 // typedef u32 e_vartype;
 
@@ -100,7 +101,7 @@ typedef union e_varval {
   struct e_refdobj* map;   // Use E_VAR_AS_MAP to access as e_map*
   struct e_refdobj* struc; // Use E_VAR_AS_STRUCT to access as e_struct*
 
-  void* generic_ptr;
+  void* descriptor;
 } e_varval;
 
 typedef struct e_var {
@@ -155,6 +156,7 @@ e_var_type_to_string(e_vartype type)
     case E_VARTYPE_VEC4: return "vec4";
     case E_VARTYPE_MAT3: return "mat3";
     case E_VARTYPE_MAT4: return "mat4";
+    case E_VARTYPE_DESCRIPTOR: return "descriptor";
   }
   return "unknown";
 }
@@ -170,6 +172,10 @@ e_var_from_bool(bool x)
 static inline e_var
 e_var_from_float(double x)
 { return (e_var){ .type = E_VARTYPE_FLOAT, .val = { .f = x } }; }
+
+static inline e_var
+e_var_from_pointer(void* x)
+{ return (e_var){ .type = E_VARTYPE_DESCRIPTOR, .val = { .descriptor = x } }; }
 
 static inline int
 evar_to_int(e_var v)
@@ -191,6 +197,7 @@ evar_to_int(e_var v)
     case E_VARTYPE_LIST: return E_VAR_AS_LIST(&v)->size;
     case E_VARTYPE_MAP: return E_VAR_AS_MAP(&v)->size;
     case E_VARTYPE_STRUCT: return E_VAR_AS_STRUCT(&v)->member_count;
+    case E_VARTYPE_DESCRIPTOR: return -1;
     default: return 0;
   }
 }
@@ -210,6 +217,8 @@ evar_to_float(e_var v)
       if (end == E_VAR_AS_STRING(&v)->s) { return 0.0; }
       return d;
     }
+    case E_VARTYPE_DESCRIPTOR: return -1.0;
+
     default: return (double)evar_to_int(v);
   }
 }
@@ -223,14 +232,18 @@ evar_to_bool(e_var v)
     case E_VARTYPE_FLOAT: return (bool)v.val.f;
     case E_VARTYPE_CHAR: return (bool)v.val.c;
     case E_VARTYPE_BOOL: return v.val.b;
-    case E_VARTYPE_STRING: return strlen(E_VAR_AS_STRING(&v)->s) != 0;
-    case E_VARTYPE_LIST: return E_VAR_AS_LIST(&v)->size != 0;
-    case E_VARTYPE_MAP: return E_VAR_AS_MAP(&v)->size != 0;
-    case E_VARTYPE_STRUCT: return E_VAR_AS_STRUCT(&v)->member_count != 0;
+    // referenced structures always evaluate to true
+    case E_VARTYPE_STRING:
+    case E_VARTYPE_LIST:
+    case E_VARTYPE_MAP:
+    case E_VARTYPE_MAT3:
+    case E_VARTYPE_MAT4:
+    case E_VARTYPE_STRUCT: return true;
     case E_VARTYPE_VEC2: return (v.val.vec2[0] != 0 && v.val.vec2[1] != 0);
     case E_VARTYPE_VEC3: return (v.val.vec3[0] != 0 && v.val.vec3[1] != 0 && v.val.vec3[2] != 0);
     case E_VARTYPE_VEC4: return (v.val.vec4[0] != 0 && v.val.vec4[1] != 0 && v.val.vec4[2] != 0 && v.val.vec4[3] != 0);
-    default: return false;
+    case E_VARTYPE_DESCRIPTOR: return v.val.descriptor != NULL;
+    default: /* error*/ return false;
   }
 }
 

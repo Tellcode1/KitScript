@@ -34,6 +34,7 @@
 #include <string.h>
 
 #ifdef _WIN32
+#  include <direct.h>
 #  include <windows.h>
 #else
 #  include <sys/stat.h>
@@ -44,15 +45,15 @@ FILE*
 file_from_var(const e_var* v)
 {
   FILE* f = nullptr;
-  if (v->type == E_VARTYPE_INT) {
+  if (v->type == E_VARTYPE_DESCRIPTOR) {
+    f = (FILE*)v->val.descriptor;
+  } else if (v->type == E_VARTYPE_INT) {
     if (v->val.i == EB_IO_STDOUT) {
       f = stdout;
     } else if (v->val.i == EB_IO_STDIN) {
       f = stdin;
     } else if (v->val.i == EB_IO_STDERR) {
       f = stderr;
-    } else {
-      f = (FILE*)v->val.generic_ptr;
     }
   }
   return f;
@@ -61,8 +62,8 @@ file_from_var(const e_var* v)
 e_var
 var_from_file(FILE* f)
 {
-  e_var yay           = { .type = E_VARTYPE_INT };
-  yay.val.generic_ptr = (void*)f;
+  e_var yay          = { .type = E_VARTYPE_DESCRIPTOR };
+  yay.val.descriptor = (void*)f;
   return yay;
 }
 
@@ -306,4 +307,21 @@ eb_io_exists(e_var* args, u32 nargs)
   FILE* f = fopen(path, "r");
   if (f) fclose(f);
   return e_var_from_bool(f != 0);
+}
+
+e_var
+eb_io_mkdir(e_var* args, u32 nargs)
+{
+  const char* path = E_VAR_AS_STRING(&args[0])->s;
+
+#ifdef _WIN32
+#  define xmkdir(path) _mkdir(path)
+#else
+#  include <sys/stat.h>
+#  include <sys/types.h>
+#  define xmkdir(path) mkdir(path, 0755)
+#endif
+
+  int e = xmkdir(path);
+  return e_var_from_int(e);
 }

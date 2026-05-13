@@ -33,5 +33,7 @@ fn main()
   println(ratio, " Files were leaked");
   if (ratio != 0) {
     println("Some files were leaked! There's a bug in defer instantiation (report!)");
+  } else {
+    println("No files were leaked! Success.");
   }
 }

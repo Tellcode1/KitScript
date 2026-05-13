@@ -46,5 +46,6 @@ e_var eb_io_getc(e_var* args, u32 nargs);
 e_var eb_io_putc(e_var* args, u32 nargs);
 e_var eb_io_list_dir(e_var* args, u32 nargs);
 e_var eb_io_exists(e_var* args, u32 nargs);
+e_var eb_io_mkdir(e_var* args, u32 nargs);
 
 #endif // E_IO_BUILTIN_FUNCTIONS_H

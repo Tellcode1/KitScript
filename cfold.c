@@ -89,8 +89,6 @@ fold(e_ast* ast, int node)
 
   e_ast_node* nodep = e_ast_get_node(ast, node);
   switch (nodep->type) {
-    default: return 0;
-
     case E_AST_NODE_BINARYOP: {
       int l = nodep->binaryop.left;
       int r = nodep->binaryop.right;
@@ -133,6 +131,13 @@ fold(e_ast* ast, int node)
       }
       return 0;
     }
+    case E_AST_NODE_DEFER: {
+      for (u32 i = 0; i < nodep->defer.nstmts; i++) {
+        e = fold(ast, nodep->defer.stmts[i]);
+        if (e) return e;
+      }
+      return 0;
+    }
 
     case E_AST_NODE_FUNCTION_DEFINITION: {
       for (u32 i = 0; i < nodep->func.nstmts; i++) {
@@ -143,11 +148,58 @@ fold(e_ast* ast, int node)
       return 0;
     }
 
+    case E_AST_NODE_NAMESPACE_DECL: {
+      for (u32 i = 0; i < nodep->namespace_decl.nstmts; i++) {
+        e = fold(ast, nodep->namespace_decl.stmts[i]);
+        if (e) return e;
+      }
+      return 0;
+    }
+
     case E_AST_NODE_CALL: {
       for (u32 i = 0; i < nodep->call.nargs; i++) {
         e = fold(ast, nodep->call.args[i]);
         if (e) return e;
       }
+      return 0;
+    }
+
+    case E_AST_NODE_VARIABLE_DECL: {
+      if (nodep->let.initializer >= 0) {
+        e = fold(ast, nodep->let.initializer);
+        if (e) return e;
+      }
+      return 0;
+    }
+
+    case E_AST_NODE_ASSIGN: {
+      e = fold(ast, nodep->assign.left);
+      if (e) return e;
+      e = fold(ast, nodep->assign.right);
+      return e;
+    }
+
+    case E_AST_NODE_MEMBER_ASSIGN: {
+      e = fold(ast, nodep->member_assign.left);
+      if (e) return e;
+      e = fold(ast, nodep->member_assign.value);
+      return e;
+    }
+
+    case E_AST_NODE_INDEX: {
+      e = fold(ast, nodep->index.index);
+      return 0;
+    }
+
+    case E_AST_NODE_INDEX_ASSIGN: {
+      e = fold(ast, nodep->index_assign.index);
+      e = fold(ast, nodep->index_assign.value);
+      return 0;
+    }
+
+    case E_AST_NODE_INDEX_COMPOUND_OP: {
+      e = fold(ast, nodep->index_compound.index);
+      e = fold(ast, nodep->index_compound.value);
       return 0;
     }
 
@@ -181,6 +233,38 @@ fold(e_ast* ast, int node)
 
       return 0;
     }
+
+    case E_AST_NODE_IF: {
+      e = fold(ast, nodep->if_stmt.condition);
+      if (e) return e;
+
+      for (u32 i = 0; i < nodep->if_stmt.nstmts; i++) {
+        e = fold(ast, nodep->if_stmt.body[i]);
+        if (e) return e;
+      }
+
+      u32 nelse_ifs = nodep->if_stmt.nelse_ifs;
+      for (u32 i = 0; i < nelse_ifs; i++) {
+        struct e_if_stmt* else_if = &nodep->if_stmt.else_ifs[i];
+
+        e = fold(ast, else_if->condition);
+        if (e) return e;
+
+        for (u32 j = 0; j < else_if->nstmts; j++) {
+          e = fold(ast, else_if->body[j]);
+          if (e) return e;
+        }
+      }
+
+      for (u32 i = 0; i < nodep->if_stmt.nelse_stmts; i++) {
+        e = fold(ast, nodep->if_stmt.else_body[i]);
+        if (e) return e;
+      }
+
+      return 0;
+    }
+
+    default: return 0;
   }
 
   return 0;

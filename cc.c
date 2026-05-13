@@ -32,7 +32,6 @@
 #include "bvar.h"
 #include "cerr.h"
 #include "fn.h"
-#include "lval.h"
 #include "pool.h"
 #include "rwhelp.h"
 #include "stackemu.h"
@@ -46,6 +45,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+struct e_lval;
 
 static const u32 init_code_capacity        = 256;
 static const u32 init_literal_capacity     = 64;
@@ -118,8 +119,12 @@ static RETURNS_ERRCODE int append_struct_info(e_compiler* cc, const ecc_struct_i
 static inline RETURNS_ERRCODE int compiler_make_fork(const e_compiler* old_c, e_compiler* new_c);
 static inline void                compiler_join_fork(const e_compiler* copy, e_compiler* cc);
 
-static inline RETURNS_ERRCODE int emit_lvalue_assign_prologue(e_compiler* cc, e_lval lv);
-static inline RETURNS_ERRCODE int emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv);
+static RETURNS_ERRCODE struct e_lval value_init(e_compiler* cc, int node);
+static void                          value_free(struct e_lval* lv);
+static RETURNS_ERRCODE int           emit_lvalue_load(e_compiler* cc, struct e_lval lv);
+static RETURNS_ERRCODE int           emit_lvalue_assign(e_compiler* cc, int value, struct e_lval lv);
+static inline RETURNS_ERRCODE int    emit_lvalue_assign_prologue(e_compiler* cc, struct e_lval lv);
+static inline RETURNS_ERRCODE int    emit_lvalue_assign_epilogue(e_compiler* cc, struct e_lval lv);
 
 static RETURNS_ERRCODE int compile_and_push_literal_variable(e_compiler* cc, e_var v);
 static RETURNS_ERRCODE int compile_literal(e_compiler* cc, int node);
@@ -147,6 +152,46 @@ static RETURNS_ERRCODE int compile_builtin_structure(e_compiler* cc, const e_bui
 static RETURNS_ERRCODE int compile_builtin_structures(e_compiler* cc);
 static RETURNS_ERRCODE int compile_root(e_compiler* cc, int node);
 static RETURNS_ERRCODE int compile(e_compiler* cc, int node);
+
+typedef enum e_lval_type {
+  E_LVAL_VAR,
+  E_LVAL_MEMBER,  // struct member
+  E_LVAL_INDEX,   // indexed array
+  E_LVAL_UNKNOWN, // Error!
+} e_lval_type;
+
+typedef union e_lval_value {
+  struct {
+    u32   id;
+    char* name; // allocated
+  } var;
+  struct {
+    int         base;
+    const char* member;
+  } member;
+  struct {
+    int left_node;  // Compile to get LHS of index. For vec[16], it will push vec to stack.
+    int index_node; // Compile to get index. For vec[16], it will push 16 to stack.
+  } index;
+} e_lval_value;
+
+typedef struct e_lval {
+  e_filespan*  span;
+  e_lval_type  type;
+  e_lval_value val;
+  bool         is_compound;
+  e_operator   compound_operator;
+} e_lval;
+
+static inline bool
+e_can_make_value(const e_ast* ast, int node)
+{
+  if (ast == nullptr || node < 0) return false;
+  return E_GET_NODE(ast, node)->type == E_AST_NODE_VARIABLE || E_GET_NODE(ast, node)->type == E_AST_NODE_INDEX
+      || E_GET_NODE(ast, node)->type == E_AST_NODE_INDEX_ASSIGN || E_GET_NODE(ast, node)->type == E_AST_NODE_INDEX_COMPOUND_OP
+      || E_GET_NODE(ast, node)->type == E_AST_NODE_MEMBER_ACCESS || E_GET_NODE(ast, node)->type == E_AST_NODE_MEMBER_ASSIGN
+      || E_GET_NODE(ast, node)->type == E_AST_NODE_VARIABLE_DECL;
+}
 
 static inline ATTR_NODISCARD bool
 does_node_push_to_stack(const e_compiler* cc, int node)
@@ -511,8 +556,8 @@ static inline u32
 make_label_id(e_compiler* cc)
 { return cc->next_label++; }
 
-e_lval
-e_make_value(e_compiler* cc, int node)
+static e_lval
+value_init(e_compiler* cc, int node)
 {
   e_lval l = { 0 };
 
@@ -590,8 +635,8 @@ e_make_value(e_compiler* cc, int node)
   return (e_lval){ .type = E_LVAL_UNKNOWN };
 }
 
-void
-e_free_value(e_lval* lv)
+static void
+value_free(e_lval* lv)
 {
   if (lv->type == E_LVAL_VAR) { /* free(lv->val.var.name); */
   }
@@ -611,9 +656,9 @@ emit_lvalue_assign_prologue(e_compiler* cc, e_lval lv)
       return -1;
     }
 
-    e_lval left = e_make_value(cc, lv.val.index.left_node);
+    e_lval left = value_init(cc, lv.val.index.left_node);
 
-    int e = e_emit_lvalue_load(cc, left);
+    int e = emit_lvalue_load(cc, left);
     if (e) return e;
 
     e = compile(cc, lv.val.index.index_node);
@@ -625,11 +670,11 @@ emit_lvalue_assign_prologue(e_compiler* cc, e_lval lv)
       return -1;
     }
 
-    e_lval base = e_make_value(cc, lv.val.member.base);
+    e_lval base = value_init(cc, lv.val.member.base);
     int    e    = emit_lvalue_assign_prologue(cc, base);
     if (e) return e;
 
-    e = e_emit_lvalue_load(cc, base);
+    e = emit_lvalue_load(cc, base);
     if (e) return e;
   }
 
@@ -650,12 +695,12 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
   else if (lv.type == E_LVAL_INDEX) {
     e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN);
 
-    e_lval base = e_make_value(cc, lv.val.index.left_node);
+    e_lval base = value_init(cc, lv.val.index.left_node);
     if (base.type == E_LVAL_VAR) {
       e_emit_instruction(cc, E_OPCODE_ASSIGN);
       e_emit_u32(cc, base.val.var.id);
     }
-    e_free_value(&base);
+    value_free(&base);
 
     e_emit_instruction(cc, E_OPCODE_POP);
   } else if (lv.type == E_LVAL_MEMBER) {
@@ -665,18 +710,18 @@ emit_lvalue_assign_epilogue(e_compiler* cc, e_lval lv)
     // MEMBER_ASSIGN pops value
 
     /* Assign struct back */
-    e_lval base = e_make_value(cc, lv.val.member.base);
+    e_lval base = value_init(cc, lv.val.member.base);
 
     e = emit_lvalue_assign_epilogue(cc, base);
-    e_free_value(&base);
+    value_free(&base);
     if (e) return e;
   }
 
   return 0;
 }
 
-int
-e_emit_lvalue_assign(e_compiler* cc, int value, e_lval lv)
+static int
+emit_lvalue_assign(e_compiler* cc, int value, e_lval lv)
 {
   int e = emit_lvalue_assign_prologue(cc, lv);
   if (e) return e;
@@ -690,12 +735,12 @@ e_emit_lvalue_assign(e_compiler* cc, int value, e_lval lv)
     e_emit_instruction(cc, e_binary_operator_to_opcode(lv.compound_operator));
     e_emit_instruction(cc, E_OPCODE_INDEX_ASSIGN);
 
-    e_lval base = e_make_value(cc, lv.val.index.left_node);
+    e_lval base = value_init(cc, lv.val.index.left_node);
     if (base.type == E_LVAL_VAR) {
       e_emit_instruction(cc, E_OPCODE_ASSIGN);
       e_emit_u32(cc, base.val.var.id);
     }
-    e_free_value(&base);
+    value_free(&base);
 
     e_emit_instruction(cc, E_OPCODE_POP);
 
@@ -711,8 +756,8 @@ e_emit_lvalue_assign(e_compiler* cc, int value, e_lval lv)
   return 0;
 }
 
-int
-e_emit_lvalue_load(e_compiler* cc, e_lval lv)
+static int
+emit_lvalue_load(e_compiler* cc, e_lval lv)
 {
   if (lv.type == E_LVAL_VAR) {
     e_emit_instruction(cc, E_OPCODE_LOAD);
@@ -999,6 +1044,10 @@ compile_function_definition(e_compiler* cc, int node)
   e = e_stackemu_init(&stack);
   if (e) goto ERR;
 
+  /* Copy global state from our compiler to the fork */
+  e = e_stackemu_copy_top_scope(&stack, cc->stack);
+  if (e) goto ERR;
+
   e = compiler_make_fork(cc, &fork);
   if (e) goto ERR;
 
@@ -1036,7 +1085,11 @@ compile_function_definition(e_compiler* cc, int node)
   if (e) goto ERR;
 
   e = e_compile_function(&fork, node);
-  if (e) goto ERR;
+  if (e) {
+    e_filespan span = E_GET_NODE(cc->ast, node)->common.span;
+    cerror(span, "Failed to compile function body [function definition]\n");
+    goto ERR;
+  }
 
   // emit the defer before the return you asshole
   e = defer_emit_current_scope(&fork);
@@ -1097,14 +1150,14 @@ compile_binary_op(e_compiler* cc, int node)
 
   if (is_compound) {
     // Verified  earlier that we can make it into an lvalue
-    lv = e_make_value(cc, left);
+    lv = value_init(cc, left);
 
     /* Load data to point to where we want to assign it (Not stack information!) */
     e = emit_lvalue_assign_prologue(cc, lv);
     if (e) goto err;
 
     /* Load left */
-    e = e_emit_lvalue_load(cc, lv);
+    e = emit_lvalue_load(cc, lv);
     if (e) goto err;
 
     /* Load right */
@@ -1118,7 +1171,7 @@ compile_binary_op(e_compiler* cc, int node)
     e = emit_lvalue_assign_epilogue(cc, lv);
     if (e) goto err;
 
-    e_free_value(&lv);
+    value_free(&lv);
   } else {
     e = compile(cc, left);
     if (e) goto err;
@@ -1132,7 +1185,7 @@ compile_binary_op(e_compiler* cc, int node)
   return e;
 
 err:
-  e_free_value(&lv);
+  value_free(&lv);
   return -1;
 }
 
@@ -1167,7 +1220,7 @@ compile_unary_op(e_compiler* cc, int node)
     }
 
     // Verified  earlier that we can make it into an lvalue
-    lv = e_make_value(cc, right);
+    lv = value_init(cc, right);
 
     /* Load data to point to where we want to assign it (Not stack information!) */
     e = emit_lvalue_assign_prologue(cc, lv);
@@ -1184,7 +1237,7 @@ compile_unary_op(e_compiler* cc, int node)
     e = emit_lvalue_assign_epilogue(cc, lv);
     if (e) goto err;
 
-    e_free_value(&lv);
+    value_free(&lv);
   } else {
     /* Load right */
     e = compile(cc, right);
@@ -1225,9 +1278,9 @@ compile_index_assign(e_compiler* cc, int node)
     return -1;
   }
 
-  e_lval v = e_make_value(cc, node);
-  int    e = e_emit_lvalue_assign(cc, value, v);
-  e_free_value(&v);
+  e_lval v = value_init(cc, node);
+  int    e = emit_lvalue_assign(cc, value, v);
+  value_free(&v);
 
   return e;
 }
@@ -1243,9 +1296,9 @@ compile_index_compound(e_compiler* cc, int node)
     return -1;
   }
 
-  e_lval v = e_make_value(cc, node);
-  int    e = e_emit_lvalue_assign(cc, value, v);
-  e_free_value(&v);
+  e_lval v = value_init(cc, node);
+  int    e = emit_lvalue_assign(cc, value, v);
+  value_free(&v);
 
   return e;
 }
@@ -1349,11 +1402,10 @@ compile_if_statement(e_compiler* cc, int node)
    */
   u32 next_in_chain_label = make_label_id(cc);
 
-  /* Push a new scope before everything. */
-  e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
-
   int e = e_stackemu_push_frame(cc->stack);
   if (e) goto ERR;
+
+  e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
 
   // condition
   e = compile(cc, condition);
@@ -1374,7 +1426,7 @@ compile_if_statement(e_compiler* cc, int node)
   for (u32 i = 0; i < E_GET_NODE(cc->ast, node)->if_stmt.nstmts; i++) {
     e = compile(cc, if_body[i]);
     if (e) {
-      cerror(E_GET_NODE(cc->ast, condition)->common.span, "Failed to compile body of top if statement [if statement]\n");
+      cerror(E_GET_NODE(cc->ast, if_body[i])->common.span, "Failed to compile if statement body [if statement]\n");
       goto ERR;
     }
 
@@ -1511,13 +1563,24 @@ compile_while_statement(e_compiler* cc, int node)
   /* After the while loop, with one POP_VARIABLES to ensure we always pop our variables. */
   const u32 end_label = make_label_id(cc);
 
+  define_and_emit_label(cc, pre_condition_label);
+
+  /* CONDITION */
+  e = compile(cc, E_GET_NODE(cc->ast, node)->while_stmt.condition);
+  if (e) goto ERR;
+
+  // Break out of loop if condition is false.
+  e = emit_and_record_jmp(cc, E_OPCODE_JZ, end_label);
+  if (e) goto ERR;
+
+  e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
+  e = e_stackemu_push_frame(cc->stack);
+  if (e) goto ERR;
+
   /**
    * Push frame for the stack
    */
   e = defer_push_scope(cc);
-  if (e) goto ERR;
-
-  e = e_stackemu_push_frame(cc->stack);
   if (e) goto ERR;
 
   /* Append a loop entry to our compiler. */
@@ -1530,20 +1593,6 @@ compile_while_statement(e_compiler* cc, int node)
   /* Ensure we don't overwrite it... */
   ecc_loop_location* last = cc->loop;
   cc->loop                = &loop;
-
-  define_and_emit_label(cc, pre_condition_label);
-
-  e_emit_instruction(cc, E_OPCODE_PUSH_FRAME);
-  e = e_stackemu_push_frame(cc->stack);
-  if (e) goto ERR;
-
-  /* CONDITION */
-  e = compile(cc, E_GET_NODE(cc->ast, node)->while_stmt.condition);
-  if (e) goto ERR;
-
-  // Break out of loop if condition is false.
-  e = emit_and_record_jmp(cc, E_OPCODE_JZ, end_label);
-  if (e) goto ERR;
 
   // WHILE BODY
   const int* while_body = E_GET_NODE(cc->ast, node)->while_stmt.stmts;
@@ -1568,11 +1617,6 @@ compile_while_statement(e_compiler* cc, int node)
   e = defer_emit_current_scope(cc);
   if (e) goto ERR;
   defer_pop_scope(cc);
-
-  /**
-   * Pop frame for the stack
-   */
-  e_stackemu_pop_frame(cc->stack);
 
   // swap the old loop metadata back in
   cc->loop = last;
@@ -1720,7 +1764,6 @@ compile_for_statement(e_compiler* cc, int node)
   // END_LABEL
   define_and_emit_label(cc, end_label);
 
-  // For the compiler too
   e_emit_instruction(cc, E_OPCODE_POP_FRAME); // Pop entire for scope
   e_stackemu_pop_frame(cc->stack);
 
@@ -1743,8 +1786,8 @@ compile_member_access(e_compiler* cc, int node)
     return -1;
   }
   // Passthrough
-  e_lval lv = e_make_value(cc, node);
-  return e_emit_lvalue_load(cc, lv);
+  e_lval lv = value_init(cc, node);
+  return emit_lvalue_load(cc, lv);
 }
 
 static int
@@ -1759,35 +1802,37 @@ compile_assign(e_compiler* cc, int node)
     return -1;
   }
 
-  e_lval lv = e_make_value(cc, left);
+  e_lval lv = value_init(cc, left);
 
   ecc_builtin_variables_table* builtin_vars_table = cc->builtin_var_table;
 
   ecc_variable_information* exists = e_stackemu_find_var(cc->stack, lv.val.var.id);
-  if (!exists
-      && E_GET_NODE(cc->ast, node)->type == E_AST_NODE_VARIABLE) { // Doesn't exist and node is supposed to be a variable (Not member access or index)
+
+  if (!exists && E_GET_NODE(cc->ast, left)->type == E_AST_NODE_VARIABLE) {
+    // Doesn't exist and node is supposed to be a variable (Not member access or index)
+
     /* Check if the user is trying to modify a builtin variable. */
     for (u32 i = 0; i < builtin_vars_table->builtin_vars_count; i++) {
       if (lv.val.var.id == builtin_vars_table->builtin_var_hashes[i]) {
         cerror(E_GET_NODE(cc->ast, left)->common.span, "Attempting to modify builtin constant '%s'\n", lv.val.var.name);
-        e_free_value(&lv);
+        value_free(&lv);
         return -1;
       }
     }
 
     cerror(E_GET_NODE(cc->ast, left)->common.span, "Undeclared variable '%s'\n", lv.val.var.name);
-    e_free_value(&lv);
+    value_free(&lv);
     return -1;
   }
 
   if (exists && exists->is_const) {
     cerror(E_GET_NODE(cc->ast, left)->common.span, "Can not assign to const qualified variable '%s'\n", lv.val.var.name);
-    e_free_value(&lv);
+    value_free(&lv);
     return -1;
   }
 
-  int e = e_emit_lvalue_assign(cc, right, lv);
-  e_free_value(&lv);
+  int e = emit_lvalue_assign(cc, right, lv);
+  value_free(&lv);
   if (e) return e;
 
   return 0;
@@ -1803,9 +1848,9 @@ compile_member_assign(e_compiler* cc, int node)
     return -1;
   }
 
-  e_lval lv = e_make_value(cc, node);
-  int    e  = e_emit_lvalue_assign(cc, value, lv);
-  e_free_value(&lv);
+  e_lval lv = value_init(cc, node);
+  int    e  = emit_lvalue_assign(cc, value, lv);
+  value_free(&lv);
 
   return e;
 }
@@ -1934,7 +1979,8 @@ compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_i
       .span          = span,
       .is_const      = false, // User can override the argument any time.
     };
-    int e = e_stackemu_push_var(fork->stack, &info);
+
+    e = e_stackemu_push_var(fork->stack, &info);
     if (e) return e;
   }
 
@@ -1988,6 +2034,8 @@ compile_struct_decleration(e_compiler* cc, int node)
   u32         struct_decl_nstmts = E_GET_NODE(cc->ast, node)->struct_decl.nstmts;
   u32         struct_name_hash   = e_hash(struct_name, strlen(struct_name));
 
+  e_str_intern(struct_name, cc->ast->interner);
+
   /* Gather all information the user provided into one big structure. */
   struct_data = (ecc_struct_information){
     .name_hash      = struct_name_hash,
@@ -2038,6 +2086,8 @@ compile_variable_decleration(e_compiler* cc, int node)
   char*       full = qualify_name(cc, name);
   if (!full) return -1;
 
+  // fprintf(stderr, "declared: %s\n", full);
+
   u32 hash        = e_hash(full, strlen(full));
   int initializer = E_GET_NODE(cc->ast, node)->let.initializer;
 
@@ -2079,10 +2129,10 @@ compile_variable_decleration(e_compiler* cc, int node)
   if (e) return -1;
 
   if (initializer_provided) {
-    e_lval lv = e_make_value(cc, node);
+    e_lval lv = value_init(cc, node);
 
-    e = e_emit_lvalue_assign(cc, initializer, lv);
-    e_free_value(&lv);
+    e = emit_lvalue_assign(cc, initializer, lv);
+    value_free(&lv);
     if (e) return -1;
   }
 
@@ -2142,13 +2192,13 @@ compile_variable_load(e_compiler* cc, int node)
     }
   }
 
-  e_lval lv = e_make_value(cc, node);
-  if (e_emit_lvalue_load(cc, lv) < 0) {
-    e_free_value(&lv);
+  e_lval lv = value_init(cc, node);
+  if (emit_lvalue_load(cc, lv) < 0) {
+    value_free(&lv);
     return -1;
   }
 
-  e_free_value(&lv);
+  value_free(&lv);
   return 0;
 }
 
@@ -2401,10 +2451,11 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
   e_compiler fork = { 0 };
   int        e    = 0;
 
-  /* we don't store these. */
+  e_str_intern(b->name, cc->ast->interner);
+
   ecc_struct_information st = {
-    .field_hashes   = e_arnalloc(cc->arena, b->fields_count * sizeof(u32)),
-    .field_names    = (char**)e_arnalloc(cc->arena, b->fields_count * sizeof(char*)),
+    .field_hashes   = e_xalloc(b->fields_count, sizeof(u32)),
+    .field_names    = (char**)e_xalloc(b->fields_count, sizeof(char*)),
     .fields_count   = b->fields_count,
     .field_capacity = b->fields_count,
     .name_hash      = e_hash(b->name, strlen(b->name)),
@@ -2413,7 +2464,7 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
 
   for (u32 j = 0; j < b->fields_count; j++) {
     st.field_hashes[j] = e_hash(b->fields[j], strlen(b->fields[j]));
-    st.field_names[j]  = (char*)b->fields[j]; // again, we won't store or use this later. won't modify the string.
+    st.field_names[j]  = e_arnstrdup(cc->arena, b->fields[j]);
   }
 
   /**
@@ -2430,6 +2481,9 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
   if (e) goto ERR;
 
   compiler_join_fork(&fork, cc);
+
+  e = append_struct_info(cc, &st);
+  if (e) goto ERR;
 
   return 0;
 
@@ -2631,7 +2685,7 @@ e_compile(const ecc_info* info, e_compilation_result* result)
 
   return e;
 
-ERR:
+ERR: /* Seperate from successful return path. We free everything here, indiscriminately. */
   free((void*)ns.namespaces);
   free(lit_table.literal_hashes);
   free(lit_table.literals);

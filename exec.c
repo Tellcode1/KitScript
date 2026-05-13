@@ -119,10 +119,8 @@ call(const e_exec_info* info, u32 hash, u32 nargs, e_var* ret)
   for (u32 f = 0; f < info->nfuncs; f++) {
     if (info->funcs[f].name_hash != hash) continue;
 
-    e_stack stack = { 0 };
-
-    e = e_stack_init(32, 4, 8, &stack);
-    if (e) goto pop_and_ret;
+    e = e_stack_push_frame(info->stack);
+    if (e) return E_EMALLOC;
 
     e_exec_info fi = {
       .code            = info->funcs[f].code,
@@ -139,15 +137,15 @@ call(const e_exec_info* info, u32 hash, u32 nargs, e_var* ret)
       .nextern_funcs   = info->nextern_funcs,
       .extern_vars     = info->extern_vars,
       .nextern_vars    = info->nextern_vars,
-      .stack           = &stack,
-      .nstructs        = info->nstructs,
+      .stack           = info->stack,
       .structs         = info->structs,
+      .nstructs        = info->nstructs,
     };
 
     e = e_exec(&fi, ret);
     if (e) return e;
 
-    e_stack_free(&stack);
+    e_stack_pop_frame(info->stack);
 
     goto pop_and_ret;
   }
@@ -179,13 +177,7 @@ pop_and_ret:
 
 static inline e_var*
 get_variable_from_id(e_stack* stack, u32 hash)
-{
-  for (u32 i = 0; i < stack->nvariables; i++) {
-    u32 idx = stack->nvariables - i - 1;
-    if (hash == stack->variables[idx].id) return &stack->stack[stack->variables[idx].offset_index];
-  }
-  return NULL;
-}
+{ return e_stack_find(stack, hash); }
 
 static inline int
 vector_elements(const e_var* vec)
@@ -383,8 +375,7 @@ e_exec(const e_exec_info* info, e_var* ret)
           }
         }
         if (!lookup) {
-          e_var tmp = E_NULLVAR;
-          TRY_V(e_stack_push(info->stack, &tmp));
+          fprintf(stderr, "Struct not found in file: %s|%u\n", find_name_in_syms(ins.v.mk_struct, info), ins.v.mk_struct);
           return E_EMALFORM;
         }
 
@@ -688,8 +679,8 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e_var* slot = get_variable_from_id(info->stack, id);
         if (!slot) {
-          fprintf(stderr, "*** undeclared variable (id=%u) LOAD'd ***\n", id);
-          return -1;
+          fprintf(stderr, "*** undeclared variable (id=%u/lookup=%s) LOAD'd ***\n", id, find_name_in_syms(id, info));
+          return E_EUNDEFINED;
         }
 
         e_var v;
@@ -925,6 +916,8 @@ e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs, e_var*
         .nextern_funcs   = s->nxtern_funcs,
         .extern_vars     = s->extern_vars,
         .nextern_vars    = s->nextern_vars,
+        .structs         = s->compiled.structs,
+        .nstructs        = s->compiled.structs_count,
       };
 
       if (s->compiled.functions[i].nargs != nargs) {

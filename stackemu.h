@@ -44,7 +44,7 @@ typedef struct e_stackemu {
   u32                            strucs_count;
   u32                            strucs_capacity;
 
-  u32* frame_var_counts; // Index into vars array which specifies where they start.
+  u32* frame_var_starts; // Index into vars array which specifies where they start.
   u32  frame_top;
   u32  frame_capacity;
 } e_stackemu;
@@ -54,6 +54,8 @@ void e_stackemu_free(e_stackemu* emu);
 
 int  e_stackemu_push_frame(e_stackemu* emu) RETURNS_ERRCODE;
 void e_stackemu_pop_frame(e_stackemu* emu);
+
+int e_stackemu_copy_top_scope(e_stackemu* emu, const e_stackemu* old) RETURNS_ERRCODE;
 
 int                              e_stackemu_push_var(e_stackemu* emu, const struct ecc_variable_information* info) RETURNS_ERRCODE;
 struct ecc_variable_information* e_stackemu_find_var(const e_stackemu* emu, u32 id);

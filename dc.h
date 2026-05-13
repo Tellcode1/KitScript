@@ -22,26 +22,17 @@
  * SOFTWARE.
  */
 
-#include "cc.h"
-#include "fn.h"
+#ifndef E_DECOMPILER_H
+#define E_DECOMPILER_H
+
+#include "bc.h"
 #include "rwhelp.h"
 #include "stdafx.h"
-#include "var.h"
 
 #include <stdio.h>
-#include <string.h>
-
-static inline const char*
-lookup(const e_compilation_result* r, u32 name)
-{
-  for (u32 i = 0; i < r->names_count; i++) {
-    if (r->names_hashes[i] == name) { return r->names[i]; }
-  }
-  return "[symbol not found]";
-}
 
 static inline void
-e_print_instruction(e_ins i, const e_compilation_result* r)
+e_print_instruction(e_ins i)
 {
   switch ((e_opcode_bck)i.opcode) {
     case E_OPCODE_NOOP: printf("noop\n"); break;
@@ -77,7 +68,7 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
       break;
     }
     case E_OPCODE_CALL: {
-      printf("call [%s|%u] [%u]\n", lookup(r, i.v.call.hash), i.v.call.hash, i.v.call.nargs);
+      printf("call [%u] [%u]\n", i.v.call.hash, i.v.call.nargs);
       break;
     }
     case E_OPCODE_RETURN: {
@@ -87,17 +78,18 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
     case E_OPCODE_LITERAL: printf("literal [%u]\n", i.v.literal); break;
     case E_OPCODE_LOAD: printf("load %u\n", i.v.load); break;
     // case E_OPCODE_LOAD_REFERENCE: printf("load_reference\n"); break;
-    case E_OPCODE_ASSIGN: printf("assign [%s|%u]\n", lookup(r, i.v.assign), i.v.assign); break;
-    case E_OPCODE_INIT: printf("init [%s|%u]\n", lookup(r, i.v.init), i.v.init); break;
-    case E_OPCODE_LABEL: printf("label [%u]\n", i.v.label); break;
+    case E_OPCODE_ASSIGN: printf("assign %u\n", i.v.assign); break;
+    case E_OPCODE_INIT: printf("init %u\n", i.v.init); break;
+    case E_OPCODE_LABEL: printf("label %u\n", i.v.label); break;
     case E_OPCODE_JMP: printf("jmp [%u]\n", i.v.jmp); break;
     case E_OPCODE_JE: printf("je [%u]\n", i.v.jmp); break;
     case E_OPCODE_JNE: printf("jne [%u]\n", i.v.jmp); break;
     case E_OPCODE_JZ: printf("jz [%u]\n", i.v.jmp); break;
     case E_OPCODE_JNZ: printf("jnz [%u]\n", i.v.jmp); break;
-    case E_OPCODE_PUSH_FRAME: printf("save vars\n"); break;
-    case E_OPCODE_POP_FRAME: printf("restore vars\n"); break;
+    case E_OPCODE_PUSH_FRAME: printf("push frame\n"); break;
+    case E_OPCODE_POP_FRAME: printf("pop frame\n"); break;
     case E_OPCODE_HALT: printf("halt [%u]\n", i.v.halt); break;
+    case E_OPCODE_COUNT: printf("invalid\n"); break;
     case E_OPCODE_MK_LIST: {
       printf("mklist [%u]\n", i.v.mk_list);
       break;
@@ -111,7 +103,8 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
     case E_OPCODE_INDEX_ASSIGN: printf("idx_assign\n"); break;
     case E_OPCODE_MEMBER_ACCESS: printf("member_access [%u]\n", i.v.member); break;
     case E_OPCODE_MK_STRUCT: {
-      printf("mk_struct [%s|%u]\n", lookup(r, i.v.mk_struct), i.v.mk_struct);
+      printf("mk_struct [%u]\n", i.v.mk_struct.nmembers);
+      for (u32 j = 0; j < i.v.mk_struct.nmembers; j++) { printf("\t\t[%u] = null\n", i.v.mk_struct.members[j]); }
       break;
     }
     case E_OPCODE_MEMBER_ASSIGN: {
@@ -120,14 +113,11 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
     }
     case E_OPCODE_DUP: printf("dup\n"); break;
     case E_OPCODE_INDEX_PEEK: printf("idx_peek\n"); break;
-
-    case E_OPCODE_COUNT:
-    default: printf("unknown\n");
   }
 }
 
 static inline void
-e_print_instruction_stream(const e_compilation_result* r, const u8* stm, u32 stm_size, int indent)
+e_print_instruction_stream(const u8* stm, u32 stm_size, int indent)
 {
   const u8* ip  = stm;
   const u8* end = stm + stm_size;
@@ -139,68 +129,8 @@ e_print_instruction_stream(const e_compilation_result* r, const u8* stm, u32 stm
     for (int j = 0; j < indent; j++) fputc(' ', stdout);
 
     printf("%-4u: ", instruction_offset); // Print offset of instruction
-    e_print_instruction(ins, r);
+    e_print_instruction(ins);
   }
 }
 
-int
-main(int argc, char** argv)
-{
-  if (argc != 2) {
-    fprintf(stderr, "edc: [input_binary]\n");
-    return -1;
-  }
-
-  FILE* f = NULL;
-
-  const char* bin_file = argv[1];
-  if (strcmp(bin_file, "-") == 0) {
-    f = stdin;
-  } else {
-    f = fopen(bin_file, "r");
-    if (!f) {
-      perror("edc: Failed to open input file");
-      return -1;
-    }
-  }
-
-  void*                root_allocation = nullptr;
-  e_compilation_result r               = { 0 };
-
-  int e = e_file_load(&r, &root_allocation, f);
-  if (e) {
-    fprintf(stderr, "eexec: Failed to parse input file: %i\n", e);
-    return -1;
-  }
-
-  e_print_instruction_stream(&r, (const u8*)r.instructions, r.instructions_count, 0);
-  for (u32 i = 0; i < r.functions_count; i++) {
-    const e_function* func = &r.functions[i];
-    printf("[%s|%u](%u):\n", lookup(&r, func->name_hash), func->name_hash, func->nargs);
-    e_print_instruction_stream(&r, (const u8*)func->code, func->code_size, 4);
-  }
-
-  printf("\nstructures:\n");
-  for (u32 i = 0; i < r.structs_count; i++) {
-    const ecc_struct_information* info = &r.structs[i];
-    printf("[%s/%u] = {", lookup(&r, info->name_hash), info->name_hash);
-    for (u32 j = 0; j < info->fields_count; j++) {
-      printf("%s/%u", info->field_names[j], info->field_hashes[j]);
-      if (j != info->fields_count - 1) { printf(", "); }
-    }
-    printf("},\n");
-  }
-  printf("\n");
-
-  printf("literals:\n");
-  for (u32 i = 0; i < r.literals_count; i++) {
-    printf("[%u | %u] = ", i, e_var_hash(&r.literals[i]));
-    e_var_print(&r.literals[i], stdout);
-    fputc('\n', stdout);
-  }
-
-  if (strcmp(bin_file, "-") != 0) fclose(f);
-
-  free(root_allocation);
-  return 0;
-}
+#endif // E_DECOMPILER_H

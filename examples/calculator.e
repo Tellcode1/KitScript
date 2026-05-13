@@ -11,25 +11,25 @@ fn main() {
     let op = readln();
 
     let result = null;
-    if (str::equal(op, "add\n"))
+    if (str::equal(op, "add"))
     {
       result = num1 + num2;
-    } else if (str::equal(op, "sub\n"))
+    } else if (str::equal(op, "sub"))
     {
       result = num1 - num2;
-    } else if (str::equal(op, "mul\n"))
+    } else if (str::equal(op, "mul"))
     {
       result = num1 * num2;
-    } else if (str::equal(op, "div\n"))
+    } else if (str::equal(op, "div"))
     {
       result = num1 / num2;
-    } else if (str::equal(op, "pow\n"))
+    } else if (str::equal(op, "pow"))
     {
       result = math::pow(num1, num2);
-    } else if (str::equal(op, "sqrt\n"))
+    } else if (str::equal(op, "sqrt"))
     {
       result = math::sqrt(num1);
-    } else if (str::equal(op, "exit\n"))
+    } else if (str::equal(op, "exit"))
     {
       break;
     } else {

@@ -114,7 +114,7 @@ typedef union e_token_val {
 typedef struct e_token {
   e_token_type type;
   e_token_val  val;
-  e_filespan   span; // The token owns this span
+  e_filespan   span; // Span has interned string, do NOT FREE!
 } e_token;
 
 /**

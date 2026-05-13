@@ -21,7 +21,7 @@ e_stackemu_init(e_stackemu* emu)
     return -1;
   }
 
-  emu->frame_var_counts = new_frames;
+  emu->frame_var_starts = new_frames;
   emu->vars             = new_vars;
 
   emu->vars_count    = 0;
@@ -33,14 +33,16 @@ e_stackemu_init(e_stackemu* emu)
   emu->frame_top      = 0;
   emu->frame_capacity = new_capacity;
 
-  return 0;
+  return e_stackemu_push_frame(emu);
 }
 
 void
 e_stackemu_free(e_stackemu* emu)
 {
+  e_stackemu_pop_frame(emu);
+
   free(emu->vars);
-  free(emu->frame_var_counts);
+  free(emu->frame_var_starts);
   memset(emu, 0, sizeof *emu);
 }
 
@@ -49,21 +51,21 @@ e_stackemu_push_frame(e_stackemu* emu)
 {
   if (emu->frame_top >= emu->frame_capacity) {
     u32  new_capacity = emu->frame_capacity * 2;
-    u32* new_frames   = realloc(emu->frame_var_counts, sizeof(u32) * new_capacity);
+    u32* new_frames   = realloc(emu->frame_var_starts, sizeof(u32) * new_capacity);
     if (!new_frames) return -1;
 
-    emu->frame_var_counts = new_frames;
+    emu->frame_var_starts = new_frames;
     emu->frame_capacity   = new_capacity;
   }
 
-  emu->frame_var_counts[emu->frame_top++] = emu->vars_count;
+  emu->frame_var_starts[emu->frame_top++] = emu->vars_count;
   return 0;
 }
 
 void
 e_stackemu_pop_frame(e_stackemu* emu)
 {
-  u32 start       = emu->frame_var_counts[--emu->frame_top];
+  u32 start       = emu->frame_var_starts[--emu->frame_top];
   emu->vars_count = start;
 }
 
@@ -97,11 +99,26 @@ e_stackemu_find_var_in_curr_scope(const e_stackemu* emu, u32 id)
 {
   if (emu->frame_top == 0) return NULL;
 
-  u32 start = emu->frame_var_counts[emu->frame_top - 1];
+  u32 start = emu->frame_var_starts[emu->frame_top - 1];
 
   for (u32 i = emu->vars_count; i > start; i--) {
     if (emu->vars[i - 1].name_hash == id) return &emu->vars[i - 1];
   }
 
   return NULL;
+}
+
+int
+e_stackemu_copy_top_scope(e_stackemu* emu, const e_stackemu* old)
+{
+  if (old->frame_top == 0) return 0;
+
+  u32 start = old->frame_var_starts[old->frame_top - 1];
+
+  for (u32 i = start; i < old->vars_count; i++) {
+    int e = e_stackemu_push_var(emu, &old->vars[i]);
+    if (e) return e;
+  }
+
+  return 0;
 }

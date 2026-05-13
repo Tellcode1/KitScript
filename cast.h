@@ -27,6 +27,8 @@
 
 #include "var.h"
 
+#include <string.h>
+
 /**
  * Small and fast cast for integral types.
  * These casts are provided as an alternative to avoid calling
@@ -70,6 +72,7 @@ e_cast_to_bool(const e_var* v)
     case E_VARTYPE_FLOAT: return (bool)v->val.f;
     case E_VARTYPE_CHAR: return (bool)v->val.c;
     case E_VARTYPE_BOOL: return (bool)v->val.b;
+    case E_VARTYPE_STRING: return strcmp(E_VAR_AS_STRING(v)->s, "") != 0;
     default: return false;
   }
 }

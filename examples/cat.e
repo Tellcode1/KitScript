@@ -1,6 +1,6 @@
 fn main()
 {
-  let args = sys::get_command_line_args();
+  let args = sys::get_cmd_args();
   if (list::len(args) == 0) return;
 
   for (let i = 0; i < list::len(args); i++)
@@ -15,10 +15,12 @@ fn main()
 
     defer io::close(fd);
 
-    let s = null;
-    while (s = io::readln(fd))
+    // why this no work?
+    let line = null;
+    // for (let line = io::readln(fd); line != null; line = io::readln(fd))
+    while (line = io::readln(fd))
     {
-      print(s);
+      println(line);
     }
 
     // Flush stdout after each file.

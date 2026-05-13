@@ -35,6 +35,7 @@ fn main() {
     return null;
   }
 
+  let y = args[2];
 
   let r = null;
   if (str::equal(op, "+"))
