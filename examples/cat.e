@@ -3,8 +3,6 @@ fn main()
   let args = sys::get_cmd_args();
   if (list::len(args) == 0) return;
 
-  io::println(io::STDERR, args);
-
   for (let i = 0; i < list::len(args); i++)
   {
     let fd = io::open(args[i], "rb");
