@@ -33,8 +33,8 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 {
   e_var ret = E_NULLVAR;
 
-  int                  root     = -1;
   e_ast                ast      = { 0, .root = -1 };
+  e_parser             parser   = { 0 };
   e_token*             tokens   = nullptr;
   u32                  ntoks    = 0;
   e_arena              arena    = { 0 };
@@ -84,14 +84,20 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
     goto RET;
   }
 
-  e = e_ast_init(tokens, ntoks, &interner, &ast);
+  e = e_ast_init(&interner, &ast);
   if (e) {
     e_xerror("jit::exec: AST initialization failed\n");
     goto RET;
   }
 
-  e = e_ast_parse(&ast, &root);
-  if (root < 0 || e) {
+  e = e_parser_init(tokens, ntoks, &ast, &parser);
+  if (e) {
+    e_xerror("jit::exec: AST initialization failed\n");
+    goto RET;
+  }
+
+  e = e_parse(&parser);
+  if (e) {
     e_xerror("jit::exec: AST parsing failed\n");
     goto RET;
   }
@@ -99,7 +105,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
   ecc_info info = {
     .arena              = &arena,
     .ast                = &ast,
-    .root_node          = root,
+    .root_node          = ast.root,
     .custom_entry_point = nullptr,
     .opt_level          = optimization_level,
   };

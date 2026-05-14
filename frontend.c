@@ -41,30 +41,67 @@
 #include <stdlib.h>
 #include <string.h>
 
+static inline char*
+read_file_arena(e_arena* a, const char* path, u64* size)
+{
+  FILE* f        = nullptr;
+  char* contents = nullptr;
+  long  fsize    = 0;
+
+  f = fopen(path, "rb");
+  if (f == nullptr) return nullptr;
+
+  if ((bool)fseek(f, 0, SEEK_END)) goto CLEANUP;
+
+  fsize = ftell(f);
+  if (fsize <= 0) goto CLEANUP;
+
+  if (size != nullptr) *size = (int)fsize;
+
+  if ((bool)fseek(f, 0, SEEK_SET)) goto CLEANUP;
+
+  contents = (char*)e_arnalloc(a, fsize + 1);
+  if (fread(contents, fsize, 1, f) != 1) { goto CLEANUP; }
+  contents[fsize] = 0;
+
+  fclose(f);
+
+  return contents;
+
+CLEANUP:
+  if (f != nullptr) fclose(f);
+  return nullptr;
+}
+
 int
 main(int argc, char* argv[])
 {
   bool                 tokenizer_only     = false;
   bool                 ast_only           = false;
   bool                 print_memory_usage = false;
-  int                  root               = -1;
   e_ast                ast                = { 0, .root = -1 };
-  e_token*             tokens             = nullptr;
-  u32                  ntoks              = 0;
   e_compilation_result compiled           = { 0 };
   FILE*                f                  = NULL;
-  char*                contents           = NULL;
   e_str_interner       interner           = { 0 };
   e_arena              arena              = { 0 };
   int                  e                  = 0;
   int                  opt_level          = 0;
 
+  e = e_arena_init(1, &arena);
+  if (e) {
+    /* TODO Add flag to reducce memory allocations? */
+    fprintf(stderr, "ec: Failed to initialize arena\n");
+    goto ret;
+  }
+
   if (e_refdobj_pool_init(16, &ge_pool)) goto ret;
 
   if (e_str_interner_init(256, &interner)) goto ret;
 
+  char** files  = (char**)e_arnalloc(&arena, argc * sizeof(char*));
+  u32    nfiles = 0;
+
   const char* out = NULL;
-  const char* in  = NULL;
   for (int i = 1; i < argc; i++) {
     const char* opt = argv[i];
 
@@ -89,62 +126,77 @@ main(int argc, char* argv[])
     } else if (strcmp(opt, "mem") == 0) {
       print_memory_usage = true;
     } else {
-      in = argv[i];
+      files[nfiles++] = e_arnstrdup(&arena, argv[i]);
     }
   }
 
-  contents = read_file(in, nullptr);
-  if (contents == nullptr) {
-    fprintf(stderr, "ec: Failed to load input file: %s\n", strerror(errno));
-    goto ret;
-  }
-
-  e = e_arena_init(1, &arena);
-  if (e) {
-    /* TODO Add flag to reducce memory allocations? */
-    fprintf(stderr, "ec: Failed to initialize arena\n");
-    goto ret;
-  }
-
-  e = e_tokenize(contents, in, &interner, &tokens, &ntoks);
-  if (e) {
-    fprintf(stderr, "ec: Failed to tokenize input string\n");
-    goto ret;
-  }
-
-  if (tokenizer_only) {
-    for (u32 i = 0; i < ntoks; i++) {
-      printf("%s", e_token_type_to_string(tokens[i].type));
-      if (i != ntoks - 1) { fputs(" ", stdout); }
-    }
-    fputc('\n', stdout);
-    return 0;
-  }
-
-  e = e_ast_init(tokens, ntoks, &interner, &ast);
+  e = e_ast_init(&interner, &ast);
   if (e) {
     fprintf(stderr, "ec: AST initialization failed\n");
     goto ret;
   }
 
-  // for (u32 i = 0; i < ntoks; i++) { printf("[%s:%i:%i]\n", tokens[i].span.file, tokens[i].span.line, tokens[i].span.col); }
+  // Feed into the AST
+  for (u32 fi = 0; fi < nfiles; fi++) {
+    e_parser parser = { 0 };
+    e_token* tokens = nullptr;
+    u32      ntoks  = 0;
 
-  e = e_ast_parse(&ast, &root);
-  if (root < 0 || e) {
-    fprintf(stderr, "ec: AST parsing failed\n");
-    goto ret;
-  }
+    const char* in = files[fi];
 
-  eopt_data ast_opt_data = { .ast = &ast };
-  for (u32 i = 0; i < E_ARRLEN(eopt_passes); i++) {
-    const eopt_pass* pass = &eopt_passes[i];
-    if (pass->stage == EOPT_STAGE_AST && opt_level >= pass->minimum_opt_level) {
-      e = pass->fp(EOPT_STAGE_AST, &ast_opt_data);
-      if (e) {
-        fprintf(stderr, "ec: Optimization pass failed\n");
-        return e;
+    char* contents = read_file_arena(&arena, in, nullptr);
+    if (contents == nullptr) {
+      fprintf(stderr, "ec: Failed to load input file: %s\n", strerror(errno));
+      goto next;
+    }
+
+    e = e_tokenize(contents, in, &interner, &tokens, &ntoks);
+    if (e) {
+      fprintf(stderr, "ec: Failed to tokenize input string\n");
+      goto next;
+    }
+
+    if (tokenizer_only) {
+      for (u32 i = 0; i < ntoks; i++) {
+        printf("%s", e_token_type_to_string(tokens[i].type));
+        if (i != ntoks - 1) { fputs(" ", stdout); }
+      }
+      fputc('\n', stdout);
+      goto next;
+    }
+
+    e = e_parser_init(tokens, ntoks, &ast, &parser);
+    if (e) {
+      fprintf(stderr, "ec: Parser initialization failed\n");
+      goto next;
+    }
+
+    e = e_parse(&parser);
+    if (e) {
+      fprintf(stderr, "ec: Parsing failed\n");
+      goto next;
+    }
+
+    eopt_data ast_opt_data = { .ast = &ast };
+    for (u32 i = 0; i < E_ARRLEN(eopt_passes); i++) {
+      const eopt_pass* pass = &eopt_passes[i];
+      if (pass->stage == EOPT_STAGE_AST && opt_level >= pass->minimum_opt_level) {
+        e = pass->fp(EOPT_STAGE_AST, &ast_opt_data);
+        if (e) {
+          fprintf(stderr, "ec: Optimization pass failed\n");
+          goto loop_err;
+        }
       }
     }
+
+  next:
+    if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
+    e_parser_free(&parser);
+    continue;
+  loop_err:
+    if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
+    e_parser_free(&parser);
+    goto ret;
   }
 
   if (ast_only) {
@@ -155,7 +207,7 @@ main(int argc, char* argv[])
   ecc_info info = {
     .arena              = &arena,
     .ast                = &ast,
-    .root_node          = root,
+    .root_node          = ast.root,
     .custom_entry_point = nullptr,
     .opt_level          = opt_level,
   };
@@ -178,22 +230,20 @@ main(int argc, char* argv[])
   }
 
   if (print_memory_usage) {
-    size_t        goob = 0;
-    e_arena_page* next = arena.current;
+    size_t        accumulator = 0;
+    e_arena_page* next        = arena.current;
     while (next) {
-      goob++;
+      accumulator++;
       next = next->next;
     }
-    fprintf(stderr, "%zu pages were allocated (%zu bytes)\n", goob, goob * (size_t)E_PAGE_SIZE);
+    fprintf(stderr, "%zu pages were allocated (%zu bytes)\n", accumulator, accumulator * (size_t)E_PAGE_SIZE);
   }
 
 ret:
-  if (contents) free(contents);
-  if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
   e_ast_free(&ast);
   e_compilation_result_free(&compiled);
   e_refdobj_pool_free(&ge_pool);
-  if (f) fclose(f);
+  if (f) { fclose(f); }
   e_str_interner_free(&interner);
   e_arena_free(&arena);
   return e;

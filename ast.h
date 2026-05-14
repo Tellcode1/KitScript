@@ -264,6 +264,7 @@ typedef union e_ast_node_val {
     e_filespan      span;
     int*            stmts;
     u32             nstmts;
+    u32             capacity; // root needs this.
   } stmts, root, defer;
 
   struct {
@@ -359,10 +360,6 @@ typedef struct e_ast {
   u32         nnodes;
   u32         capacity;
 
-  e_token* toks;
-  u32      ntoks;
-  u32      head;
-
   /**
    * MUST BE EXPLICITLY SET TO -1
    * If not, on error free's will try to go the usual way,
@@ -372,28 +369,40 @@ typedef struct e_ast {
   int root;
 } e_ast;
 
-int  e_ast_init(e_token* toks, u32 ntoks, e_str_interner* interner, e_ast* prsr) ATTR_NODISCARD;
-void e_ast_free(e_ast* prsr);
+typedef struct e_parser {
+  const struct e_token* toks;
+  u32                   ntoks;
+  u32                   head;
+
+  /* Target AST */
+  struct e_ast* ast;
+} e_parser;
+
+int  e_ast_init(e_str_interner* interner, e_ast* ast) ATTR_NODISCARD;
+void e_ast_free(e_ast* ast);
+
+int  e_parser_init(const e_token* tokens, u32 ntokens, e_ast* ast, e_parser* parser) ATTR_NODISCARD;
+void e_parser_free(e_parser* parser);
 
 /**
  * Recursively free a node in the tree.
  */
 void e_ast_node_free(e_ast* p, int id);
 
-static inline e_token*
-e_ast_next(struct e_ast* prsr)
+static inline const e_token*
+e_parser_next(e_parser* prsr)
 {
   if (prsr->head > prsr->ntoks) return NULL;
   return &prsr->toks[prsr->head++];
 }
-static inline e_token*
-e_ast_peek(const struct e_ast* prsr)
+static inline const e_token*
+e_parser_peek(const e_parser* prsr)
 {
   if (prsr->head >= prsr->ntoks) return NULL;
   return &prsr->toks[prsr->head];
 }
-static inline e_token*
-e_ast_prev(const struct e_ast* prsr)
+static inline const e_token*
+e_parser_prev(const e_parser* prsr)
 {
   if (prsr->head > prsr->ntoks || prsr->head == 0) return NULL;
   return &prsr->toks[prsr->head - 1];
@@ -440,15 +449,15 @@ e_ast_is_limiter_exempt(e_ast_node_type t)
       || t == E_AST_NODE_NOP);
 }
 
-int e_ast_parse(e_ast* p, int* root) ATTR_NODISCARD;
-int e_ast_nud(e_ast* p, e_token* tk) ATTR_NODISCARD;
-int e_ast_expr(e_ast* p, int rbp) ATTR_NODISCARD;
-int e_ast_led(e_ast* p, e_token* tk, int leftidx, int rbp) ATTR_NODISCARD;
+int e_parse(e_parser* p) ATTR_NODISCARD;
+int e_ast_nud(e_parser* p, const e_token* tk) ATTR_NODISCARD;
+int e_ast_expr(e_parser* p, int rbp) ATTR_NODISCARD;
+int e_ast_led(e_parser* p, const e_token* tk, int leftidx, int rbp) ATTR_NODISCARD;
 
 /**
  * Expect that peek() is pointing to a token
  * with type. Returns 0 on match.
  */
-int e_ast_expect(e_ast* p, e_token_type type) ATTR_NODISCARD;
+int e_ast_expect(e_parser* p, e_token_type type) ATTR_NODISCARD;
 
 #endif // E_AST_H

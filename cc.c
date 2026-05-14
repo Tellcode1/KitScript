@@ -254,7 +254,9 @@ defer_push_scope(e_compiler* cc)
   ecc_defer_scope* scope = e_arnalloc(cc->arena, sizeof(ecc_defer_scope));
   if (!scope) return -1;
 
-  scope->entries  = e_xalloc(init_defer_entry_capacity, sizeof(ecc_defer_entry));
+  scope->entries = e_xalloc(init_defer_entry_capacity, sizeof(ecc_defer_entry));
+  if (!scope->entries) return -1;
+
   scope->count    = 0;
   scope->capacity = init_defer_entry_capacity;
   scope->parent   = cc->defer_stack;
@@ -1026,14 +1028,23 @@ compile_function_definition(e_compiler* cc, int node)
 
   int e = 0;
 
-  // free(full);
-
   /* Ensure it doesn't already exist */
   const ecc_function_table* func_table = cc->function_table;
   for (u32 i = 0; i < func_table->functions_count; i++) {
     e_function* func = &func_table->functions[i];
     if (func->name_hash == hash) {
-      cerror(E_GET_NODE(cc->ast, node)->common.span, "Multiple definitions of function \"%s\"\n", function_name);
+      cerror(E_GET_NODE(cc->ast, node)->common.span, "Function \"%s\" redefined\n", function_name);
+      e = -1;
+      goto ERR;
+    }
+  }
+
+  /* Ensure we aren't overriding a builtin function */
+  for (u32 i = 0; i < E_ARRLEN(eb_funcs); i++) {
+    const e_builtin_func* func      = &eb_funcs[i];
+    u32                   func_hash = e_hash(func->name, strlen(func->name));
+    if (func_hash == hash) {
+      cerror(E_GET_NODE(cc->ast, node)->common.span, "Attempt to overshadow builtin function \"%s\"\n", function_name);
       e = -1;
       goto ERR;
     }
@@ -2492,6 +2503,8 @@ compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
   return 0;
 
 ERR:
+  free(st.field_hashes);
+  free((void*)st.field_names);
   compiler_free_fork_entirely(&fork);
   return e >= 0 ? -1 : e;
 }
@@ -2532,7 +2545,7 @@ e_compile(const ecc_info* info, e_compilation_result* result)
 {
   int e = 0;
 
-  ecc_namespace_stack         ns                = { 0 };
+  ecc_namespace_stack         namespace_stack   = { 0 };
   e_stackemu                  stack             = { 0 };
   ecc_literal_table           lit_table         = { 0 };
   ecc_builtin_variables_table builtin_var_table = { 0 };
@@ -2541,12 +2554,12 @@ e_compile(const ecc_info* info, e_compilation_result* result)
   ecc_struct_table            struct_table      = { 0 };
   e_compiler                  cc                = { 0 };
 
-  ns = (ecc_namespace_stack){
+  namespace_stack = (ecc_namespace_stack){
     .namespaces  = (char**)e_xalloc(init_namespaces_capacity, sizeof(char*)),
     .nnamespaces = 0,
     .capacity    = init_namespaces_capacity,
   };
-  if (!ns.namespaces) goto ERR;
+  if (!namespace_stack.namespaces) goto ERR;
 
   /**
    * Compiler's builtin variables and the hooked variables combined.
@@ -2622,7 +2635,7 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     .ast               = info->ast,
     .info              = info,
     .loop              = NULL,
-    .ns                = &ns,
+    .ns                = &namespace_stack,
     .stack             = &stack,
     .lit_table         = &lit_table,
     .builtin_var_table = &builtin_var_table,
@@ -2685,17 +2698,24 @@ e_compile(const ecc_info* info, e_compilation_result* result)
 
   for (u32 i = 0; i < label_table.labels_count; i++) { free(label_table.labels[i].jumps_target_offsets); }
   e_xfree((void**)&label_table.labels);
-  e_xfree((void**)&ns.namespaces);
+  e_xfree((void**)&namespace_stack.namespaces);
 
   return e;
 
 ERR: /* Seperate from successful return path. We free everything here, indiscriminately. */
-  free((void*)ns.namespaces);
+  while (cc.defer_stack) defer_pop_scope(&cc);
+  for (u32 i = 0; i < struct_table.structs_count; i++) {
+    free((void*)struct_table.structs[i].field_names);
+    free(struct_table.structs[i].field_hashes);
+  }
+  free(struct_table.structs);
+  free((void*)namespace_stack.namespaces);
   free(lit_table.literal_hashes);
   free(lit_table.literals);
   free(func_table.functions);
   for (u32 i = 0; i < label_table.labels_count; i++) free(label_table.labels[i].jumps_target_offsets);
   free(label_table.labels);
   e_stackemu_free(&stack);
+  free(cc.emit);
   return e ? e : -1;
 }

@@ -2,6 +2,8 @@ Checks: >
   -*,
   clang-analyzer-*,
   llvm-*,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-magic-numbers,
   -llvm-header-guard,
   -clang-analyzer-cplusplus*,
   bugprone-*,

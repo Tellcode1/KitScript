@@ -1,5 +1,5 @@
 fn main() {
-  let args = sys::get_command_line_args();
+  let args = sys::get_cmd_args();
   if (len(args) < 2)
   {
     println("Expected expression");

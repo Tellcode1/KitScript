@@ -140,6 +140,16 @@ fn main() {
    let replaced = str::replace(s, " COUGH ", " ");
    assert (replaced == "I need to add dynamic compilation and execution support to the language");
 
+   assert "I added dynamic execution" == "I added dynamic execution";
+   assert [] != false;
+   assert "Hello" != "hello";
+   assert type_of("[]") == type::STRING;
+   assert type_of([]) == type::LIST;
+   assert type_of(nested_struct) == type::STRUCT;
+   assert 0 != null; // They're different types. NULL should only be equal to NULL.
+   assert [] != "";
+   println(type_of(assert));
+
    if (!error) {
       io::println(io::STDERR, "Successful! No errors");
    } else {

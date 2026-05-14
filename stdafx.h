@@ -126,7 +126,7 @@ e_hash(const void* data, size_t size)
 static inline ATTR_NODISCARD void*
 e_xalloc(size_t nmembers, size_t size)
 {
-  void* p;
+  void* p = NULL;
   while (true) {
     p = calloc(nmembers, size);
     if (p) break;
@@ -158,11 +158,11 @@ e_strlcat(char* d, const char* s, size_t dsize)
 {
   size_t dl = strlen(d);
   size_t sl = strlen(s);
-  size_t i;
+  size_t i  = 0;
 
   if (dsize <= dl) { return dsize + sl; }
 
-  for (i = 0; i < sl && (dl + i) < dsize - 1; i++) { d[dl + i] = s[i]; }
+  for (; i < sl && (dl + i) < dsize - 1; i++) { d[dl + i] = s[i]; }
   d[dl + i] = 0;
 
   return dl + sl;

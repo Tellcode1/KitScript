@@ -39,8 +39,6 @@ e_stackemu_init(e_stackemu* emu)
 void
 e_stackemu_free(e_stackemu* emu)
 {
-  e_stackemu_pop_frame(emu);
-
   free(emu->vars);
   free(emu->frame_var_starts);
   memset(emu, 0, sizeof *emu);
