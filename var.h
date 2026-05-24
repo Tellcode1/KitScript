@@ -139,6 +139,13 @@ void e_var_free(e_var* var);
  */
 int evector_zero_extend(const e_var* v, e_vec4 out);
 
+/**
+ * Like evector_zero_extent, but with support for casting
+ * integral types to vec4s.
+ * For use to simplify mathematical builtins
+ */
+int e_create_vec4(const e_var* v, e_vec4 out);
+
 e_var evector_length(const e_var* v);
 
 static inline const char*

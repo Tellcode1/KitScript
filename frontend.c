@@ -156,7 +156,7 @@ main(int argc, char* argv[])
 
     if (verbose) fprintf(stderr, "Opening %s: ", in);
 
-    FILE* f = NULL;
+    f = NULL;
 
     if (strcmp(in, "-") == 0) {
       f = stdin;
@@ -218,12 +218,12 @@ main(int argc, char* argv[])
 
     if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
     e_parser_free(&parser);
-    if (f && f != stdin) fclose(f);
+    if (f) fclose(f);
     continue;
   ERR:
     if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
     e_parser_free(&parser);
-    if (f && f != stdin) fclose(f);
+    if (f) fclose(f);
     goto ret;
   }
 
@@ -258,7 +258,8 @@ main(int argc, char* argv[])
     }
     e_file_write(&compiled, f);
     if (verbose) fprintf(stderr, "Wrote compilation result to: %s\n", out);
-
+    fclose(f);
+    f = NULL;
   } else {
     e_file_write(&compiled, stdout);
     if (verbose) fprintf(stderr, "Wrote compilation result to stdout\n");

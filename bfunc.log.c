@@ -12,7 +12,7 @@ gettime(char* buffer, size_t size)
 {
   time_t     now     = time(NULL);
   struct tm* tm_info = localtime(&now);
-  strftime(buffer, size, "%d %b/%Y @ %H:%M:%S", tm_info);
+  strftime(buffer, size, "%H:%M:%S", tm_info);
 }
 
 e_var

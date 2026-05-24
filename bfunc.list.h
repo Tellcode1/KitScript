@@ -40,6 +40,8 @@ e_var eb_list_insert(e_var* args, u32 nargs); // Replaces value if it exists!
 // find(list, value) => -1 if non existent
 e_var eb_list_find(e_var* args, u32 nargs);  // Returns index, -1 if it doesn't exist.
 e_var eb_list_rfind(e_var* args, u32 nargs); // Returns index, -1 if it doesn't exist.
+// exists(list, val) => false if not in list
+e_var eb_list_exists(e_var* args, u32 nargs); // Returns if element is in list
 // reserve(list, elements_to_reserve)
 e_var eb_list_reserve(e_var* args, u32 nargs); // number of new variables to reserve
 // resize(list, new_size)

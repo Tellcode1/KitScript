@@ -28,7 +28,6 @@
 #include "bfunc.h"
 #include "cast.h"
 #include "cc.h"
-#include "fn.h"
 #include "list.h"
 #include "map.h"
 #include "mathstrucs.h"
@@ -376,7 +375,8 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_MK_STRUCT: {
         const ecc_struct_information* lookup = NULL;
         for (u32 i = 0; i < info->nstructs; i++) {
-          if (ins.v.mk_struct == info->structs[i].name_hash) {
+          const char* nam = info->structs[i].name;
+          if (ins.v.mk_struct == e_hash(nam, strlen(nam))) {
             lookup = &info->structs[i];
             break;
           }
@@ -392,6 +392,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         };
         if (!st.val.struc) return -1;
 
+        E_VAR_AS_STRUCT(&st)->name          = lookup->name; // RONLY
         E_VAR_AS_STRUCT(&st)->member_hashes = (u32*)e_xalloc(lookup->fields_count, sizeof(u32));
         E_VAR_AS_STRUCT(&st)->member_names  = (const char**)e_xalloc(lookup->fields_count, sizeof(char*));
         E_VAR_AS_STRUCT(&st)->members       = (e_var*)e_xalloc(lookup->fields_count, sizeof(e_var));
@@ -562,7 +563,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_NOT:
       case E_OPCODE_BNOT: {
         // Provide an empty variable for the LHS
-        e_var r = operate((e_var){ 0 }, *e_stack_top(info->stack), ins.opcode);
+        e_var r = operate(E_NULLVAR, *e_stack_top(info->stack), ins.opcode);
 
         e_stack_pop(info->stack); // remove RHS
         TRY_V(e_stack_push(info->stack, &r));

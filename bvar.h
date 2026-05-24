@@ -84,6 +84,7 @@ static const e_builtin_var eb_vars[] = {
 
   { .name = "float::MAX", .type = E_VARTYPE_FLOAT, .value = { .f = DBL_MAX } },
   { .name = "float::MIN", .type = E_VARTYPE_FLOAT, .value = { .f = DBL_MIN } },
+  { .name = "float::EPSILON", .type = E_VARTYPE_FLOAT, .value = { .f = DBL_EPSILON } },
 
   { .name = "vec2::ZERO", .type = E_VARTYPE_VEC2, .value = { .vec2 = { 0.0, 0.0 } } },
   { .name = "vec2::ONE", .type = E_VARTYPE_VEC2, .value = { .vec2 = { 1.0, 1.0 } } },

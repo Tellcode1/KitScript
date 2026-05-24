@@ -258,13 +258,17 @@ e_var_print(const struct e_var* v, FILE* f)
       break;
     }
     case E_VARTYPE_STRUCT: {
+      fputc('<', f);
+      fputs(E_VAR_AS_STRUCT(v)->name, f);
+      fputc('>', f);
+
       fputc('{', f);
       for (u32 i = 0; i < E_VAR_AS_STRUCT(v)->member_count; i++) {
         const e_var* elem        = &E_VAR_AS_STRUCT(v)->members[i];
         const char*  member_name = E_VAR_AS_STRUCT(v)->member_names[i];
 
         fputs(member_name, f);
-        fputs(":", f);
+        fputs("=", f);
 
         if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
         e_var_print(elem, f);

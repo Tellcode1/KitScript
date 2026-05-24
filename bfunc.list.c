@@ -116,6 +116,22 @@ eb_list_rfind(e_var* args, u32 nargs)
 }
 
 e_var
+eb_list_exists(e_var* args, u32 nargs)
+{
+  e_list* l      = E_VAR_AS_LIST(&args[0]);
+  e_var*  search = &args[1];
+
+  bool exists = false;
+  for (u32 i = 0; i < l->size; i++) {
+    if (e_var_equal(search, &l->vars[i])) {
+      exists = true;
+      break;
+    }
+  }
+  return (e_var){ .type = E_VARTYPE_BOOL, .val.b = exists };
+}
+
+e_var
 eb_list_len(e_var* args, u32 nargs)
 {
   (void)nargs;

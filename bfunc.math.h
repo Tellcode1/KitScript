@@ -68,7 +68,15 @@ static inline e_var eb_rad2deg(e_var*args, u32 nargs) { (void)nargs; return (e_v
 static inline e_var eb_min(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = fmin(e_cast_to_float(&args[0]), e_cast_to_float(&args[1])) }}; }
 static inline e_var eb_max(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = fmax(e_cast_to_float(&args[0]), e_cast_to_float(&args[1])) }}; }
 static inline e_var eb_clamp(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = ex_clamp(e_cast_to_float(&args[0]), e_cast_to_float(&args[1]), e_cast_to_float(&args[2])) }}; }
-static inline e_var eb_lerp(e_var*args, u32 nargs) { (void)nargs; return (e_var){.type = E_VARTYPE_FLOAT, .val = { .f = ex_lerp(e_cast_to_float(&args[0]), e_cast_to_float(&args[1]), e_cast_to_float(&args[2])) }}; }
 // clang-format on
+
+/* constructors */
+e_var eb_vec2(e_var* args, u32 nargs);
+e_var eb_vec3(e_var* args, u32 nargs);
+e_var eb_vec4(e_var* args, u32 nargs);
+e_var eb_mat3(e_var* args, u32 nargs);
+e_var eb_mat4(e_var* args, u32 nargs);
+e_var eb_smoothstep(e_var* args, u32 nargs);
+e_var eb_lerp(e_var* args, u32 nargs);
 
 #endif // E_MATH_BUILTIN_FUNCTIONS_H

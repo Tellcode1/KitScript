@@ -114,15 +114,6 @@ eb_var_dup(e_var* args, u32 nargs)
   return v;
 }
 
-e_var eb_vec2(e_var* args, u32 nargs);
-e_var eb_vec3(e_var* args, u32 nargs);
-e_var eb_vec4(e_var* args, u32 nargs);
-e_var eb_vec2_zero(e_var* args, u32 nargs);
-e_var eb_vec3_zero(e_var* args, u32 nargs);
-e_var eb_vec4_zero(e_var* args, u32 nargs);
-e_var eb_mat3(e_var* args, u32 nargs);
-e_var eb_mat4(e_var* args, u32 nargs);
-
 e_var eb_rand_seed(e_var* args, u32 nargs);
 e_var eb_rand_int(e_var* args, u32 nargs);
 e_var eb_rand_range(e_var* args, u32 nargs);
@@ -244,6 +235,8 @@ static const e_builtin_func eb_funcs[] = {
   { "math::min", "Smallest between two given inputs", "fn math::min(x,y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_min },
   { "math::max", "Largest between two given inputs", "fn math::max(x,y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_max },
   { "math::clamp", "Largest between two given inputs", "fn math::clamp(x, min, max) -> float", E_VARTYPE_FLOAT, 3, 3, eb_clamp },
+  { "math::lerp", "Linearly interpolate between two integral values", "fn math::lerp(a, b, t) -> int|float|char|bool", E_VARTYPE_FLOAT, 3, 3, eb_lerp },
+  { "math::smoothstep", "Smoothstep between two integral values", "fn math::smoothstep(a, b, t) -> int|float|char|bool", E_VARTYPE_FLOAT, 3, 3, eb_smoothstep },
 
   { "io::open", "Open a file. null on error. File descriptor (integer) on success.", "fn io::open( path:string, mode:string ) -> fd", E_VARTYPE_INT, 2, 2, eb_io_open },
   { "io::close", "Close a file.", "fn io::close( fd ) -> null", E_VARTYPE_INT, 1, 1, eb_io_close },
@@ -285,6 +278,7 @@ static const e_builtin_func eb_funcs[] = {
   { "list::insert", "Insert an element into the given index in the list", "fn list::insert(list, index : int) -> null", E_ALL_TYPES, 3, 3, eb_list_insert },
   { "list::find", "Find an element in the list. -1 if nonexistent.", "fn list::find(list, to_find : var) -> int", E_ALL_TYPES, 2, 2, eb_list_find },
   { "list::rfind", "Find an element in the list, starting the search from the back of the list. -1 if nonexistent.", "fn list::rfind(list, to_find : var) -> int", E_ALL_TYPES, 2, 2, eb_list_rfind },
+  { "list::exists", "Check if an element exists in the list", "fn list::exists(list, to_find : var) -> bool", E_ALL_TYPES, 2, 2, eb_list_exists },
   { "list::reserve", "Reserve capacity for n elements.", "fn list::reserve(list, elems_to_reserve:int) -> null", E_VARTYPE_LIST | E_VARTYPE_INT, 2, 2, eb_list_reserve },
   { "list::resize", "Resize the list to n elements, truncating or adding new if necessary.", "fn list::resize(list, new_size:int) -> null", E_VARTYPE_LIST | E_VARTYPE_INT, 2, 2, eb_list_resize },
   { "list::len", "Get number of elements in list.", "fn list::len(list) -> int", E_VARTYPE_LIST, 1, 1, eb_list_len },
@@ -298,8 +292,7 @@ static const e_builtin_func eb_funcs[] = {
  
   // We dispatch to the correct length inside the function. Having each individual function for each vector type is bloat.
 #define X(d)\
-  { "vec"#d"::zero", "Create an empty vec"#d" (0 initialized)", "fn vec"#d"::zero() -> vec"#d, 0, 0, 0, eb_vec##d##_zero}, \
-  { "vec"#d"::norm", "Get the normalized vector", "fn vec"#d"::norm(vec) -> vec2|null", E_VARTYPE_VEC##d, 1, 1, eb_vec_norm },\
+  { "vec"#d"::norm", "Get the normalized vector", "fn vec"#d"::norm(vec) -> vec"#d"|null", E_VARTYPE_VEC##d, 1, 1, eb_vec_norm },\
   { "vec"#d"::len", "Get the length (magnitude) of a vector", "fn vec"#d"::len(vec) -> float|null", E_VARTYPE_VEC##d, 1, 1, eb_vec_len },\
   { "vec"#d"::len2", "Get the squared length (magnitude) of a vector", "fn"#d" vec::len2(vec) -> float|null", E_VARTYPE_VEC##d, 1, 1, eb_vec_len2 },\
   { "vec"#d"::dist", "Get (euclidean) distance between two vectors", "fn vec::"#d"dist(v1,v2) -> float|null", E_VARTYPE_VEC##d, 2, 2, eb_vec_dist },\
@@ -310,7 +303,7 @@ static const e_builtin_func eb_funcs[] = {
   X(3)
   X(4)
 #undef X
-  
+
   { "vec3::zx", "Zero extend given vector up to a vec3. If input is vec4, truncates 4th dimension", "fn vec3::zx(vec) -> vec3", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec3_zx },
   { "vec4::zx", "Zero extend given vector up to a vec4.", "fn vec4::zx(vec) -> vec4", E_VARTYPE_VEC2|E_VARTYPE_VEC3|E_VARTYPE_VEC4, 1, 1, eb_vec4_zx },
   { "vec3::cross", "Get the cross product of two vector3s.", "fn vec3::cross(v1,v2) -> vec3", E_VARTYPE_VEC3, 2, 2, eb_vec3_cross },

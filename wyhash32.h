@@ -14,7 +14,7 @@
 static inline unsigned
 wyinternals_wyr32(const uint8_t* p)
 {
-  unsigned v;
+  unsigned v = 0;
   memcpy(&v, p, 4);
   return v;
 }

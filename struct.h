@@ -31,6 +31,7 @@ struct e_var;
 struct e_struct_member_pair; // var.h, need e_var defined
 
 typedef struct e_struct {
+  const char*   name; // owned by file
   struct e_var* members;
   u32*          member_hashes; // allocated free
   const char**  member_names;  // array allocated, free (individuals from literal table)

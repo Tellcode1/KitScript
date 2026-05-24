@@ -149,6 +149,42 @@ fn main() {
    assert 0 != null; // They're different types. NULL should only be equal to NULL.
    assert [] != "";
 
+   const source_file = str::cat(
+   "fn main() {",
+      "let x = 0xDEADBEEF;",
+      "x = -0xDEADBEEF;",
+      "x = 0xDEADBEEF;",
+      "return x;",
+   "}"
+   );
+   let exec_info = rt::exec_info(
+      /* source_code */ source_file,
+      /* entry_point */ "main",
+      /* optimization_level */ 3,
+      /* arguments */ [],
+      /* command_line_arguments */ [],
+   );
+   let r = rt::compile_and_exec(exec_info);
+   if (r != 0xDEADBEEF) {
+      io::println(io::STDERR, "JIT compilation failed... Expected 0xDEADBEEF, got:  ", r);
+      error = true;
+   }
+
+   let a = 0.0;
+   let b = 1.0;
+   let t = 0.5;
+   if (math::lerp(a, b, t) != 0.5) {
+      io::println(io::STDERR, "lerp returned invalid value");
+      error = true;
+   }
+
+   a = vec2::ZERO;
+   b = vec2::ONE;
+   if (math::lerp(a, b, t) != (vec2::ONE * 0.5)) {
+      io::println(io::STDERR, "lerp (vector) returned invalid value");
+      error = true;
+   }
+
    if (!error) {
       io::println(io::STDERR, "Successful! No errors");
    } else {

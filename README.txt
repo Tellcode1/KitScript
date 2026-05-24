@@ -128,7 +128,7 @@ Literals : e_var[nLiterals]{
 }
 
 nFunctions : u32
-Functions = e_function[]{
+Functions = ecc_function[]{
   code_size : u32
   nargs : u32
   name_hash : u32

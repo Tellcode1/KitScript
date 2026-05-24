@@ -23,7 +23,6 @@
  */
 
 #include "cc.h"
-#include "fn.h"
 #include "rwhelp.h"
 #include "stdafx.h"
 #include "var.h"
@@ -175,7 +174,7 @@ main(int argc, char** argv)
 
   e_print_instruction_stream(&r, (const u8*)r.instructions, r.instructions_count, 0);
   for (u32 i = 0; i < r.functions_count; i++) {
-    const e_function* func = &r.functions[i];
+    const ecc_function* func = &r.functions[i];
     printf("[%s|%u](%u):\n", lookup(&r, func->name_hash), func->name_hash, func->nargs);
     e_print_instruction_stream(&r, (const u8*)func->code, func->code_size, 4);
   }
@@ -183,7 +182,7 @@ main(int argc, char** argv)
   printf("\nstructures:\n");
   for (u32 i = 0; i < r.structs_count; i++) {
     const ecc_struct_information* info = &r.structs[i];
-    printf("[%s/%u] = {", lookup(&r, info->name_hash), info->name_hash);
+    printf("[%s] = {", info->name);
     for (u32 j = 0; j < info->fields_count; j++) {
       printf("%s/%u", info->field_names[j], info->field_hashes[j]);
       if (j != info->fields_count - 1) { printf(", "); }

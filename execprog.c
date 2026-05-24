@@ -26,7 +26,6 @@
 #include "bfunc.time.h"
 #include "cc.h"
 #include "exec.h"
-#include "fn.h"
 #include "perr.h"
 #include "pool.h"
 #include "rwhelp.h"
@@ -48,7 +47,7 @@
   } while (0)
 
 static inline int
-find_func(const char* name, u32 nfuncs, const e_function* funcs, e_function* out)
+find_func(const char* name, u32 nfuncs, const ecc_function* funcs, ecc_function* out)
 {
   u32 hash = e_hash(name, strlen(name));
   for (u32 i = 0; i < nfuncs; i++) {
@@ -60,7 +59,7 @@ find_func(const char* name, u32 nfuncs, const e_function* funcs, e_function* out
   return -1;
 }
 
-static const char* const help = "[-e/r] [--entry ENTRYPOINT] <FILE/->\n"
+static const char* const help = "eexec: [-e/r] [--entry ENTRYPOINT] <FILE/->\n"
                                 "The following options can be used:\n"
                                 "-e/error Interpret integral return values from the script as error, and exit with the error code\n"
                                 "-r/return Print return value\n"
@@ -142,7 +141,7 @@ main(int argc, char* argv[])
     goto RET;
   }
 
-  e_function entry_point_func;
+  ecc_function entry_point_func;
   e = find_func(entry_point, r.functions_count, r.functions, &entry_point_func);
   if (e) {
     print_err("File does not have the entry point '%s'\n", entry_point);

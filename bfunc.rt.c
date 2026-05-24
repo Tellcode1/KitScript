@@ -2,10 +2,8 @@
 
 #include "arena.h"
 #include "ast.h"
-#include "cc.h"
 #include "cerr.h"
 #include "exec.h"
-#include "fn.h"
 #include "list.h"
 #include "perr.h"
 #include "stack.h"
@@ -16,7 +14,7 @@
 #include "var.h"
 
 static inline int
-find_func(const char* name, const e_compilation_result* r, e_function* out)
+find_func(const char* name, const e_compilation_result* r, ecc_function* out)
 {
   u32 hash = e_hash(name, strlen(name));
   for (u32 i = 0; i < r->functions_count; i++) {
@@ -116,7 +114,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
     goto RET;
   }
 
-  e_function entry_func = { 0 };
+  ecc_function entry_func = { 0 };
   if (find_func(entry_point, &compiled, &entry_func)) {
     e_xerror("esl::exec: Entry point not in code\n");
     goto RET;

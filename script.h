@@ -27,7 +27,6 @@
 
 #include "bfunc.h"
 #include "cc.h"
-#include "fn.h"
 #include "stack.h"
 #include "stdafx.h"
 #include "var.h"

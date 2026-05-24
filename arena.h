@@ -36,7 +36,7 @@
  * Minimum size of memory block that is allocated.
  */
 #ifndef E_PAGE_SIZE
-#  define E_PAGE_SIZE (64ULL * 1024ULL)
+#  define E_PAGE_SIZE (8ULL * 1024ULL)
 #endif
 
 /**

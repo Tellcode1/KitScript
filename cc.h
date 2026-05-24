@@ -29,7 +29,6 @@
 #include "bstructs.h"
 #include "bvar.h"
 #include "cerr.h"
-#include "fn.h"
 #include "stdafx.h"
 #include "var.h"
 
@@ -129,7 +128,7 @@ typedef struct ecc_struct_information {
   u32*   field_hashes;
   u32    fields_count;
   u32    field_capacity;
-  u32    name_hash;
+  char*  name; // Arena allocated.
 } ecc_struct_information;
 
 /**
@@ -168,13 +167,24 @@ typedef struct ecc_builtin_variables_table {
 } ecc_builtin_variables_table;
 
 /**
+ * Compiled function structure.
+ */
+typedef struct ecc_function {
+  u32  name_hash;
+  u32  nargs;
+  u32  code_size;
+  u8*  code;
+  u32* arg_slots; /* The ID of the arguments, in order. */
+} ecc_function;
+
+/**
  * All functions in the resulting binary
  * Shared across all forks of a compiler.
  */
 typedef struct ecc_function_table {
-  e_function* functions;
-  u32         functions_count;
-  u32         functions_capacity;
+  ecc_function* functions;
+  u32           functions_count;
+  u32           functions_capacity;
 } ecc_function_table;
 
 /**
@@ -293,7 +303,7 @@ typedef struct e_compilation_result {
 
   e_var*                  literals;        // Array allocated by struct, don't free inviduals.
   u32*                    literals_hashes; // Array allocated by struct. Free after use.
-  e_function*             functions;       // Array allocated by struct. Free after use.
+  ecc_function*           functions;       // Array allocated by struct. Free after use.
   u8*                     instructions;    // Array allocated by struct. Free after use.
   ecc_struct_information* structs;         // Array (and arrays inside) allocated by struct. Free after use.
 

@@ -3,7 +3,6 @@
 #include "bc.h"
 #include "bvar.h"
 #include "exec.h"
-#include "fn.h"
 #include "rwhelp.h"
 #include "stackemu.h"
 
@@ -166,7 +165,7 @@ e_validate(const struct e_exec_info* info, FILE* f)
   if (e) goto RET;
 
   for (u32 i = 0; i < info->nfuncs; i++) {
-    const e_function* fn = &info->funcs[i];
+    const ecc_function* fn = &info->funcs[i];
 
     e = validate_stream(fn->code, fn->code_size, fn->arg_slots, fn->nargs, &emu, info, f);
     if (e) { goto RET; }

@@ -3,6 +3,8 @@
 #include "rwhelp.h"
 #include "stdafx.h"
 
+#include <string.h>
+
 e_file_read_error
 e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
 {
@@ -86,7 +88,16 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
 
   for (u32 i = 0; i < r->structs_count; i++) {
     ecc_struct_information* st = &r->structs[i];
-    if (fread(&st->name_hash, sizeof(u32), 1, f) != 1) goto ERR;
+
+    st->name = (char*)alloc;
+
+    u32 name_len = 0;
+    if (fread(&name_len, sizeof(u32), 1, f) != 1) goto ERR;
+    alloc += name_len + 1;
+
+    if (fread(st->name, name_len, 1, f) != 1) goto ERR;
+    st->name[name_len] = 0;
+
     if (fread(&st->fields_count, sizeof(u32), 1, f) != 1) goto ERR;
 
     alloc            = e_align_ptr(alloc, 4);
@@ -115,11 +126,11 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
   if (fread(&r->functions_count, sizeof(r->functions_count), 1, f) != 1) goto ERR;
 
   alloc        = e_align_ptr(alloc, 8);
-  r->functions = (e_function*)(alloc);
-  alloc += sizeof(e_function) * (r->functions_count);
+  r->functions = (ecc_function*)(alloc);
+  alloc += sizeof(ecc_function) * (r->functions_count);
 
   for (u32 i = 0; i < r->functions_count; i++) {
-    e_function func = { 0 };
+    ecc_function func = { 0 };
     if (fread(&func.code_size, sizeof(func.code_size), 1, f) != 1) goto ERR;
     if (fread(&func.nargs, sizeof(func.nargs), 1, f) != 1) goto ERR;
     if (fread(&func.name_hash, sizeof(func.name_hash), 1, f) != 1) goto ERR;
@@ -214,7 +225,8 @@ e_file_bytes_required(const e_compilation_result* r)
   size += sizeof(ecc_struct_information) * r->structs_count;
   for (u32 i = 0; i < r->structs_count; i++) {
     u32 fields_count = r->structs[i].fields_count;
-    size             = e_align_size(size, 4);
+    size += strlen(r->structs[i].name) + 1; // NULL term
+    size = e_align_size(size, 4);
     size += fields_count * sizeof(u32);
     size = e_align_size(size, 8);
     size += fields_count * sizeof(char*);
@@ -226,9 +238,9 @@ e_file_bytes_required(const e_compilation_result* r)
 
   // functions array
   size = e_align_size(size, 8);
-  size += sizeof(e_function) * r->functions_count;
+  size += sizeof(ecc_function) * r->functions_count;
   for (u32 i = 0; i < r->functions_count; i++) {
-    const e_function* fn = &r->functions[i];
+    const ecc_function* fn = &r->functions[i];
 
     if (fn->nargs > 0) {
       size = e_align_size(size, 8);
@@ -294,7 +306,11 @@ e_file_write(const e_compilation_result* r, FILE* f)
   fwrite(&r->structs_count, sizeof(u32), 1, f);
   for (u32 i = 0; i < r->structs_count; i++) {
     ecc_struct_information* st = &r->structs[i];
-    fwrite(&st->name_hash, sizeof(u32), 1, f);
+
+    u32 name_len = strlen(st->name);
+    fwrite(&name_len, sizeof(u32), 1, f);
+    fwrite(st->name, name_len, 1, f);
+
     fwrite(&st->fields_count, sizeof(u32), 1, f);
     fwrite(st->field_hashes, sizeof(u32), st->fields_count, f);
     for (u32 j = 0; j < st->fields_count; j++) {
@@ -306,7 +322,7 @@ e_file_write(const e_compilation_result* r, FILE* f)
 
   fwrite(&r->functions_count, sizeof(r->functions_count), 1, f);
   for (u32 i = 0; i < r->functions_count; i++) {
-    const e_function* fn = &r->functions[i];
+    const ecc_function* fn = &r->functions[i];
     fwrite(&fn->code_size, sizeof(fn->code_size), 1, f);
     fwrite(&fn->nargs, sizeof(fn->nargs), 1, f);
     fwrite(&fn->name_hash, sizeof(fn->name_hash), 1, f);
