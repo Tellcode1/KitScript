@@ -2,6 +2,7 @@ CC ?= cc
 AR ?= ar
 CFLAGS ?= -std=c99 -g -Wall -Wpedantic -fsanitize=address,undefined
 LDFLAGS ?= -g -lm -fsanitize=address,undefined
+PREFIX?=/usr/bin/
 
 SRC_DIR=.
 BUILD_DIR?=build
@@ -55,3 +56,7 @@ $(BUILD_DIR)/%.eb: %.e $(BUILD_DIR)/ec | $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+install: $(BUILD_DIR)/ec $(BUILD_DIR)/eexec
+	ln -sf -T $(realpath $(BUILD_DIR)/ec) $(PREFIX)/ec
+	ln -sf -T $(realpath $(BUILD_DIR)/eexec) $(PREFIX)/eexec

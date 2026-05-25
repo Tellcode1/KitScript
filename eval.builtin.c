@@ -83,7 +83,7 @@ is_literal_value(const e_ast* ast, int node)
 }
 
 static inline int
-fold(e_ast* ast, int node)
+recurse(e_ast* ast, int node)
 {
   int e = 0;
 
@@ -93,10 +93,10 @@ fold(e_ast* ast, int node)
       int l = nodep->binaryop.left;
       int r = nodep->binaryop.right;
 
-      e = fold(ast, l);
+      e = recurse(ast, l);
       if (e) return e;
 
-      e = fold(ast, r);
+      e = recurse(ast, r);
       if (e) return e;
 
       if (!is_literal_value(ast, l) || !is_literal_value(ast, r)) return 0;
@@ -119,21 +119,21 @@ fold(e_ast* ast, int node)
 
     case E_AST_NODE_ROOT: {
       for (u32 i = 0; i < nodep->root.nstmts; i++) {
-        e = fold(ast, nodep->root.stmts[i]);
+        e = recurse(ast, nodep->root.stmts[i]);
         if (e) return e;
       }
       return 0;
     }
     case E_AST_NODE_STATEMENT_LIST: {
       for (u32 i = 0; i < nodep->stmts.nstmts; i++) {
-        e = fold(ast, nodep->stmts.stmts[i]);
+        e = recurse(ast, nodep->stmts.stmts[i]);
         if (e) return e;
       }
       return 0;
     }
     case E_AST_NODE_DEFER: {
       for (u32 i = 0; i < nodep->defer.nstmts; i++) {
-        e = fold(ast, nodep->defer.stmts[i]);
+        e = recurse(ast, nodep->defer.stmts[i]);
         if (e) return e;
       }
       return 0;
@@ -141,7 +141,7 @@ fold(e_ast* ast, int node)
 
     case E_AST_NODE_FUNCTION_DEFINITION: {
       for (u32 i = 0; i < nodep->func.nstmts; i++) {
-        e = fold(ast, nodep->func.stmts[i]);
+        e = recurse(ast, nodep->func.stmts[i]);
         if (e) return e;
       }
       /* Can not optimize arguments in function definition. CALL should do that. */
@@ -150,7 +150,7 @@ fold(e_ast* ast, int node)
 
     case E_AST_NODE_NAMESPACE_DECL: {
       for (u32 i = 0; i < nodep->namespace_decl.nstmts; i++) {
-        e = fold(ast, nodep->namespace_decl.stmts[i]);
+        e = recurse(ast, nodep->namespace_decl.stmts[i]);
         if (e) return e;
       }
       return 0;
@@ -158,7 +158,7 @@ fold(e_ast* ast, int node)
 
     case E_AST_NODE_CALL: {
       for (u32 i = 0; i < nodep->call.nargs; i++) {
-        e = fold(ast, nodep->call.args[i]);
+        e = recurse(ast, nodep->call.args[i]);
         if (e) return e;
       }
       return 0;
@@ -166,57 +166,57 @@ fold(e_ast* ast, int node)
 
     case E_AST_NODE_VARIABLE_DECL: {
       if (nodep->let.initializer >= 0) {
-        e = fold(ast, nodep->let.initializer);
+        e = recurse(ast, nodep->let.initializer);
         if (e) return e;
       }
       return 0;
     }
 
     case E_AST_NODE_ASSIGN: {
-      e = fold(ast, nodep->assign.left);
+      e = recurse(ast, nodep->assign.left);
       if (e) return e;
-      e = fold(ast, nodep->assign.right);
+      e = recurse(ast, nodep->assign.right);
       return e;
     }
 
     case E_AST_NODE_MEMBER_ASSIGN: {
-      e = fold(ast, nodep->member_assign.left);
+      e = recurse(ast, nodep->member_assign.left);
       if (e) return e;
-      e = fold(ast, nodep->member_assign.value);
+      e = recurse(ast, nodep->member_assign.value);
       return e;
     }
 
     case E_AST_NODE_INDEX: {
-      e = fold(ast, nodep->index.index);
+      e = recurse(ast, nodep->index.index);
       return 0;
     }
 
     case E_AST_NODE_INDEX_ASSIGN: {
-      e = fold(ast, nodep->index_assign.index);
-      e = fold(ast, nodep->index_assign.value);
+      e = recurse(ast, nodep->index_assign.index);
+      e = recurse(ast, nodep->index_assign.value);
       return 0;
     }
 
     case E_AST_NODE_INDEX_COMPOUND_OP: {
-      e = fold(ast, nodep->index_compound.index);
-      e = fold(ast, nodep->index_compound.value);
+      e = recurse(ast, nodep->index_compound.index);
+      e = recurse(ast, nodep->index_compound.value);
       return 0;
     }
 
     case E_AST_NODE_FOR: {
-      e = fold(ast, nodep->for_stmt.condition);
+      e = recurse(ast, nodep->for_stmt.condition);
       if (e) return e;
 
-      e = fold(ast, nodep->for_stmt.initializers);
+      e = recurse(ast, nodep->for_stmt.initializers);
       if (e) return e;
 
       for (u32 i = 0; i < nodep->for_stmt.nstmts; i++) {
-        e = fold(ast, nodep->for_stmt.stmts[i]);
+        e = recurse(ast, nodep->for_stmt.stmts[i]);
         if (e) return e;
       }
 
       for (u32 i = 0; i < nodep->for_stmt.niterators; i++) {
-        e = fold(ast, nodep->for_stmt.iterators[i]);
+        e = recurse(ast, nodep->for_stmt.iterators[i]);
         if (e) return e;
       }
       return 0;
@@ -224,22 +224,22 @@ fold(e_ast* ast, int node)
 
     case E_AST_NODE_WHILE: {
       for (u32 i = 0; i < nodep->while_stmt.nstmts; i++) {
-        e = fold(ast, nodep->while_stmt.stmts[i]);
+        e = recurse(ast, nodep->while_stmt.stmts[i]);
         if (e) return e;
       }
 
-      e = fold(ast, nodep->while_stmt.condition);
+      e = recurse(ast, nodep->while_stmt.condition);
       if (e) return e;
 
       return 0;
     }
 
     case E_AST_NODE_IF: {
-      e = fold(ast, nodep->if_stmt.condition);
+      e = recurse(ast, nodep->if_stmt.condition);
       if (e) return e;
 
       for (u32 i = 0; i < nodep->if_stmt.nstmts; i++) {
-        e = fold(ast, nodep->if_stmt.body[i]);
+        e = recurse(ast, nodep->if_stmt.body[i]);
         if (e) return e;
       }
 
@@ -247,17 +247,17 @@ fold(e_ast* ast, int node)
       for (u32 i = 0; i < nelse_ifs; i++) {
         struct e_if_stmt* else_if = &nodep->if_stmt.else_ifs[i];
 
-        e = fold(ast, else_if->condition);
+        e = recurse(ast, else_if->condition);
         if (e) return e;
 
         for (u32 j = 0; j < else_if->nstmts; j++) {
-          e = fold(ast, else_if->body[j]);
+          e = recurse(ast, else_if->body[j]);
           if (e) return e;
         }
       }
 
       for (u32 i = 0; i < nodep->if_stmt.nelse_stmts; i++) {
-        e = fold(ast, nodep->if_stmt.else_body[i]);
+        e = recurse(ast, nodep->if_stmt.else_body[i]);
         if (e) return e;
       }
 
@@ -271,8 +271,8 @@ fold(e_ast* ast, int node)
 }
 
 int
-eopt_constant_fold(eopt_stage stage, eopt_data* data)
+eopt_eval_const_builtin(eopt_stage stage, eopt_data* data)
 {
   int root = data->ast->root;
-  return fold(data->ast, root);
+  return recurse(data->ast, root);
 }

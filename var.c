@@ -62,7 +62,6 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
     case E_VARTYPE_NULL:
     default: break;
 
-    case E_VARTYPE_VOID:
     case E_VARTYPE_INT:
     case E_VARTYPE_BOOL:
     case E_VARTYPE_CHAR:
@@ -71,6 +70,7 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
     case E_VARTYPE_VEC4:
     case E_VARTYPE_DESCRIPTOR: /* we don't have enough data to deep copy */
     case E_VARTYPE_FLOAT: dst->val = var->val; break;
+
     case E_VARTYPE_STRING:
       dst->val.s = e_refdobj_pool_acquire(&ge_pool);
       if (!dst->val.s) {
@@ -183,7 +183,6 @@ e_var_free(e_var* var)
   switch (var->type) {
     default:
     case E_VARTYPE_NULL:
-    case E_VARTYPE_VOID:
     case E_VARTYPE_INT:
     case E_VARTYPE_CHAR:
     case E_VARTYPE_DESCRIPTOR:
@@ -238,7 +237,6 @@ e_var_print(const struct e_var* v, FILE* f)
   switch (v->type) {
     default:
     case E_VARTYPE_NULL: fprintf(f, "null"); break;
-    case E_VARTYPE_VOID: fprintf(f, "void"); break;
     case E_VARTYPE_INT: fprintf(f, "%i", v->val.i); break;
     case E_VARTYPE_DESCRIPTOR: fprintf(f, "%p", v->val.descriptor); break;
     case E_VARTYPE_CHAR: fprintf(f, "%c", v->val.c); break;
@@ -347,7 +345,6 @@ e_var_to_string(const struct e_var* v, char* buffer, size_t buffer_size)
   switch (v->type) {
     default:
     case E_VARTYPE_NULL: strncpy(buffer, "null", buffer_size - 1); break;
-    case E_VARTYPE_VOID: strncpy(buffer, "void", buffer_size - 1); break;
     case E_VARTYPE_INT: snprintf(buffer, buffer_size, "%i", v->val.i); break;
     case E_VARTYPE_DESCRIPTOR: snprintf(buffer, buffer_size, "%p", v->val.descriptor); break;
     case E_VARTYPE_CHAR: snprintf(buffer, buffer_size, "%c", v->val.c); break;
@@ -391,7 +388,6 @@ e_var_to_string_size(const struct e_var* v)
   switch (v->type) {
     default:
     case E_VARTYPE_NULL: total += strlen("null"); break;
-    case E_VARTYPE_VOID: total += strlen("void"); break;
     case E_VARTYPE_INT: total += snprintf(nullptr, 0, "%i", v->val.i); break;
     case E_VARTYPE_CHAR: total += snprintf(nullptr, 0, "%c", v->val.c); break;
     case E_VARTYPE_BOOL: return strlen((int)v->val.b ? "true" : "false"); break;
@@ -446,7 +442,6 @@ u32
 e_var_hash(const e_var* var)
 {
   switch (var->type) {
-    case E_VARTYPE_VOID:
     case E_VARTYPE_NULL: return 0;
     case E_VARTYPE_INT: return e_hash(&var->val.i, sizeof(var->val.i));
     case E_VARTYPE_BOOL: return e_hash(&var->val.b, sizeof(bool));
@@ -489,7 +484,6 @@ bool
 e_var_equal(const e_var* a, const e_var* b)
 {
   if (a->type == E_VARTYPE_NULL || b->type == E_VARTYPE_NULL) { return a->type == b->type; }
-  if (a->type == E_VARTYPE_VOID || b->type == E_VARTYPE_VOID) { return a->type == b->type; }
 
   switch (a->type) {
     default: assert(0);

@@ -64,7 +64,6 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
 
         // clang-format off
       case E_VARTYPE_NULL:
-      case E_VARTYPE_VOID:
       case E_VARTYPE_STRUCT: *lit = (e_var){ .type = E_VARTYPE_NULL }; break;
       case E_VARTYPE_INT: if (fread(&lit->val.i, sizeof(lit->val.i), 1, f) != 1) goto ERR; break;
       case E_VARTYPE_BOOL: if (fread(&lit->val.b, sizeof(lit->val.b), 1, f) != 1) goto ERR; break;

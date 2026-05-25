@@ -34,7 +34,7 @@ typedef struct e_function {
   u32  nargs;
   u32  code_size;
   u8*  code;
-  u32* arg_slots; /* The ID of the arguments, in order. */
+  u32* arg_slots; /* The ID of the arguments, in order. Arena allocated. */
 } e_function;
 
 /* Defined in cc.c */

@@ -28,7 +28,6 @@
 #include "ast.h"
 #include "cc.h"
 #include "lex.h"
-#include "opt.h"
 #include "pool.h"
 #include "rwhelp.h"
 #include "stdafx.h"
@@ -42,14 +41,10 @@
 #include <string.h>
 
 static inline char*
-read_file_arena(e_arena* a, const char* path, u64* size)
+read_file_arena(e_arena* a, FILE* f, u64* size)
 {
-  FILE* f        = nullptr;
   char* contents = nullptr;
   long  fsize    = 0;
-
-  f = fopen(path, "rb");
-  if (f == nullptr) return nullptr;
 
   if ((bool)fseek(f, 0, SEEK_END)) goto CLEANUP;
 
@@ -64,18 +59,22 @@ read_file_arena(e_arena* a, const char* path, u64* size)
   if (fread(contents, fsize, 1, f) != 1) { goto CLEANUP; }
   contents[fsize] = 0;
 
-  fclose(f);
-
   return contents;
 
 CLEANUP:
-  if (f != nullptr) fclose(f);
   return nullptr;
 }
+
+#define print_err(...)                                                                                                                               \
+  do {                                                                                                                                               \
+    fputs("[ec] ", stderr);                                                                                                                          \
+    fprintf(stderr, __VA_ARGS__);                                                                                                                    \
+  } while (0)
 
 int
 main(int argc, char* argv[])
 {
+  bool                 verbose            = false;
   bool                 tokenizer_only     = false;
   bool                 ast_only           = false;
   bool                 print_memory_usage = false;
@@ -90,7 +89,7 @@ main(int argc, char* argv[])
   e = e_arena_init(1, &arena);
   if (e) {
     /* TODO Add flag to reducce memory allocations? */
-    fprintf(stderr, "ec: Failed to initialize arena\n");
+    print_err("Failed to initialize arena\n");
     goto ret;
   }
 
@@ -104,6 +103,10 @@ main(int argc, char* argv[])
   const char* out = NULL;
   for (int i = 1; i < argc; i++) {
     const char* opt = argv[i];
+    if (strcmp(opt, "-") == 0) {
+      files[nfiles++] = "-";
+      continue;
+    }
 
     if (*opt == '-') { opt++; }
     if (*opt == '-') { opt++; }
@@ -112,11 +115,13 @@ main(int argc, char* argv[])
       assert(i + 1 < argc);
       out = argv[i + 1];
       i++; // consumed path!
+    } else if (strcmp(opt, "v") == 0 || strcmp(opt, "verbose") == 0) {
+      verbose = true;
     } else if (*opt == 'O') {
       opt++;
       opt_level = *opt - '0';
       if (opt_level < 0 || opt_level > 3) {
-        fprintf(stderr, "Expected optimization level to be between 0 and 3. Assuming 0\n");
+        print_err("Expected optimization level to be between 0 and 3. Assuming 0\n");
         opt_level = 0;
       }
     } else if (strcmp(opt, "tokens") == 0) {
@@ -130,9 +135,14 @@ main(int argc, char* argv[])
     }
   }
 
+  if (nfiles == 0) {
+    print_err("No source files given\n");
+    goto ret;
+  }
+
   e = e_ast_init(&interner, &ast);
   if (e) {
-    fprintf(stderr, "ec: AST initialization failed\n");
+    print_err("AST initialization failed\n");
     goto ret;
   }
 
@@ -144,17 +154,40 @@ main(int argc, char* argv[])
 
     const char* in = files[fi];
 
-    char* contents = read_file_arena(&arena, in, nullptr);
-    if (contents == nullptr) {
-      fprintf(stderr, "ec: Failed to load input file: %s\n", strerror(errno));
+    if (verbose) fprintf(stderr, "Opening %s: ", in);
+
+    FILE* f = NULL;
+
+    if (strcmp(in, "-") == 0) {
+      f = stdin;
+    } else {
+      f = fopen(in, "rb");
+    }
+
+    if (f == nullptr) {
+      if (verbose) fprintf(stderr, "error!\n"); // Follow up the "Opening %s: " message.
+      print_err("Failed to open %s: %s\n", in, strerror(errno));
       goto next;
     }
 
-    e = e_tokenize(contents, in, &interner, &tokens, &ntoks);
-    if (e) {
-      fprintf(stderr, "ec: Failed to tokenize input string\n");
+    if (verbose) fprintf(stderr, "success\n");
+
+    char* contents = read_file_arena(&arena, f, nullptr);
+    if (contents == nullptr) {
+      print_err("Failed to load input file: %s. Next.\n", strerror(errno));
       goto next;
     }
+
+    if (verbose) fprintf(stderr, "Tokenizing %s: ", in);
+
+    e = e_tokenize(contents, in, &interner, &tokens, &ntoks);
+    if (e) {
+      if (verbose) fprintf(stderr, "error!\n"); // Follow up the "Tokenizing %s: " message.
+      print_err("Failed to tokenize input string\n");
+      goto next;
+    }
+
+    if (verbose) fprintf(stderr, "success\n");
 
     if (tokenizer_only) {
       for (u32 i = 0; i < ntoks; i++) {
@@ -167,36 +200,24 @@ main(int argc, char* argv[])
 
     e = e_parser_init(tokens, ntoks, &ast, &parser);
     if (e) {
-      fprintf(stderr, "ec: Parser initialization failed\n");
+      print_err("Parser initialization failed\n");
       goto next;
     }
+
+    if (verbose) fprintf(stderr, "Parsing to AST %s: ", in);
 
     e = e_parse(&parser);
     if (e) {
-      fprintf(stderr, "ec: Parsing failed\n");
+      print_err("Parsing failed\n");
       goto next;
     }
 
-    eopt_data ast_opt_data = { .ast = &ast };
-    for (u32 i = 0; i < E_ARRLEN(eopt_passes); i++) {
-      const eopt_pass* pass = &eopt_passes[i];
-      if (pass->stage == EOPT_STAGE_AST && opt_level >= pass->minimum_opt_level) {
-        e = pass->fp(EOPT_STAGE_AST, &ast_opt_data);
-        if (e) {
-          fprintf(stderr, "ec: Optimization pass failed\n");
-          goto loop_err;
-        }
-      }
-    }
+    if (verbose) fprintf(stderr, "success\n");
 
   next:
     if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
     e_parser_free(&parser);
-    continue;
-  loop_err:
-    if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
-    e_parser_free(&parser);
-    goto ret;
+    if (f && f != stdin) fclose(f);
   }
 
   if (ast_only) {
@@ -212,21 +233,28 @@ main(int argc, char* argv[])
     .opt_level          = opt_level,
   };
 
+  if (verbose) fprintf(stderr, "Compiling AST: ");
+
   e = e_compile(&info, &compiled);
   if (e) {
-    fprintf(stderr, "ec: Compilation failed\n");
+    print_err("Compilation failed\n");
     goto ret;
   }
+
+  if (verbose) fprintf(stderr, "success\n");
 
   if (out) {
     f = fopen(out, "wb");
     if (!f) {
-      perror("Failed to open out file");
+      print_err("Failed to open out file: %s\n", strerror(errno));
       goto ret;
     }
     e_file_write(&compiled, f);
+    if (verbose) fprintf(stderr, "Wrote compilation result to: %s\n", out);
+
   } else {
     e_file_write(&compiled, stdout);
+    if (verbose) fprintf(stderr, "Wrote compilation result to stdout\n");
   }
 
   if (print_memory_usage) {
@@ -243,7 +271,6 @@ ret:
   e_ast_free(&ast);
   e_compilation_result_free(&compiled);
   e_refdobj_pool_free(&ge_pool);
-  if (f) { fclose(f); }
   e_str_interner_free(&interner);
   e_arena_free(&arena);
   return e;

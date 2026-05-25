@@ -37,16 +37,24 @@ e_var eb_rt_compile_and_exec(e_var* args, u32 nargs);
 
 /**
  * Perform lexical analysis on the text using the builtin E lexicalizer.
- * Returned is a list of tokens (See jit::token structure in bstructs.h)
+ * Returned is a list of tokens (See rt::token structure in bstructs.h)
  */
-e_var e_rt_lex(e_var* args, u32 nargs);
+e_var eb_rt_tokenize(e_var* args, u32 nargs);
+
+e_var eb_rt_ast_init(e_var* args, u32 nargs);
+e_var eb_rt_ast_free(e_var* args, u32 nargs);
 
 /**
- * Parse and compile the given list of tokens (from jit::lex).
+ * Parse a token stream into an AST.
+ */
+e_var eb_rt_parse(e_var* args, u32 nargs);
+
+/**
+ * Parse and compile the given list of tokens (from rt::lex).
  * Returned is a list containing the bytecode.
  */
-e_var e_rt_compile(e_var* args, u32 nargs);
+e_var eb_rt_compile(e_var* args, u32 nargs);
 
-e_var e_rt_eval(e_var* args, u32 nargs);
+e_var eb_rt_eval(e_var* args, u32 nargs);
 
 #endif // E_STR_BUILTIN_FUNCTIONS_H

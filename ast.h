@@ -446,7 +446,7 @@ e_ast_is_limiter_exempt(e_ast_node_type t)
 {
   return (
       t == E_AST_NODE_IF || t == E_AST_NODE_WHILE || t == E_AST_NODE_FOR || t == E_AST_NODE_FUNCTION_DEFINITION || t == E_AST_NODE_DEFER
-      || t == E_AST_NODE_NOP);
+      || t == E_AST_NODE_NOP || t == E_AST_NODE_DEFER);
 }
 
 int e_parse(e_parser* p) ATTR_NODISCARD;

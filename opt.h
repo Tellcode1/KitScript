@@ -26,6 +26,7 @@
 #define E_OPTIMIZATION_PASSES_H
 
 #include "stdafx.h"
+#include "var.h"
 
 struct e_token;
 struct e_ast;
@@ -74,6 +75,13 @@ typedef union eopt_data {
   } bytecode_stream;       // EOPT_STAGE_FUNCTION | EOPT_STAGE_BYTECODE_STREAM
 } eopt_data;
 
+typedef struct eopt_var_info {
+  const char* name;
+  e_var       curr_value; // Current value if it could be parsed, E_VARTYPE_NULL if it isn't representible as a constant.
+  u32         depth;      // Stack depth
+  bool        used;
+} eopt_var_info;
+
 // Function that is called for optimization. Value in data can be modified.
 typedef int (*eopt_pass_fn)(eopt_stage stage, eopt_data* data);
 
@@ -94,8 +102,26 @@ typedef struct eopt_pass {
  */
 int eopt_constant_fold(eopt_stage stage, eopt_data* data);
 
+/**
+ * Remove unused variable decleration nodes.
+ * This is quite expensive (have to recursively walk the AST),
+ * and doesn't reduce stack usage by much (No one usually leaves unused variables).
+ */
+int eopt_unused_vars(eopt_stage stage, eopt_data* data);
+
+/**
+ * Call the builtin function at compile time, if possible
+ * and place the evaluated output as a literal.
+ * Very good performance gains, little expense.
+ */
+int eopt_eval_const_builtin(eopt_stage stage, eopt_data* data);
+
+int eopt_var_track(struct e_ast* ast, int root);
+
 static const eopt_pass eopt_passes[] = {
-  { .name = "Constant Folding", .stage = EOPT_STAGE_AST, .minimum_opt_level = 2, .fp = eopt_constant_fold },
+  { .name = "Constant Folding", .stage = EOPT_STAGE_AST, .minimum_opt_level = 1, .fp = eopt_constant_fold },
+  // { .name = "Remove Unused Variables", .stage = EOPT_STAGE_AST, .minimum_opt_level = 2, .fp = eopt_unused_vars },
+  // { .name = "Evaluate Constant Builtin Functions", .stage = EOPT_STAGE_AST, .minimum_opt_level = 1, .fp = eopt_eval_const_builtin },
 };
 
 #endif // E_OPTIMIZATION_PASSES_H

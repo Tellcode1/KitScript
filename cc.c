@@ -32,6 +32,7 @@
 #include "bvar.h"
 #include "cerr.h"
 #include "fn.h"
+#include "opt.h"
 #include "pool.h"
 #include "rwhelp.h"
 #include "stackemu.h"
@@ -1107,12 +1108,9 @@ compile_function_definition(e_compiler* cc, int node)
   e = defer_emit_current_scope(&fork);
   if (e) goto ERR;
 
-  /* Always return void if no other return value was specified */
-  if (cc->info->opt_level < 1) {
-    /* Unneeded. Exhausting a stream is defined behaviour in the interpreter. */
-    e_emit_instruction(&fork, E_OPCODE_RETURN);
-    e_emit_u8(&fork, false);
-  }
+  /* Always need this! */
+  e_emit_instruction(&fork, E_OPCODE_RETURN);
+  e_emit_u8(&fork, false);
 
   defer_pop_scope(&fork);
 
@@ -1369,6 +1367,7 @@ compile_function_call(e_compiler* cc, int node)
       fprintf(stderr, "[%s:%i] Builtin function is declared as: %s : %s\n", __FILE__, __LINE__, func->signature, func->desc);
       return -1;
     }
+
   }
   // Find the function (user defined) and check if the argument count matches
   else {
@@ -2545,6 +2544,16 @@ e_compile(const ecc_info* info, e_compilation_result* result)
 {
   int e = 0;
 
+  /* First of all, call the optimization routines (if requested) */
+  eopt_data ast_opt_data = { .ast = info->ast };
+  for (u32 i = 0; i < E_ARRLEN(eopt_passes); i++) {
+    const eopt_pass* pass = &eopt_passes[i];
+    if (pass->stage == EOPT_STAGE_AST && info->opt_level >= pass->minimum_opt_level) {
+      e = pass->fp(EOPT_STAGE_AST, &ast_opt_data);
+      if (e) { return -1; }
+    }
+  }
+
   ecc_namespace_stack         namespace_stack   = { 0 };
   e_stackemu                  stack             = { 0 };
   ecc_literal_table           lit_table         = { 0 };
@@ -2712,6 +2721,10 @@ ERR: /* Seperate from successful return path. We free everything here, indiscrim
   free((void*)namespace_stack.namespaces);
   free(lit_table.literal_hashes);
   free(lit_table.literals);
+  for (u32 i = 0; i < func_table.functions_count; i++) {
+    // arg_slots is arena allocated
+    free(func_table.functions[i].code);
+  }
   free(func_table.functions);
   for (u32 i = 0; i < label_table.labels_count; i++) free(label_table.labels[i].jumps_target_offsets);
   free(label_table.labels);

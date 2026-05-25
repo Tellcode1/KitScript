@@ -23,6 +23,7 @@
  */
 
 #include "bfunc.h"
+#include "bfunc.time.h"
 #include "cc.h"
 #include "exec.h"
 #include "fn.h"
@@ -35,9 +36,16 @@
 #include "validate.h"
 #include "var.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define print_err(...)                                                                                                                               \
+  do {                                                                                                                                               \
+    fputs("[eexec] ", stderr);                                                                                                                       \
+    fprintf(stderr, __VA_ARGS__);                                                                                                                    \
+  } while (0)
 
 static inline int
 find_func(const char* name, u32 nfuncs, const e_function* funcs, e_function* out)
@@ -52,13 +60,13 @@ find_func(const char* name, u32 nfuncs, const e_function* funcs, e_function* out
   return -1;
 }
 
-const char* help = "eexec: [-e/r] [--entry ENTRYPOINT] <FILE/->\n"
-                   "The following options can be used:\n"
-                   "-e/error Interpret integral return values from the script as error, and exit with the error code\n"
-                   "-r/return Print return value\n"
-                   "-entry [FUNCTION_NAME] Call the specified entry point instead of \'main\'\n"
-                   "-h/help Print this help message and exit\n"
-                   "- If the - switch is used, program will be read from stdin";
+static const char* const help = "[-e/r] [--entry ENTRYPOINT] <FILE/->\n"
+                                "The following options can be used:\n"
+                                "-e/error Interpret integral return values from the script as error, and exit with the error code\n"
+                                "-r/return Print return value\n"
+                                "-entry [FUNCTION_NAME] Call the specified entry point instead of \'main\'\n"
+                                "-h/help Print this help message and exit\n"
+                                "- If the - switch is used, program will be read from stdin";
 
 int
 main(int argc, char* argv[])
@@ -117,33 +125,33 @@ main(int argc, char* argv[])
   } else if (file != NULL) {
     f = fopen(file, "rb");
     if (!f) {
-      perror("eexec: Failed to open file");
+      print_err("Failed to open file: %s\n", strerror(errno));
       e = -1;
       goto RET;
     }
   }
   if (!f) {
-    fprintf(stderr, "eexec: Nothing given to execute\n");
+    print_err("Nothing given to execute\n");
     e = -1;
     goto RET;
   }
 
   e = e_file_load(&r, &root_allocation, f);
   if (e) {
-    fprintf(stderr, "eexec: Failed to parse input file: 0x%x\n", e);
+    print_err("Failed to parse input file: 0x%x\n", e);
     goto RET;
   }
 
   e_function entry_point_func;
   e = find_func(entry_point, r.functions_count, r.functions, &entry_point_func);
   if (e) {
-    fprintf(stderr, "eexec: File does not have the entry point '%s'\n", entry_point);
+    print_err("File does not have the entry point '%s'\n", entry_point);
     goto RET;
   }
 
   /* Maybe add a way to pass integers / strings from the command line as arguments? */
   if (entry_point_func.nargs != 0) {
-    fputs("Entry point takes non zero arguments, can not give any\n", stderr);
+    print_err("Entry point takes non zero arguments, can not give any\n");
     e = -1;
     goto RET;
   }
@@ -183,10 +191,19 @@ main(int argc, char* argv[])
   if (!no_validate) {
     e = e_validate(&info, stderr);
     if (e) {
-      fprintf(stderr, "Validation failed. Bailing out. (--no-validate to skip validation ; not recommended)\n");
+      print_err("Validation failed. Bailing out. (--no-validate to skip validation ; not recommended)\n");
       goto RET;
     }
   }
+
+  /* Initialize PRNG subroutine */
+  e_var time_now    = eb_time_now(NULL, 0);
+  e_var time_as_str = eb_cast_string(&time_now, 1);
+
+  eb_rand_seed(&time_as_str, 1);
+
+  e_var_release(&time_as_str);
+  e_var_release(&time_now);
 
   // e = e_stack_push_frame(&stack);
   // if (e) return e;
@@ -196,7 +213,7 @@ main(int argc, char* argv[])
    */
   e = e_exec(&info, &v);
   if (e) {
-    fprintf(stderr, "Program initialization failed: %s\n", e_ecode_str(e));
+    print_err("Program initialization failed: %s\n", e_ecode_str(e));
     goto RET;
   }
 
@@ -212,7 +229,7 @@ main(int argc, char* argv[])
   /* Execute main function. */
   e = e_exec(&info, &v);
   if (e) {
-    fprintf(stderr, "Entry point execution failed: %s\n", e_ecode_str(e));
+    print_err("Entry point execution failed: %s\n", e_ecode_str(e));
     goto RET;
   }
 

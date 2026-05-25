@@ -62,7 +62,7 @@ typedef struct e_builtin_func {
 
   /**
    * Variable types that are allowed.
-   * Excludes VOID always. You can not pass void as a variable.
+   * Excludes NULL always. You can not pass void as a variable.
    * If a variable does not have a bit set in the mask,
    * The compiler will fail and error out.
    */
@@ -289,10 +289,10 @@ static const e_builtin_func eb_funcs[] = {
   { "list::resize", "Resize the list to n elements, truncating or adding new if necessary.", "fn list::resize(list, new_size:int) -> null", E_VARTYPE_LIST | E_VARTYPE_INT, 2, 2, eb_list_resize },
   { "list::len", "Get number of elements in list.", "fn list::len(list) -> int", E_VARTYPE_LIST, 1, 1, eb_list_len },
 
-  { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_cmd_args() -> list|null", E_VARTYPE_VOID, 0, 0, eb_sys_get_cmd_args },
-  { "sys::get_cwd", "Get the current working directory as a string. null if OS has no such concept (if there even is an OS)", "fn sys::get_cwd() -> string|null", E_VARTYPE_VOID, 0, 0, eb_sys_get_cwd },
-  { "sys::shell", "Execute the command through the system shell. Returns its return code, null if error outside of the command occurs.", "fn sys::shell(str) -> int|null", E_VARTYPE_VOID, 1, 1, eb_sys_shell},
-  { "sys::sleepms", "Sleep for the number of milliseconds given. Actual time slept may be larger.", "fn sys::sleepms(ms : int) -> null", E_VARTYPE_VOID, 1, 1, eb_sys_sleep},
+  { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_cmd_args() -> list|null", E_VARTYPE_NULL, 0, 0, eb_sys_get_cmd_args },
+  { "sys::get_cwd", "Get the current working directory as a string. null if OS has no such concept (if there even is an OS)", "fn sys::get_cwd() -> string|null", E_VARTYPE_NULL, 0, 0, eb_sys_get_cwd },
+  { "sys::shell", "Execute the command through the system shell. Returns its return code, null if error outside of the command occurs.", "fn sys::shell(str) -> int|null", E_VARTYPE_NULL, 1, 1, eb_sys_shell},
+  { "sys::sleepms", "Sleep for the number of milliseconds given. Actual time slept may be larger.", "fn sys::sleepms(ms : int) -> null", E_VARTYPE_NULL, 1, 1, eb_sys_sleep},
   { "sys::getenv", "Get the value of the enivronment variable as a string. NULL if no such env var.", "fn sys::getenv(name : string) -> string|null", E_VARTYPE_STRING, 1, 1, eb_sys_getenv},
   { "sys::setenv", "Set the environment variable to given value, creating if it doesn't exist, overwriting if it does.", "fn sys::setenv(name : string, value : string) -> null", E_VARTYPE_STRING, 1, 1, eb_sys_setenv},
  
@@ -320,7 +320,12 @@ static const e_builtin_func eb_funcs[] = {
   { "time::local", "Get a time::timestamp structure containing current system time", "fn time::local() -> time::timestamp", 0, 0, 0, eb_time_local },
   { "time::utc", "Get a time::timestamp structure containing UTC relative system time", "fn time::utc() -> time::timestamp", 0, 0, 0, eb_time_utc },
 
-  { "jit::compile_and_exec", "Compile and execute the given jit::exec_info. Returns the return value", "fn jit::compile_and_exec(info : jit::exec_info) -> any", E_VARTYPE_STRUCT, 1, 1, eb_rt_compile_and_exec }
+  { "rt::compile_and_exec", "Compile and execute the given rt::exec_info. Returns the return value", "fn rt::compile_and_exec(info : rt::exec_info) -> any", E_VARTYPE_STRUCT, 1, 1, eb_rt_compile_and_exec },
+  { "rt::tokenize", "Tokenize the source file and get a list of rt::token's, null on failure", "fn rt::tokenize(source_file : string) -> []", E_VARTYPE_STRING, 1, 1, eb_rt_tokenize },
+  { "rt::ast::init", "Create an AST, null on failure", "fn rt::ast::init() -> opaque", E_VARTYPE_NULL, 0, 0, eb_rt_ast_init },
+  { "rt::ast::free", "Free an AST", "fn rt::ast::free(ast) -> null", E_VARTYPE_NULL, 1, 1, eb_rt_ast_free },
+  { "rt::parse", "Parse tokens into an AST. 0 on success, null on failure.", "fn rt::parse(ast, token_stream) -> int", E_VARTYPE_LIST, 2, 2, eb_rt_parse },
+  { "rt::compile", "Compile an AST into an instance of rt::compiled_obj, null on failure", "fn rt::compile(info : rt::compile_info) -> rt::compiled_obj", E_VARTYPE_LIST, 1, 1, eb_rt_compile },
 };
 // clang-format on
 

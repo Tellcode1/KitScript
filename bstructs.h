@@ -50,8 +50,16 @@ static const e_builtin_struct eb_structs[] = {
   // mon is 1-12
   // year is 2026 right now
   { .name = "time::timestamp", .fields = (const char*[]){ "sec", "min", "hour", "day", "wday", "yday", "mon", "year" }, .fields_count = 8 },
-  { .name         = "jit::exec_info",
+
+  { .name         = "rt::exec_info",
     .fields       = (const char*[]){ "source_code", "entry_point", "optimization_level", "arguments", "command_line_arguments" },
+    .fields_count = 5 },
+  { .name = "rt::structure", .fields = (const char*[]){ "num_members", "member_names" }, .fields_count = 2 },
+  { .name = "rt::constant", .fields = (const char*[]){ "name", "value" }, .fields_count = 2 },
+  { .name = "rt::operator", .fields = (const char*[]){ "chr", "is_compound" }, .fields_count = 2 }, // Token value
+  { .name = "rt::token", .fields = (const char*[]){ "type", "value" }, .fields_count = 2 },
+  { .name         = "rt::compile_info",
+    .fields       = (const char*[]){ "ast", "entry_point", "optimization_level", "builtin_structures", "builtin_constants" },
     .fields_count = 5 },
 
 };

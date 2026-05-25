@@ -148,7 +148,6 @@ fn main() {
    assert type_of(nested_struct) == type::STRUCT;
    assert 0 != null; // They're different types. NULL should only be equal to NULL.
    assert [] != "";
-   println(type_of(assert));
 
    if (!error) {
       io::println(io::STDERR, "Successful! No errors");

@@ -47,7 +47,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e = e_arena_init(1, &arena);
   if (e) {
-    e_xerror("jit::exec: Failed to initialize arena\n");
+    e_xerror("rt::exec: Failed to initialize arena\n");
     goto RET;
   }
 
@@ -70,35 +70,35 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
   // +2 because we have to expose the ./build/eexec FILE
   // too
   e_argc    = 2 + (int)cmd_arguments->size;
-  e_argv[0] = "<JIT compiler>";
-  e_argv[1] = "<JIT compiled code>";
+  e_argv[0] = "<RT compiler>";
+  e_argv[1] = "<RT compiled code>";
   for (int i = 0; i < cmd_arguments->size; i++) {
     const char* cmd_arg = E_VAR_AS_STRING(&cmd_arguments->vars[i])->s;
     e_argv[2 + i]       = e_arnstrdup(&arena, cmd_arg);
   }
   e_argv[e_argc] = NULL;
 
-  e = e_tokenize(code, "<JIT compiled>", &interner, &tokens, &ntoks);
+  e = e_tokenize(code, "<RT compiled>", &interner, &tokens, &ntoks);
   if (e) {
-    e_xerror("jit::exec: Failed to tokenize source code\n");
+    e_xerror("rt::exec: Failed to tokenize source code\n");
     goto RET;
   }
 
   e = e_ast_init(&interner, &ast);
   if (e) {
-    e_xerror("jit::exec: AST initialization failed\n");
+    e_xerror("rt::exec: AST initialization failed\n");
     goto RET;
   }
 
   e = e_parser_init(tokens, ntoks, &ast, &parser);
   if (e) {
-    e_xerror("jit::exec: AST initialization failed\n");
+    e_xerror("rt::exec: AST initialization failed\n");
     goto RET;
   }
 
   e = e_parse(&parser);
   if (e) {
-    e_xerror("jit::exec: AST parsing failed\n");
+    e_xerror("rt::exec: AST parsing failed\n");
     goto RET;
   }
 
@@ -112,13 +112,13 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e = e_compile(&info, &compiled);
   if (e) {
-    e_xerror("jit::exec: Compilation failed\n");
+    e_xerror("rt::exec: Compilation failed\n");
     goto RET;
   }
 
   e_function entry_func = { 0 };
   if (find_func(entry_point, &compiled, &entry_func)) {
-    e_xerror("jit::exec: Entry point not in code\n");
+    e_xerror("rt::exec: Entry point not in code\n");
     goto RET;
   }
 
@@ -128,7 +128,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e = e_stack_init(init_stack_capacity, init_frame_capacity, init_variable_capacity, &stack);
   if (e) {
-    e_xerror("jit::exec: Failed to initialize stack\n");
+    e_xerror("rt::exec: Failed to initialize stack\n");
     goto RET;
   }
 
@@ -164,7 +164,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   /* Execute main function. */
   err = e_exec(&exec_info, &ret);
-  if (err) { e_xerror("jit::compile_and_exec(): Function returned error: %s\n", e_ecode_str(err)); }
+  if (err) { e_xerror("rt::compile_and_exec(): Function returned error: %s\n", e_ecode_str(err)); }
 
   e_argc = save_argc;
   e_argv = save_argv;
@@ -178,3 +178,23 @@ RET:
   e_stack_free(&stack);
   return ret;
 }
+
+e_var
+eb_rt_tokenize(e_var* args, u32 nargs)
+{ return E_NULLVAR; }
+
+e_var
+eb_rt_ast_init(e_var* args, u32 nargs)
+{ return E_NULLVAR; }
+
+e_var
+eb_rt_ast_free(e_var* args, u32 nargs)
+{ return E_NULLVAR; }
+
+e_var
+eb_rt_parse(e_var* args, u32 nargs)
+{ return E_NULLVAR; }
+
+e_var
+eb_rt_compile(e_var* args, u32 nargs)
+{ return E_NULLVAR; }

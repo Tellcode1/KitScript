@@ -64,6 +64,12 @@
 //   }
 // }
 
+#define print_err(...)                                                                                                                               \
+  do {                                                                                                                                               \
+    fputs("[eexec::vm] ", stderr);                                                                                                                   \
+    fprintf(stderr, __VA_ARGS__);                                                                                                                    \
+  } while (0)
+
 static inline const e_builtin_func*
 get_builtin_func_hashed(u32 hash)
 {
@@ -219,7 +225,7 @@ e_exec(const e_exec_info* info, e_var* ret)
   if (!info->stack || (info->nargs > 0 && (info->args == nullptr || info->arg_slots == nullptr)) || (info->code == nullptr && info->code_size != 0)
       || (info->extern_funcs == nullptr && info->nextern_funcs > 0) || (info->extern_vars == nullptr && info->nextern_vars > 0)
       || (info->funcs == nullptr && info->nfuncs > 0) || (info->literals == nullptr && info->nliterals > 0)) {
-    fputs("Corrupted info during execution (broken fork?)\n", stderr);
+    print_err("Corrupted info during execution (broken fork?)\n");
     return E_EBADARG;
   }
 
@@ -263,7 +269,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 hash       = ins.v.call.hash;
 
         if (info->stack->size < func_nargs) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return E_EMALFORM;
         }
 
@@ -316,7 +322,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         size_t stack_size = info->stack->size;
 
         if (info->stack->size < nelems) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return E_EMALFORM;
         }
 
@@ -350,7 +356,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32    stack_size = info->stack->size;
 
         if (info->stack->size < (npairs * 2)) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return E_EMALFORM;
         }
 
@@ -465,7 +471,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 member = ins.v.member;
 
         if (info->stack->size < 2) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return E_EMALFORM;
         }
 
@@ -509,7 +515,7 @@ e_exec(const e_exec_info* info, e_var* ret)
 
       case E_OPCODE_DIV:
         if (e_cast_to_int(&info->stack->stack[info->stack->size - 1]) == 0) {
-          fputs("*** Divide by zero ***\n", stderr);
+          print_err("*** Divide by zero ***\n");
           return E_EMALFORM;
         }
       case E_OPCODE_ADD:
@@ -529,7 +535,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_GT:
       case E_OPCODE_GTE: {
         if (info->stack->size < 2) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return E_EMALFORM;
         }
         // Since we compile left first, right next
@@ -572,7 +578,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_JZ: {
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
-          fputs("JZ OOB\n", stderr);
+          print_err("JZ OOB [target=%u, stm_size=%u]\n", target, info->code_size);
           return E_ERANGE;
         }
 
@@ -609,7 +615,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_JNZ: {
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
-          fputs("JNZ OOB\n", stderr);
+          print_err("JNZ OOB [target=%u, stm_size=%u]\n", target, info->code_size);
           return E_ERANGE;
         }
 
@@ -644,7 +650,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case E_OPCODE_JMP: {
         const u32 target = ins.v.jmp;
         if (target >= info->code_size) {
-          fputs("JMP OOB\n", stderr);
+          print_err("JMP OOB [target=%u, stm_size=%u]\n", target, info->code_size);
           return E_ERANGE;
         }
         ip = info->code + target;
@@ -696,7 +702,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var* stack      = info->stack->stack;
         size_t stack_size = info->stack->size;
         if (stack_size < 2) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return -1;
         }
 
@@ -741,7 +747,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var* stack      = info->stack->stack;
         u32    stack_size = info->stack->size;
         if (stack_size < 3) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return E_EMALFORM;
         }
 
@@ -802,7 +808,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var* stack      = info->stack->stack;
         size_t stack_size = info->stack->size;
         if (stack_size < 2) {
-          fputs("*** stack corruption ***\n", stderr);
+          print_err("*** stack corruption ***\n");
           return E_EMALFORM;
         }
 

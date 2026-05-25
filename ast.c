@@ -317,8 +317,13 @@ parse_body(e_parser* p, int** outstmts, u32* outnstmts)
     if (outstmts) *outstmts = stmts;
     if (outnstmts) *outnstmts = nstmts;
 
-    if (e_ast_expect(p, E_TOKEN_TYPE_SEMICOLON)) {
-      asterror(prev(p)->span, "Expected semi colon after expression\n");
+    e_ast_node_type type = E_GET_NODE(p->ast, stmt)->type;
+    if (!e_ast_is_limiter_exempt(type) && e_ast_expect(p, E_TOKEN_TYPE_SEMICOLON)) {
+      asterror(
+          prev(p)->span,
+          "Expected semi colon after expression [recv=%s, expect=%s]\n",
+          e_token_type_to_string(prev(p)->type),
+          e_token_type_to_string(E_TOKEN_TYPE_SEMICOLON));
       goto err;
     }
   }
@@ -328,6 +333,8 @@ parse_body(e_parser* p, int** outstmts, u32* outnstmts)
 err:
   e_ast_node_free(p->ast, stmt);
   free(stmts);
+  if (outstmts) *outstmts = NULL;
+  if (outnstmts) *outnstmts = 0;
   return -1;
 }
 
@@ -587,6 +594,7 @@ parse_if(e_parser* p, int node)
   E_GET_NODE(p->ast, node)->if_stmt.nelse_ifs   = num_else_ifs;
 
   return node;
+
 err:
   e_ast_node_free(p->ast, condition);
   for (u32 i = 0; i < nstmts; i++) e_ast_node_free(p->ast, body[i]);
@@ -1354,6 +1362,7 @@ e_ast_nud(e_parser* p, const e_token* tk)
       u32  nstmts = 0;
       int* stmts  = NULL;
       if (parse_body(p, &stmts, &nstmts) < 0) {
+        asterror(tk->span, "Failed to parse statements [defer]\n");
         e_ast_node_free(p->ast, node);
         return -1;
       }
@@ -1443,6 +1452,7 @@ e_ast_nud(e_parser* p, const e_token* tk)
       u32  nstmts = 0;
       if (parse_braces(p, &stmts, &nstmts)) {
         e_ast_node_free(p->ast, node);
+        asterror(tk->span, "Failed to parse braced statement\n");
         return -1;
       }
 
@@ -1626,7 +1636,7 @@ e_ast_led(e_parser* p, const e_token* tk, int leftidx, int rbp)
       if (e_ast_get_node(p->ast, leftidx)->type == E_AST_NODE_INDEX) {
         int rightidx = e_ast_expr(p, rbp);
         if (rightidx < 0) {
-          asterror(peek(p)->span, "Invalid RHS in index assignment\n");
+          asterror(peek(p)->span, "Failed to parse RHS [index assignment]\n");
 
           return -1;
         }
@@ -1645,7 +1655,7 @@ e_ast_led(e_parser* p, const e_token* tk, int leftidx, int rbp)
       if (e_ast_get_node(p->ast, leftidx)->type == E_AST_NODE_MEMBER_ACCESS) {
         int rightidx = e_ast_expr(p, rbp);
         if (rightidx < 0) {
-          asterror(peek(p)->span, "Invalid RHS in member assignment\n");
+          asterror(peek(p)->span, "Failed to parse RHS [member assignment]\n");
 
           return -1;
         }
@@ -1666,7 +1676,7 @@ e_ast_led(e_parser* p, const e_token* tk, int leftidx, int rbp)
 
       int rightidx = e_ast_expr(p, rbp);
       if (rightidx < 0) {
-        asterror(peek(p)->span, "Invalid RHS in assignment\n");
+        asterror(peek(p)->span, "Failed to parse RHS [assignment]\n");
 
         return -1;
       }
@@ -1918,5 +1928,4 @@ e_parser_init(const e_token* tokens, u32 ntokens, e_ast* ast, e_parser* parser)
 
 void
 e_parser_free(e_parser* parser)
-{
-}
+{ /* Didn't allocate anything. */ }

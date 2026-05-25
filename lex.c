@@ -366,9 +366,10 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
           case 't': ch = '\t'; break;
           case 'r': ch = '\r'; break;
           case 'b': ch = '\b'; break;
+          case 'a': ch = '\a'; break;
           case '\\': ch = '\\'; break;
           case '0': ch = '\0'; break;
-          default: lexerror(line, col, "Expected one of [n,r,b,t,0]. Invalid backslash escaped sequence\n"); goto err;
+          default: lexerror(line, col, "Expected one of [n,r,b,t,a,0]. Invalid backslash escaped sequence\n"); goto err;
         }
         advance(s, line, col);
       }
@@ -383,8 +384,8 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
       e_token tk = (e_token){ .type = E_TOKEN_TYPE_CHAR, .val.c = ch, .span = SPAN };
       tklist_append(&toks, &tk);
     } else {
-      const char   ch = *s;
-      e_token_type type;
+      const char   ch          = *s;
+      e_token_type type        = -1;
       bool         is_compound = false;
 
       if (s[1] == '=') // non compound
