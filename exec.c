@@ -40,6 +40,7 @@
 #include "stack.h"
 #include "stdafx.h"
 #include "string.h"
+#include "struct.h"
 #include "var.h"
 
 #include <assert.h>
@@ -442,17 +443,11 @@ e_exec(const e_exec_info* info, e_var* ret)
         } else if (type == E_VARTYPE_STRUCT) {
           e_struct* st = E_VAR_AS_STRUCT(e_stack_top(info->stack));
 
-          bool found = false;
-          for (u32 i = 0; i < st->member_count; i++) {
-            if (st->member_hashes[i] == member) {
-              TRY_V(e_var_shallow_cpy(&st->members[i], &push));
-              e_var_acquire(&push); // acquire tmp
-              found = true;
-              break;
-            }
-          }
+          e_var* lookup = e_struct_get_member(member, st);
+          if (!lookup) { fprintf(stderr, "No such member %s in struct\n", find_name_in_syms(member, info)); }
 
-          if (!found) { fprintf(stderr, "No such member %s in struct\n", find_name_in_syms(member, info)); }
+          e_var_shallow_cpy(lookup, &push);
+          e_var_acquire(&push); // acquire tmp
         } else {
           fprintf(stderr, "Structure does not support member access\n");
           push = E_NULLVAR;

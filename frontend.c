@@ -167,6 +167,7 @@ main(int argc, char* argv[])
     if (f == nullptr) {
       if (verbose) fprintf(stderr, "error!\n"); // Follow up the "Opening %s: " message.
       print_err("Failed to open %s: %s\n", in, strerror(errno));
+      e = errno;
       goto ERR;
     }
 
@@ -175,6 +176,7 @@ main(int argc, char* argv[])
     char* contents = read_file_arena(&arena, f, nullptr);
     if (contents == nullptr) {
       print_err("Failed to load input file: %s. Next.\n", strerror(errno));
+      e = errno;
       goto ERR;
     }
 
@@ -214,6 +216,10 @@ main(int argc, char* argv[])
 
     if (verbose) fprintf(stderr, "success\n");
 
+    if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
+    e_parser_free(&parser);
+    if (f && f != stdin) fclose(f);
+    continue;
   ERR:
     if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
     e_parser_free(&parser);

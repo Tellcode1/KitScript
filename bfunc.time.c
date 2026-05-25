@@ -4,11 +4,10 @@
 
 #include "pool.h"
 #include "stdafx.h"
+#include "struct.h"
 #include "var.h"
 
 #include <time.h>
-
-static const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
 
 #if defined(_WIN32)
 
@@ -103,14 +102,17 @@ eb_time_mono(e_var* args, u32 nargs)
 static inline void
 extract_time_from_tm(const struct tm* t, e_var* s)
 {
-  E_VAR_AS_STRUCT(s)->members[0] = e_var_from_int(t->tm_sec);
-  E_VAR_AS_STRUCT(s)->members[1] = e_var_from_int(t->tm_min);
-  E_VAR_AS_STRUCT(s)->members[2] = e_var_from_int(t->tm_hour);
-  E_VAR_AS_STRUCT(s)->members[3] = e_var_from_int(t->tm_mday);
-  E_VAR_AS_STRUCT(s)->members[4] = e_var_from_int(t->tm_wday + 1);
-  E_VAR_AS_STRUCT(s)->members[5] = e_var_from_int(t->tm_yday);
-  E_VAR_AS_STRUCT(s)->members[6] = e_var_from_int(t->tm_mon + 1);
-  E_VAR_AS_STRUCT(s)->members[7] = e_var_from_int(t->tm_year + 1900);
+  e_struct_member_pair pairs[] = {
+    (e_struct_member_pair){ .name = "sec", .value = e_var_from_int(t->tm_sec) },
+    (e_struct_member_pair){ .name = "min", .value = e_var_from_int(t->tm_min) },
+    (e_struct_member_pair){ .name = "hour", .value = e_var_from_int(t->tm_hour) },
+    (e_struct_member_pair){ .name = "day", .value = e_var_from_int(t->tm_mday) },
+    (e_struct_member_pair){ .name = "wday", .value = e_var_from_int(t->tm_wday + 1) },
+    (e_struct_member_pair){ .name = "yday", .value = e_var_from_int(t->tm_yday) },
+    (e_struct_member_pair){ .name = "mon", .value = e_var_from_int(t->tm_mon + 1) },
+    (e_struct_member_pair){ .name = "year", .value = e_var_from_int(t->tm_year + 1900) },
+  };
+  e_struct_set_member_pairs(E_VAR_AS_STRUCT(s), E_ARRLEN(pairs), pairs);
 }
 
 e_var
@@ -128,6 +130,7 @@ eb_time_local(e_var* args, u32 nargs)
   s.type      = E_VARTYPE_STRUCT;
   s.val.struc = e_refdobj_pool_acquire(&ge_pool);
 
+  const char* members[]              = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
   E_VAR_AS_STRUCT(&s)->member_count  = E_ARRLEN(members);
   E_VAR_AS_STRUCT(&s)->member_hashes = e_xalloc(E_ARRLEN(members), sizeof(u32));
   E_VAR_AS_STRUCT(&s)->member_names  = (const char**)e_xalloc(E_ARRLEN(members), sizeof(char*));
@@ -157,6 +160,8 @@ eb_time_utc(e_var* args, u32 nargs)
   e_var s     = { 0 };
   s.type      = E_VARTYPE_STRUCT;
   s.val.struc = e_refdobj_pool_acquire(&ge_pool);
+
+  const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
 
   E_VAR_AS_STRUCT(&s)->member_count  = E_ARRLEN(members);
   E_VAR_AS_STRUCT(&s)->member_hashes = e_xalloc(E_ARRLEN(members), sizeof(u32));

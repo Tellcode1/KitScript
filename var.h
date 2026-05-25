@@ -108,6 +108,11 @@ typedef struct e_var {
   e_varval  val;
 } e_var;
 
+typedef struct e_struct_member_pair {
+  const char*  name;
+  struct e_var value;
+} e_struct_member_pair;
+
 #define E_NULLVAR                                                                                                                                    \
   (e_var) { .type = E_VARTYPE_NULL }
 

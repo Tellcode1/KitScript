@@ -38,6 +38,11 @@ typedef struct e_list {
 int  e_list_init(struct e_var* vars, u32 nvars, struct e_list* list);
 void e_list_free(struct e_list* list);
 
+int e_list_init_from_int_array(const int* arr, u32 nelems, e_list* list);
+int e_list_init_from_float_array(const double* arr, u32 nelems, e_list* list);
+int e_list_init_from_bool_array(const bool* arr, u32 nelems, e_list* list);
+int e_list_init_from_char_array(const char* arr, u32 nelems, e_list* list);
+
 struct e_var* e_list_index(const struct e_list* list, u32 index);
 int           e_list_append(const struct e_var* v, e_list* list);
 void          e_list_pop(e_list* list);

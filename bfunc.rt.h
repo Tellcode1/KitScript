@@ -37,7 +37,7 @@ e_var eb_rt_compile_and_exec(e_var* args, u32 nargs);
 
 /**
  * Perform lexical analysis on the text using the builtin E lexicalizer.
- * Returned is a list of tokens (See rt::token structure in bstructs.h)
+ * Returned is a list of tokens (See esl::token structure in bstructs.h)
  */
 e_var eb_rt_tokenize(e_var* args, u32 nargs);
 
@@ -50,7 +50,7 @@ e_var eb_rt_ast_free(e_var* args, u32 nargs);
 e_var eb_rt_parse(e_var* args, u32 nargs);
 
 /**
- * Parse and compile the given list of tokens (from rt::lex).
+ * Parse and compile the given list of tokens (from esl::lex).
  * Returned is a list containing the bytecode.
  */
 e_var eb_rt_compile(e_var* args, u32 nargs);

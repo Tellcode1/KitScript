@@ -320,12 +320,12 @@ static const e_builtin_func eb_funcs[] = {
   { "time::local", "Get a time::timestamp structure containing current system time", "fn time::local() -> time::timestamp", 0, 0, 0, eb_time_local },
   { "time::utc", "Get a time::timestamp structure containing UTC relative system time", "fn time::utc() -> time::timestamp", 0, 0, 0, eb_time_utc },
 
-  { "rt::compile_and_exec", "Compile and execute the given rt::exec_info. Returns the return value", "fn rt::compile_and_exec(info : rt::exec_info) -> any", E_VARTYPE_STRUCT, 1, 1, eb_rt_compile_and_exec },
-  { "rt::tokenize", "Tokenize the source file and get a list of rt::token's, null on failure", "fn rt::tokenize(source_file : string) -> []", E_VARTYPE_STRING, 1, 1, eb_rt_tokenize },
-  { "rt::ast::init", "Create an AST, null on failure", "fn rt::ast::init() -> opaque", E_VARTYPE_NULL, 0, 0, eb_rt_ast_init },
-  { "rt::ast::free", "Free an AST", "fn rt::ast::free(ast) -> null", E_VARTYPE_NULL, 1, 1, eb_rt_ast_free },
-  { "rt::parse", "Parse tokens into an AST. 0 on success, null on failure.", "fn rt::parse(ast, token_stream) -> int", E_VARTYPE_LIST, 2, 2, eb_rt_parse },
-  { "rt::compile", "Compile an AST into an instance of rt::compiled_obj, null on failure", "fn rt::compile(info : rt::compile_info) -> rt::compiled_obj", E_VARTYPE_LIST, 1, 1, eb_rt_compile },
+  { "esl::compile_and_exec", "Compile and execute the given esl::exec_info. Returns the return value", "fn esl::compile_and_exec(info : esl::exec_info) -> any", E_VARTYPE_STRUCT, 1, 1, eb_rt_compile_and_exec },
+  { "esl::tokenize", "Tokenize the source file and get a list of esl::token's, null on failure", "fn esl::tokenize(source_file : string) -> []", E_VARTYPE_STRING, 1, 1, eb_rt_tokenize },
+  { "esl::ast::init", "Create an AST, null on failure", "fn esl::ast::init() -> opaque/descriptor", E_VARTYPE_NULL, 0, 0, eb_rt_ast_init },
+  { "esl::ast::free", "Free an AST", "fn esl::ast::free(ast) -> null", E_VARTYPE_NULL, 1, 1, eb_rt_ast_free },
+  { "esl::parse", "Parse tokens into an AST. 0 on success, null on failure.", "fn esl::parse(ast, token_stream) -> int", E_VARTYPE_LIST, 2, 2, eb_rt_parse },
+  { "esl::compile", "Compile an AST into an instance of esl::compiled_obj, null on failure", "fn esl::compile(info : esl::compile_info) -> esl::compiled_obj", E_VARTYPE_LIST, 1, 1, eb_rt_compile },
 };
 // clang-format on
 
