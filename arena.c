@@ -126,7 +126,7 @@ e_arnalloc(e_arena* a, size_t size)
    * This generally improves performance by amortizing
    * malloc cost.
    */
-  if ((E_ARENA_ALLOCATION_AMORTIZATION_THRESHOLD_DENOMINATION * fits->head) >= (E_ARENA_ALLOCATION_AMORTIZATION_THRESHOLD_NUMERATOR * fits->size)) {
+  if ((E_ARENA_ALLOCATION_AMORTIZATION_THRESHOLD_DENOMINATOR * fits->head) >= (E_ARENA_ALLOCATION_AMORTIZATION_THRESHOLD_NUMERATOR * fits->size)) {
     int e = add_free_page(E_PAGE_SIZE, a);
     /* what to do with error? */
     (void)e;

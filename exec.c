@@ -47,6 +47,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define PASTE(x, y) x##y
 
@@ -725,6 +726,15 @@ e_exec(const e_exec_info* info, e_var* ret)
             push = *find;
             e_var_acquire(&push);
           } // else push is null var
+        } else if (left->type == E_VARTYPE_STRING) {
+          const char* s   = E_VAR_AS_STRING(left)->s;
+          int         idx = e_cast_to_int(&stack[stack_size - 1]);
+
+          if (idx < 0 || idx > strlen(s)) { // The NULL terminator is a valid char
+            push = E_NULLVAR;
+          } else {
+            push = (e_var){ .type = E_VARTYPE_CHAR, .val.c = s[idx] };
+          }
         } else if (is_vector(left)) {
           int idx = e_cast_to_int(&stack[stack_size - 1]);
           push    = vector_index(left, idx);
@@ -831,6 +841,15 @@ e_exec(const e_exec_info* info, e_var* ret)
             push = *find;
             e_var_acquire(&push);
           } // else push is null var
+        } else if (left->type == E_VARTYPE_STRING) {
+          const char* s   = E_VAR_AS_STRING(left)->s;
+          int         idx = e_cast_to_int(&stack[stack_size - 1]);
+
+          if (idx < 0 || idx > strlen(s)) { // The NULL terminator is a valid char
+            push = E_NULLVAR;
+          } else {
+            push = (e_var){ .type = E_VARTYPE_CHAR, .val.c = s[idx] };
+          }
         } else if (is_vector(left)) {
           int idx = e_cast_to_int(&stack[stack_size - 1]);
           push    = vector_index(left, idx);

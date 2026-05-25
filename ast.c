@@ -123,7 +123,7 @@ e_getbp(e_token_type type, int* left, int* right)
       break;
     case E_TOKEN_TYPE_NOT:
       *left  = 0;
-      *right = 9;
+      *right = 65;
       break;
 
     // bitwise
@@ -1928,4 +1928,5 @@ e_parser_init(const e_token* tokens, u32 ntokens, e_ast* ast, e_parser* parser)
 
 void
 e_parser_free(e_parser* parser)
-{ /* Didn't allocate anything. */ }
+{ /* Didn't allocate anything. */
+}

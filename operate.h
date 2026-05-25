@@ -31,7 +31,7 @@
 
 #define BINOP(l, r, op)                                                                                                                              \
   (l).type == E_VARTYPE_NULL || (r).type == E_VARTYPE_NULL ? E_NULLVAR                                                                               \
-      : (l.type == E_VARTYPE_FLOAT || r.type == E_VARTYPE_FLOAT)                                                                                     \
+      : ((l).type == E_VARTYPE_FLOAT || (r).type == E_VARTYPE_FLOAT)                                                                                 \
       ? (e_var){ .type = E_VARTYPE_FLOAT, .val.f = (double)(l).val.f op(double)(r).val.f }                                                           \
       : (e_var)                                                                                                                                      \
   { .type = E_VARTYPE_INT, .val.i = (l).val.i op(r).val.i }
@@ -239,8 +239,12 @@ operate(e_var l, e_var r, e_opcode op)
     case E_OPCODE_ADD: return COERCE_BINOP(l, r, +);
     case E_OPCODE_SUB: return COERCE_BINOP(l, r, -);
     case E_OPCODE_MUL: return COERCE_BINOP(l, r, *);
-    case E_OPCODE_DIV: return COERCE_BINOP(l, r, /);
-    case E_OPCODE_MOD: return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) % e_cast_to_int(&r) };
+    case E_OPCODE_DIV:
+      if (e_cast_to_int(&r) == 0) return E_NULLVAR;
+      return COERCE_BINOP(l, r, /);
+    case E_OPCODE_MOD:
+      if (e_cast_to_int(&r) == 0) return E_NULLVAR;
+      return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) % e_cast_to_int(&r) };
     case E_OPCODE_EQL: return (e_var){ .type = E_VARTYPE_BOOL, .val.b = e_var_equal(&l, &r) };
     case E_OPCODE_NEQ: return (e_var){ .type = E_VARTYPE_BOOL, .val.b = (bool)!e_var_equal(&l, &r) };
     case E_OPCODE_LT: return COERCE_BOOLEAN_BINOP(l, r, <);

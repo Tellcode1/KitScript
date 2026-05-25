@@ -250,7 +250,7 @@ static const e_builtin_func eb_funcs[] = {
   { "io::print", "Print all given variables to file. null on error. number of bytes written on success.", "fn io::print( fd, ... ) -> int|null", E_VARTYPE_INT, 2, UINT32_MAX, eb_io_print },
   { "io::exists", "Check whether a file exists or not.", "fn io::exists( path ) -> bool", E_VARTYPE_STRING, 1, 1, eb_io_exists },
   { "io::type", "Get the type of an object on the disk. Possible return values are io::FILE|io::LINK|io::DIRECTORY|io::UNKNOWN", "fn io::type( path ) -> int", E_VARTYPE_INT, 1, 1, eb_io_type },
-  { "io::list_dir", "List a directory. Returns the file (and directory) paths as a list.", "fn io::list_dir( path ) -> list", E_VARTYPE_STRING, 1, 1, eb_io_list_dir },
+  { "io::listdir", "List a directory. Returns the file (and directory) paths as a list. Paths in list are relative to path.", "fn io::list_dir( path ) -> list", E_VARTYPE_STRING, 1, 1, eb_io_listdir },
   { "io::at_eof", "At the end of file? Boolean result only", "fn io::at_eof(fd) -> bool", E_VARTYPE_INT, 1, 1, eb_io_at_eof },
   { "io::error", "Get error string. Won't always be success for successful operations.", "fn io::error(fd) -> string", 0, 0, 0, eb_io_error },
 

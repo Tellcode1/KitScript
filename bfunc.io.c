@@ -26,8 +26,15 @@
 
 #include "bvar.h"
 #include "cast.h"
+#include "list.h"
 #include "pool.h"
 #include "var.h"
+
+#ifdef _WIN32
+#  include "dirent.h"
+#else
+#  include <dirent.h>
+#endif
 
 #include <errno.h>
 #include <stdio.h>
@@ -291,13 +298,36 @@ eb_io_type(e_var* args, u32 nargs)
 }
 
 e_var
-eb_io_list_dir(e_var* args, u32 nargs)
+eb_io_listdir(e_var* args, u32 nargs)
 {
   const char* path = E_VAR_AS_STRING(&args[0])->s;
   if (!path) return E_NULLVAR;
 
-  /* TODO: Implement*/
-  return E_NULLVAR;
+  e_var l = { .type = E_VARTYPE_LIST, .val.list = e_refdobj_pool_acquire(&ge_pool) };
+  if (e_list_init(NULL, 0, E_VAR_AS_LIST(&l))) {
+    e_refdobj_pool_return(&ge_pool, l.val.list);
+    return E_NULLVAR;
+  }
+
+  DIR* d = opendir(path);
+  if (!d) return E_NULLVAR;
+
+  struct dirent* ent = NULL;
+  while ((ent = readdir(d)) != NULL) {
+    /**
+     * .. are present even for directories that reasonably
+     * won't have an upper level (root FS)? weird.
+     */
+    if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+
+    e_var v = e_make_var_from_string(e_strdup(ent->d_name));
+    e_list_append(&v, E_VAR_AS_LIST(&l));
+    e_var_release(&v);
+  }
+
+  closedir(d);
+
+  return l;
 }
 
 e_var
