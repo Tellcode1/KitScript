@@ -96,28 +96,28 @@ e_var
 eb_cast_int(e_var* args, u32 nargs)
 {
   (void)nargs;
-  return (e_var){ .type = E_VARTYPE_INT, .val.i = evar_to_int(args[0]) };
+  return (e_var){ .type = E_VARTYPE_INT, .val.i = e_var_to_int(args[0]) };
 }
 
 e_var
 eb_cast_char(e_var* args, u32 nargs)
 {
   (void)nargs;
-  return (e_var){ .type = E_VARTYPE_CHAR, .val.c = (char)evar_to_int(args[0]) };
+  return (e_var){ .type = E_VARTYPE_CHAR, .val.c = (char)e_var_to_int(args[0]) };
 }
 
 e_var
 eb_cast_bool(e_var* args, u32 nargs)
 {
   (void)nargs;
-  return (e_var){ .type = E_VARTYPE_BOOL, .val.b = evar_to_bool(args[0]) };
+  return (e_var){ .type = E_VARTYPE_BOOL, .val.b = e_var_to_bool(args[0]) };
 }
 
 e_var
 eb_cast_float(e_var* args, u32 nargs)
 {
   (void)nargs;
-  return (e_var){ .type = E_VARTYPE_FLOAT, .val.f = evar_to_float(args[0]) };
+  return (e_var){ .type = E_VARTYPE_FLOAT, .val.f = e_var_to_float(args[0]) };
 }
 
 e_var

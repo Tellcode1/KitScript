@@ -233,7 +233,7 @@ operate(e_var l, e_var r, e_opcode op)
 {
   if (is_vector(&l) || is_vector(&r)) { return vector_operate(l, r, op); }
 
-  if (op == E_OPCODE_NOT) return (e_var){ .type = E_VARTYPE_BOOL, .val.b = (bool)!evar_to_bool(r) };
+  if (op == E_OPCODE_NOT) return (e_var){ .type = E_VARTYPE_BOOL, .val.b = (bool)!e_var_to_bool(r) };
 
   switch (op) {
     case E_OPCODE_ADD: return COERCE_BINOP(l, r, +);

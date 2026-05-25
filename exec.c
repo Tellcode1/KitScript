@@ -579,7 +579,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         }
 
         const e_var* cnd  = e_stack_top(info->stack);
-        bool         eval = evar_to_bool(*cnd);
+        bool         eval = e_var_to_bool(*cnd);
         if (!eval) ip = info->code + target;
 
         e_stack_pop(info->stack); // remove condition
@@ -590,7 +590,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         const u32 error_str_id = ins.v.assertion;
 
         const e_var* cnd  = e_stack_top(info->stack);
-        bool         eval = evar_to_bool(*cnd);
+        bool         eval = e_var_to_bool(*cnd);
 
         // Find the error string
         const char* error_str = "(error string not found in literal table)";
@@ -616,7 +616,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         }
 
         const e_var* cnd  = e_stack_top(info->stack);
-        bool         eval = evar_to_bool(*cnd);
+        bool         eval = e_var_to_bool(*cnd);
         if (eval) ip = info->code + target;
 
         e_stack_pop(info->stack); // remove condition

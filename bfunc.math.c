@@ -135,7 +135,7 @@ e_create_vec4(const e_var* v, e_vec4 out)
   } else if (v->type == E_VARTYPE_VEC4) {
     memcpy(out, v->val.vec4, sizeof(e_vec4));
   } else if (v->type == E_VARTYPE_INT || v->type == E_VARTYPE_CHAR || v->type == E_VARTYPE_BOOL) {
-    int    x = evar_to_int(*v);
+    int    x = e_var_to_int(*v);
     e_vec4 y = { x, 0.0, 0.0, 0.0 };
     memcpy(out, y, sizeof(e_vec4));
   } else if (v->type == E_VARTYPE_FLOAT) {
@@ -193,7 +193,7 @@ eb_smoothstep(e_var* args, u32 nargs)
   e_create_vec4(&args[0], a);
   e_create_vec4(&args[1], b);
 
-  smoothstep_vec(a, b, r, evar_to_float(args[2]));
+  smoothstep_vec(a, b, r, e_var_to_float(args[2]));
   e_var x = { .type = MAX(args[0].type, args[1].type) };
   memcpy(x.val.vec4, r, sizeof(r));
 
@@ -211,7 +211,7 @@ eb_lerp(e_var* args, u32 nargs)
   e_create_vec4(&args[0], a);
   e_create_vec4(&args[1], b);
 
-  larp_vec(a, b, r, evar_to_float(args[2]));
+  larp_vec(a, b, r, e_var_to_float(args[2]));
   e_var x = { .type = MAX(args[0].type, args[1].type) };
   memcpy(x.val.vec4, r, sizeof(r));
 
