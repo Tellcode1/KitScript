@@ -2,6 +2,7 @@
 
 #include "stdafx.h"
 
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,10 +32,10 @@ add_free_page(size_t size, e_arena* arena)
 }
 
 static inline e_arena_page*
-get_and_unmark_free_page(e_arena* arena)
+get_and_unmark_free_page(e_arena* arena, size_t minimum_size)
 {
   if (!arena->free_pages) {
-    int e = add_free_page(E_PAGE_SIZE, arena);
+    int e = add_free_page(MAX(E_PAGE_SIZE, minimum_size), arena);
     if (e) return NULL;
   }
 
@@ -101,7 +102,7 @@ e_arnalloc(e_arena* a, size_t size)
   // Create an link a new one
 
   if (fits == nullptr || (fits->size - fits->head) < total) {
-    fits = get_and_unmark_free_page(a);
+    fits = get_and_unmark_free_page(a, total);
     if (!fits) return NULL; // FAILURE!
   }
 
@@ -109,7 +110,14 @@ e_arnalloc(e_arena* a, size_t size)
 
   // And return the pointer after it.
   void* ptr = e_align_ptr(data, E_ARENA_MINIMUM_ALIGNMENT);
-  fits->head += total;
+
+  uintptr_t start   = (uintptr_t)data;
+  uintptr_t aligned = (uintptr_t)ptr;
+
+  fits->head += (aligned - start) + total;
+
+  a->top      = ptr;
+  a->top_size = total; // How much we actually moved from ptr
 
   /**
    * If we detect the branch is close to being full,
@@ -156,4 +164,39 @@ e_arena_free(e_arena* arena)
     next = new_next;
   }
   memset(arena, 0, sizeof *arena);
+}
+
+void*
+e_arnrealloc(e_arena* a, void* top, size_t old_size, size_t new_size)
+{
+  size_t old_total = align_up(old_size, E_ARENA_MINIMUM_ALIGNMENT);
+  size_t new_total = align_up(new_size, E_ARENA_MINIMUM_ALIGNMENT);
+
+  if (top == a->top) {
+    if (new_total >= old_total) {
+      size_t extra = new_total - old_total;
+
+      size_t left = a->current->size - a->current->head;
+
+      if (left >= extra) {
+        a->current->head += extra;
+        a->top_size = new_total;
+        return top;
+      }
+
+    } else {
+      size_t shrink = old_total - new_total;
+
+      a->current->head -= shrink;
+      a->top_size = new_total;
+      return top;
+    }
+  }
+
+  void* p = e_arnalloc(a, new_size);
+  if (!p) return NULL;
+
+  memcpy(p, top, MIN(old_size, new_size));
+
+  return p;
 }

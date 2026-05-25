@@ -113,6 +113,9 @@ typedef struct e_arena {
    * by calling e_arena_add_free_page.
    */
   struct e_arena_page* free_pages;
+
+  void*  top;      // Last allocation pointer
+  size_t top_size; // How much we allocated
 } e_arena;
 
 /**
@@ -139,6 +142,13 @@ void* e_arnalloc(e_arena* a, size_t size) ATTR_NODISCARD;
  * @param align The alignment with which to allocate, no less than E_ARENA_MINIMUM_ALIGNMENT (rounded up), must be a power of 2
  */
 void* e_arnalloc_aligned(e_arena* a, size_t size, size_t align) ATTR_NODISCARD;
+
+/**
+ * @brief Rellocate a block of memory from the arena, aligned to E_ARENA_MINIMUM_ALIGNMENT.
+ * @param top The pointer to reallocate. Should be the stack top. Otherwise, this function switches to e_arnalloc.
+ * @param size The new size of the memory block
+ */
+void* e_arnrealloc(e_arena* a, void* top, size_t old_size, size_t new_size) ATTR_NODISCARD;
 
 /**
  * @brief Duplicate a NULL terminated string, allocating the new one from the arena

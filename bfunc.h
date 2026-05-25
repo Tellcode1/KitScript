@@ -186,9 +186,6 @@ static const e_builtin_func eb_funcs[] = {
   { "bool", "Cast a variable to a bool", "fn bool(v) -> bool", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING | E_VARTYPE_VEC2 | E_VARTYPE_VEC3 | E_VARTYPE_VEC4,    1,    1, eb_cast_bool },
   { "float", "Cast a variable to a float", "fn float(v) -> float", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_float },
   
-  /* Anything can be added as an element to a list */
-  { "list", "Make a list of provided elements", "fn list(...) -> list", 0xFFFFFF, 1, UINT32_MAX, eb_cast_list },
-
   { "rand::seed", "Seed the random number generator with a string.", "fn rand::seed(str) -> null", 0, 1, 1, eb_rand_seed },
   { "rand::list", "Get a random list of num integers between min and max (inclusive of both)", "fn rand::list(min, max, num) -> []", 0, 3, 3, eb_rand_list },
   { "rand::int", "Get a random integer between 0 and int::MAX (inclusive of both)", "fn rand::int() -> int", 0, 0, 0, eb_rand_int },

@@ -157,14 +157,14 @@ fn main() {
       "return x;",
    "}"
    );
-   let exec_info = rt::exec_info(
+   let exec_info = esl::exec_info(
       /* source_code */ source_file,
       /* entry_point */ "main",
       /* optimization_level */ 3,
       /* arguments */ [],
       /* command_line_arguments */ [],
    );
-   let r = rt::compile_and_exec(exec_info);
+   let r = esl::compile_and_exec(exec_info);
    if (r != 0xDEADBEEF) {
       io::println(io::STDERR, "JIT compilation failed... Expected 0xDEADBEEF, got:  ", r);
       error = true;

@@ -2,6 +2,7 @@
 
 #include "bfunc.time.h"
 
+#include "cast.h"
 #include "pool.h"
 #include "stdafx.h"
 #include "struct.h"

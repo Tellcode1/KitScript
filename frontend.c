@@ -40,29 +40,57 @@
 #include <stdlib.h>
 #include <string.h>
 
-static inline char*
-read_file_arena(e_arena* a, FILE* f, u64* size)
+static inline int
+create_and_cat(const char* s, size_t* to_capacity, char** to_ptr)
 {
-  char* contents = nullptr;
-  long  fsize    = 0;
+  if (!*to_ptr) {
+    size_t new_cap = strlen(s) + 1;
+    *to_ptr        = calloc(1, new_cap);
+    *to_capacity   = new_cap;
 
-  if ((bool)fseek(f, 0, SEEK_END)) goto CLEANUP;
+    memset(*to_ptr, 0, new_cap);
+  }
+  if (!*to_ptr) return -1;
 
-  fsize = ftell(f);
-  if (fsize <= 0) goto CLEANUP;
+  const size_t s_len  = strlen(s);
+  const size_t to_len = strlen(*to_ptr);
 
-  if (size != nullptr) *size = (int)fsize;
+  const size_t new_size = (s_len + to_len + 1);
 
-  if ((bool)fseek(f, 0, SEEK_SET)) goto CLEANUP;
+  if (new_size >= *to_capacity) {
+    const size_t new_cap = MAX(new_size, *to_capacity * 2);
+    char*        new_to  = realloc(*to_ptr, new_cap); // to_len+1 -> to_len+s_len+1
+    if (!new_to) return -1;
 
-  contents = (char*)e_arnalloc(a, fsize + 1);
-  if (fread(contents, fsize, 1, f) != 1) { goto CLEANUP; }
-  contents[fsize] = 0;
+    *to_ptr      = new_to;
+    *to_capacity = new_cap;
+  }
 
-  return contents;
+  e_strlcat(*to_ptr, s, *to_capacity);
 
-CLEANUP:
-  return nullptr;
+  return 0;
+}
+
+static inline char*
+read_file_arena_better(FILE* f)
+{
+  char tmp[128];
+
+  const size_t init_capacity = 128;
+  size_t       capacity      = init_capacity;
+
+  char* buffer = calloc(1, init_capacity);
+  if (!buffer) return NULL;
+
+  while (fgets(tmp, sizeof(tmp), f)) {
+    int e = create_and_cat(tmp, &capacity, &buffer);
+    if (e) {
+      free(buffer);
+      return NULL;
+    }
+  }
+
+  return buffer;
 }
 
 #define print_err(...)                                                                                                                               \
@@ -104,7 +132,7 @@ main(int argc, char* argv[])
   for (int i = 1; i < argc; i++) {
     const char* opt = argv[i];
     if (strcmp(opt, "-") == 0) {
-      files[nfiles++] = "-";
+      files[nfiles++] = "-"; // "read from stdin"
       continue;
     }
 
@@ -112,7 +140,11 @@ main(int argc, char* argv[])
     if (*opt == '-') { opt++; }
 
     if (strcmp(opt, "o") == 0) {
-      assert(i + 1 < argc);
+      if (i + 1 >= argc) {
+        print_err("Expected output file name, got EOF. Assuming stdout\n");
+        out = NULL;
+        continue;
+      }
       out = argv[i + 1];
       i++; // consumed path!
     } else if (strcmp(opt, "v") == 0 || strcmp(opt, "verbose") == 0) {
@@ -148,9 +180,10 @@ main(int argc, char* argv[])
 
   // Feed into the AST
   for (u32 fi = 0; fi < nfiles; fi++) {
-    e_parser parser = { 0 };
-    e_token* tokens = nullptr;
-    u32      ntoks  = 0;
+    e_parser parser   = { 0 };
+    e_token* tokens   = nullptr;
+    u32      ntoks    = 0;
+    char*    contents = NULL;
 
     const char* in = files[fi];
 
@@ -167,16 +200,16 @@ main(int argc, char* argv[])
     if (f == nullptr) {
       if (verbose) fprintf(stderr, "error!\n"); // Follow up the "Opening %s: " message.
       print_err("Failed to open %s: %s\n", in, strerror(errno));
-      e = errno;
+      e = -1;
       goto ERR;
     }
 
     if (verbose) fprintf(stderr, "success\n");
 
-    char* contents = read_file_arena(&arena, f, nullptr);
+    contents = read_file_arena_better(f);
     if (contents == nullptr) {
       print_err("Failed to load input file: %s. Next.\n", strerror(errno));
-      e = errno;
+      e = -1;
       goto ERR;
     }
 
@@ -216,14 +249,16 @@ main(int argc, char* argv[])
 
     if (verbose) fprintf(stderr, "success\n");
 
-    if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
+    if (tokens) e_freetoks(tokens, ntoks);
     e_parser_free(&parser);
-    if (f) fclose(f);
+    if (f) fclose(f); // clang-tidy complains that even if f is stdin, we need to fclose it?
+    free(contents);
     continue;
   ERR:
-    if (ntoks > 0 && tokens) e_freetoks(tokens, ntoks);
+    if (tokens) e_freetoks(tokens, ntoks);
     e_parser_free(&parser);
     if (f) fclose(f);
+    free(contents);
     goto ret;
   }
 
@@ -250,7 +285,7 @@ main(int argc, char* argv[])
 
   if (verbose) fprintf(stderr, "success\n");
 
-  if (out) {
+  if (out && strcmp(out, "-") != 0) { // out is valid and out is not stdout
     f = fopen(out, "wb");
     if (!f) {
       print_err("Failed to open out file: %s\n", strerror(errno));

@@ -186,7 +186,7 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
 
   struct tklist toks;
   e = tklist_init(128, &toks);
-  if (e) { return e; }
+  if (e) { goto err; }
 
   const char* interned_filename = e_str_intern(advertised_file, interner);
 
@@ -248,10 +248,10 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
         e_cvt_err err = e_cvt_int(s, NULL, &i);
         if (err != E_CVT_OK) {
           switch (err) {
-            case E_CVT_ERROR_MALFORMED_INPUT: lexerror(span.line, span.col, "Malformed integer literal\n"); return -1;
-            case E_CVT_ERROR_OVERFLOW: lexerror(span.line, span.col, "Can not represent integer in 32 bits: will overflow\n"); return -1;
-            case E_CVT_ERROR_UNDERFLOW: lexerror(span.line, span.col, "Can not represent integer in 32 bits: will underflow\n"); return -1;
-            case E_CVT_ERROR_EOF: return -1;
+            case E_CVT_ERROR_MALFORMED_INPUT: lexerror(span.line, span.col, "Malformed integer literal\n"); goto err;
+            case E_CVT_ERROR_OVERFLOW: lexerror(span.line, span.col, "Can not represent integer in 32 bits: will overflow\n"); goto err;
+            case E_CVT_ERROR_UNDERFLOW: lexerror(span.line, span.col, "Can not represent integer in 32 bits: will underflow\n"); goto err;
+            case E_CVT_ERROR_EOF: goto err;
             case E_CVT_OK: break;
           }
         }
