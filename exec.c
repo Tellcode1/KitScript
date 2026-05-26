@@ -47,7 +47,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #define PASTE(x, y) x##y
 
@@ -805,6 +804,47 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e_var_release(&value);
         e_var_release(&base);
+        break;
+      }
+
+      case E_OPCODE_STRUCT_CONSTRUCT: {
+        const ecc_struct_information* lookup = NULL;
+        for (u32 i = 0; i < info->nstructs; i++) {
+          const char* nam = info->structs[i].name;
+          if (ins.v.mk_struct == e_hash(nam, strlen(nam))) {
+            lookup = &info->structs[i];
+            break;
+          }
+        }
+        if (!lookup) {
+          fprintf(stderr, "Struct not found in file: %s|%u\n", find_name_in_syms(ins.v.mk_struct, info), ins.v.mk_struct);
+          return E_EMALFORM;
+        }
+
+        e_var st = {
+          .type      = E_VARTYPE_STRUCT,
+          .val.struc = e_refdobj_pool_acquire(&ge_pool),
+        };
+        if (!st.val.struc) return -1;
+
+        e_struct* s = E_VAR_AS_STRUCT(&st);
+
+        s->name          = lookup->name; // RONLY
+        s->member_hashes = (u32*)e_xalloc(lookup->fields_count, sizeof(u32));
+        s->member_names  = (const char**)e_xalloc(lookup->fields_count, sizeof(char*));
+        s->members       = (e_var*)e_xalloc(lookup->fields_count, sizeof(e_var));
+        s->member_count  = lookup->fields_count;
+
+        for (u32 i = 0; i < lookup->fields_count; i++) {
+          s->member_hashes[i] = lookup->field_hashes[i];
+          s->member_names[i]  = lookup->field_names[i];
+          e_var_shallow_cpy(&info->args[i], &s->members[i]); // Copy over arguments
+          e_var_acquire(&s->members[i]);
+        }
+
+        TRY_V(e_stack_push(info->stack, &st));
+        e_var_release(&st); // Stack owns it now
+
         break;
       }
 

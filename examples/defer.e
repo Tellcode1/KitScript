@@ -1,3 +1,5 @@
+#!/usr/bin/ec
+
 let ratio = 0;
 
 fn open()

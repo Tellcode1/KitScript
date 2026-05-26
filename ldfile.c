@@ -401,6 +401,7 @@ e_read_ins(const u8** ip)
     case E_OPCODE_JZ:
     case E_OPCODE_JNZ: i.v.jmp = e_read_u32(ip); break;
 
+    case E_OPCODE_STRUCT_CONSTRUCT:
     case E_OPCODE_MK_STRUCT: i.v.mk_struct = e_read_u32(ip); break;
 
     case E_OPCODE_MEMBER_ACCESS:

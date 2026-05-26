@@ -2019,63 +2019,76 @@ append_struct_info(e_compiler* cc, const ecc_struct_information* data)
 static int
 compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_information* struc)
 {
-  int e = e_stackemu_push_frame(fork->stack);
-  if (e) return e;
-
   u32* arg_slots = (u32*)e_arnalloc(fork->arena, sizeof(u32) * struc->fields_count);
-
   for (u32 i = 0; i < struc->fields_count; i++) {
     u32 arg_hash = struc->field_hashes[i];
     arg_slots[i] = arg_hash;
+  }
 
-    /* Add member entry to stack */
+  u32 struct_id = e_hash(struc->name, strlen(struc->name));
 
-    ecc_variable_information info = {
-      .initializer   = -1, // Arguments aren't initialized.
-      .current_value = -1, // Or initialized to null if you think about it.
-      .name_hash     = arg_hash,
-      .span          = span,
-      .is_const      = false, // User can override the argument any time.
-    };
+  if (fork->info->opt_level >= 1) {
+    /* This sums up to about ~7 bytes. */
+    e_emit_instruction(fork, E_OPCODE_STRUCT_CONSTRUCT);
+    e_emit_u32(fork, struct_id);
 
-    e = e_stackemu_push_var(fork->stack, &info);
+    /* struct_construct doesn't return the value... */
+    e_emit_instruction(fork, E_OPCODE_RETURN);
+    e_emit_u8(fork, true); // has_return_value = true
+  } else {
+    // Slow path :(
+    int e = e_stackemu_push_frame(fork->stack);
     if (e) return e;
+
+    for (u32 i = 0; i < struc->fields_count; i++) {
+      /* Add member entry to stack */
+      ecc_variable_information info = {
+        .initializer   = -1, // Arguments aren't initialized.
+        .current_value = -1, // Or initialized to null if you think about it.
+        .name_hash     = arg_slots[i],
+        .span          = span,
+        .is_const      = false, // User can override the argument any time.
+      };
+
+      e = e_stackemu_push_var(fork->stack, &info);
+      if (e) return e;
+    }
+
+    e_emit_instruction(fork, E_OPCODE_MK_STRUCT);
+    e_emit_u32(fork, struct_id); /* its ID */
+
+    /**
+     * Assign the arguments to all members
+     */
+    for (u32 i = 0; i < struc->fields_count; i++) {
+      e_emit_instruction(fork, E_OPCODE_DUP); // Duplicate struct (shallow copy)
+
+      e_emit_instruction(fork, E_OPCODE_LOAD); // Load the argument
+      e_emit_u32(fork, struc->field_hashes[i]);
+
+      e_emit_instruction(fork, E_OPCODE_MEMBER_ASSIGN);
+      e_emit_u32(fork, struc->field_hashes[i]); // Assign to that field
+      e_emit_instruction(fork, E_OPCODE_POP);   // Pop member assign pushing the value back up. We only
+                                                // want the struct to be on the stack (Member assign pushes struct + value, in that order).
+    }
+
+    // Return the accumulated struct.
+    e_emit_instruction(fork, E_OPCODE_RETURN);
+    e_emit_u8(fork, true); // has_return_value = true
+
+    e_stackemu_pop_frame(fork->stack);
   }
-
-  e_emit_instruction(fork, E_OPCODE_MK_STRUCT);
-  e_emit_u32(fork, e_hash(struc->name, strlen(struc->name))); /* its ID */
-
-  /**
-   * Assign the arguments to all members
-   */
-  for (u32 i = 0; i < struc->fields_count; i++) {
-    e_emit_instruction(fork, E_OPCODE_DUP); // Duplicate struct (shallow copy)
-
-    e_emit_instruction(fork, E_OPCODE_LOAD); // Load the argument
-    e_emit_u32(fork, struc->field_hashes[i]);
-
-    e_emit_instruction(fork, E_OPCODE_MEMBER_ASSIGN);
-    e_emit_u32(fork, struc->field_hashes[i]); // Assign to that field
-    e_emit_instruction(fork, E_OPCODE_POP);   // Pop member assign pushing the value back up. We only
-                                              // want the struct to be on the stack (Member assign pushes struct + value, in that order).
-  }
-
-  // Return the accumulated struct.
-  e_emit_instruction(fork, E_OPCODE_RETURN);
-  e_emit_u8(fork, true); // has_return_value = true
 
   ecc_function f = {
     .code      = fork->emit,
     .code_size = fork->num_bytes_emitted,
     .arg_slots = arg_slots,
-    .name_hash = e_hash(struc->name, strlen(struc->name)),
+    .name_hash = struct_id,
     .nargs     = struc->fields_count,
   };
 
-  e = append_function_entry(fork->arena, fork->function_table, &f);
+  int e = append_function_entry(fork->arena, fork->function_table, &f);
   if (e) return e;
-
-  e_stackemu_pop_frame(fork->stack);
 
   return 0;
 }

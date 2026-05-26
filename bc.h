@@ -364,6 +364,12 @@ typedef enum e_opcode_bck {
   E_OPCODE_ASSERT,
 
   /**
+   * A special opcode for making a structure (with specified hash)
+   * and filling it one by one with the arguments to the function, in order.
+   */
+  E_OPCODE_STRUCT_CONSTRUCT,
+
+  /**
    * Exit the program with the code specified in 1st operand.
    * Usage: HALT [exit code : u32]
    */
@@ -397,7 +403,7 @@ typedef struct e_ins {
       u16 nargs;
       u32 hash;
     } call;
-    u32 mk_struct;
+    u32 mk_struct; // , struct_construct
     u32 member;
   } v;
 } e_ins;
@@ -456,6 +462,7 @@ e_opcode_to_str(e_opcode_bck op)
     case E_OPCODE_COUNT: return "COUNT";
     case E_OPCODE_INDEX_PEEK: return "INDEX_PEEK";
     case E_OPCODE_ASSERT: return "ASSERT";
+    case E_OPCODE_STRUCT_CONSTRUCT: return "STRUCT_CONSTRUCT";
   }
   return "UNKNOWN";
 }

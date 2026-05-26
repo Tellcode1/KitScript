@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 
+#include "bc.h"
 #include "cc.h"
 #include "rwhelp.h"
 #include "stdafx.h"
@@ -111,6 +112,10 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
     case E_OPCODE_MEMBER_ACCESS: printf("member_access [%u]\n", i.v.member); break;
     case E_OPCODE_MK_STRUCT: {
       printf("mk_struct [%s|%u]\n", lookup(r, i.v.mk_struct), i.v.mk_struct);
+      break;
+    }
+    case E_OPCODE_STRUCT_CONSTRUCT: {
+      printf("struct_construct [%s|%u]\n", lookup(r, i.v.mk_struct), i.v.mk_struct);
       break;
     }
     case E_OPCODE_MEMBER_ASSIGN: {

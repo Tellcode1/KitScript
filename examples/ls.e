@@ -13,6 +13,8 @@ fn main() {
   let show_hidden = list::exists(args, "-sh") || list::exists(args, "--show-hidden");
 
   for (let i = 0; i < len(args); i++) {
+    if (is_flag(args[i])) continue;
+
     if (io::type(args[i]) == io::DIRECTORY) {
       let ents = io::listdir(args[i]);
 
