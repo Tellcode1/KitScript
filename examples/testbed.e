@@ -186,7 +186,7 @@ fn main() {
    }
 
    if (!error) {
-      io::println(io::STDERR, "Successful! No errors");
+      // io::println(io::STDERR, "Successful! No errors");
    } else {
       io::println(io::STDERR, "Errors were encountered...");
    }
