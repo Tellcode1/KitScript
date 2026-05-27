@@ -71,8 +71,7 @@ int
 main(int argc, char* argv[])
 {
   // assert(argc == 2);
-  e_stack stack = { 0 };
-  e_var   v     = { .type = E_VARTYPE_NULL };
+  e_var v = { .type = E_VARTYPE_NULL };
 
   const char* entry_point = "main";
 
@@ -83,15 +82,18 @@ main(int argc, char* argv[])
 
   FILE* f = NULL;
 
-  void*                root_allocation = nullptr;
+  void*                root_allocation = NULL;
   e_compilation_result r               = { 0 };
+
+  e_var time_now    = E_NULLVAR;
+  e_var time_as_str = E_NULLVAR;
 
   int e = 0;
 
   e_argv = argv;
   e_argc = argc;
 
-  const char* file = nullptr;
+  const char* file = NULL;
   for (int i = 1; i < argc; i++) {
     const char* opt = argv[i];
     if (strcmp(opt, "-") == 0) {
@@ -155,18 +157,15 @@ main(int argc, char* argv[])
     goto RET;
   }
 
-  const u32 init_stack_capacity    = 256;
-  const u32 init_variable_capacity = 32;
-  const u32 init_frame_capacity    = 256;
-  const u32 init_branches          = 8;
-
-  e = e_stack_init(init_stack_capacity, init_frame_capacity, init_variable_capacity, &stack);
-  if (e) goto RET;
+  const u32 init_branches = 8;
 
   e = e_refdobj_pool_init(init_branches, &ge_pool);
   if (e) goto RET;
 
+  e_var gvars[128];
+
   e_exec_info info = {
+    .gvars           = gvars,
     .args            = NULL,
     .arg_slots       = NULL,
     .nargs           = 0,
@@ -174,10 +173,9 @@ main(int argc, char* argv[])
     .literals_hashes = r.literals_hashes,
     .funcs           = r.functions,
     .code            = r.instructions,
-    .code_size       = r.instructions_count,
+    .code_count      = r.instructions_count,
     .nliterals       = r.literals_count,
     .nfuncs          = r.functions_count,
-    .stack           = &stack,
     .nextern_funcs   = 0,
     .extern_funcs    = NULL,
     .names           = (const char**)r.names,
@@ -196,8 +194,8 @@ main(int argc, char* argv[])
   }
 
   /* Initialize PRNG subroutine */
-  e_var time_now    = eb_time_now(NULL, 0);
-  e_var time_as_str = eb_cast_string(&time_now, 1);
+  time_now    = eb_time_now(NULL, 0);
+  time_as_str = eb_cast_string(&time_now, 1);
 
   eb_rand_seed(&time_as_str, 1);
 
@@ -216,11 +214,10 @@ main(int argc, char* argv[])
   // e = e_stack_push_frame(&stack);
   // if (e) return e;
 
-  info.code      = entry_point_func.code;
-  info.code_size = entry_point_func.code_size;
-  info.nargs     = 0;
-  info.arg_slots = NULL;
-  info.stack     = &stack;
+  info.code       = entry_point_func.code;
+  info.code_count = entry_point_func.code_count;
+  info.nargs      = 0;
+  info.arg_slots  = NULL;
 
   /* Execute main function. */
   e = e_exec(&info, &v);
@@ -240,13 +237,12 @@ main(int argc, char* argv[])
     else e = -1;
   }
 
+RET:
   e_var_release(&time_as_str);
   e_var_release(&time_now);
 
-RET:
   if (!run_from_stdin && f) fclose(f);
   e_var_release(&v);
-  e_stack_free(&stack);
   e_refdobj_pool_free(&ge_pool);
 
   /* No need to free anything else */

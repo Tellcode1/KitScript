@@ -25,8 +25,8 @@
 #ifndef E_OPERATE_H
 #define E_OPERATE_H
 
-#include "bc.h"
 #include "cast.h"
+#include "ir.h"
 #include "var.h"
 
 #define BINOP(l, r, op)                                                                                                                              \
@@ -67,7 +67,7 @@ is_scalar(const e_var* v)
 { return (v->type == E_VARTYPE_INT || v->type == E_VARTYPE_FLOAT || v->type == E_VARTYPE_CHAR || v->type == E_VARTYPE_BOOL); }
 
 static inline e_var
-v4_operate(e_var l, e_var r, e_opcode op)
+v4_operate(e_var l, e_var r, eir_opcode op)
 {
   if (l.type != E_VARTYPE_VEC4 && r.type != E_VARTYPE_VEC4) return (e_var){ .type = E_VARTYPE_NULL };
 
@@ -81,15 +81,15 @@ v4_operate(e_var l, e_var r, e_opcode op)
   if (rvec) memcpy(rv, r.val.vec3, sizeof(e_vec4));
 
   switch (op) {
-    case E_OPCODE_ADD:
+    case EIR_OPCODE_ADD:
       if (lvec && rvec) return e_make_vec4(lv[0] + rv[0], lv[1] + rv[1], lv[2] + rv[2], lv[3] + rv[3]);
       break;
 
-    case E_OPCODE_SUB:
+    case EIR_OPCODE_SUB:
       if (lvec && rvec) return e_make_vec4(lv[0] - rv[0], lv[1] - rv[1], lv[2] - rv[2], lv[3] - rv[3]);
       break;
 
-    case E_OPCODE_MUL:
+    case EIR_OPCODE_MUL:
       if (lvec && is_scalar(&r)) {
         double s = e_cast_to_float(&r);
         return e_make_vec4(lv[0] * s, lv[1] * s, lv[2] * s, lv[3] * s);
@@ -100,14 +100,14 @@ v4_operate(e_var l, e_var r, e_opcode op)
       }
       break;
 
-    case E_OPCODE_DIV:
+    case EIR_OPCODE_DIV:
       if (lvec && is_scalar(&r)) {
         double s = e_cast_to_float(&r);
         return e_make_vec4(lv[0] / s, lv[1] / s, lv[2] / s, lv[3] / s);
       }
       break;
 
-    case E_OPCODE_NEG:
+    case EIR_OPCODE_NEG:
       if (rvec) return e_make_vec4(-rv[0], -rv[1], -rv[2], -rv[3]);
       break;
 
@@ -118,7 +118,7 @@ v4_operate(e_var l, e_var r, e_opcode op)
 }
 
 static inline e_var
-v3_operate(e_var l, e_var r, e_opcode op)
+v3_operate(e_var l, e_var r, eir_opcode op)
 {
   if (l.type != E_VARTYPE_VEC3 && r.type != E_VARTYPE_VEC3) return (e_var){ .type = E_VARTYPE_NULL };
 
@@ -132,15 +132,15 @@ v3_operate(e_var l, e_var r, e_opcode op)
   if (rvec) memcpy(rv, r.val.vec3, sizeof(e_vec3));
 
   switch (op) {
-    case E_OPCODE_ADD:
+    case EIR_OPCODE_ADD:
       if (lvec && rvec) return e_make_vec3(lv[0] + rv[0], lv[1] + rv[1], lv[2] + rv[2]);
       break;
 
-    case E_OPCODE_SUB:
+    case EIR_OPCODE_SUB:
       if (lvec && rvec) return e_make_vec3(lv[0] - rv[0], lv[1] - rv[1], lv[2] - rv[2]);
       break;
 
-    case E_OPCODE_MUL:
+    case EIR_OPCODE_MUL:
       if (lvec && is_scalar(&r)) {
         double s = e_cast_to_float(&r);
         return e_make_vec3(lv[0] * s, lv[1] * s, lv[2] * s);
@@ -151,14 +151,14 @@ v3_operate(e_var l, e_var r, e_opcode op)
       }
       break;
 
-    case E_OPCODE_DIV:
+    case EIR_OPCODE_DIV:
       if (lvec && is_scalar(&r)) {
         double s = e_cast_to_float(&r);
         return e_make_vec3(lv[0] / s, lv[1] / s, lv[2] / s);
       }
       break;
 
-    case E_OPCODE_NEG:
+    case EIR_OPCODE_NEG:
       if (rvec) return e_make_vec3(-rv[0], -rv[1], -rv[2]);
       break;
 
@@ -169,7 +169,7 @@ v3_operate(e_var l, e_var r, e_opcode op)
 }
 
 static inline e_var
-v2_operate(e_var l, e_var r, e_opcode op)
+v2_operate(e_var l, e_var r, eir_opcode op)
 {
   if (l.type != E_VARTYPE_VEC2 && r.type != E_VARTYPE_VEC2) return (e_var){ .type = E_VARTYPE_NULL };
 
@@ -183,15 +183,15 @@ v2_operate(e_var l, e_var r, e_opcode op)
   if (rhs_is_vec) memcpy(rv, r.val.vec2, sizeof(e_vec2));
 
   switch (op) {
-    case E_OPCODE_ADD:
+    case EIR_OPCODE_ADD:
       if (lhs_is_vec && rhs_is_vec) return e_make_vec2(lv[0] + rv[0], lv[1] + rv[1]);
       break;
 
-    case E_OPCODE_SUB:
+    case EIR_OPCODE_SUB:
       if (lhs_is_vec && rhs_is_vec) return e_make_vec2(lv[0] - rv[0], lv[1] - rv[1]);
       break;
 
-    case E_OPCODE_MUL:
+    case EIR_OPCODE_MUL:
       if (lhs_is_vec && is_scalar(&r)) {
         double s = e_cast_to_float(&r);
         return e_make_vec2(lv[0] * s, lv[1] * s);
@@ -202,14 +202,14 @@ v2_operate(e_var l, e_var r, e_opcode op)
       }
       break;
 
-    case E_OPCODE_DIV:
+    case EIR_OPCODE_DIV:
       if (lhs_is_vec && is_scalar(&r)) {
         double s = e_cast_to_float(&r);
         return e_make_vec2(lv[0] / s, lv[1] / s);
       }
       break;
 
-    case E_OPCODE_NEG:
+    case EIR_OPCODE_NEG:
       if (rhs_is_vec) return e_make_vec2(-rv[0], -rv[1]);
       break;
 
@@ -220,7 +220,7 @@ v2_operate(e_var l, e_var r, e_opcode op)
 }
 
 static inline e_var
-vector_operate(e_var l, e_var r, e_opcode op)
+vector_operate(e_var l, e_var r, eir_opcode op)
 {
   if (l.type == E_VARTYPE_VEC4 || r.type == E_VARTYPE_VEC4) { return v4_operate(l, r, op); }
   if (l.type == E_VARTYPE_VEC3 || r.type == E_VARTYPE_VEC3) { return v3_operate(l, r, op); }
@@ -229,31 +229,31 @@ vector_operate(e_var l, e_var r, e_opcode op)
 }
 
 static inline e_var
-operate(e_var l, e_var r, e_opcode op)
+operate(e_var l, e_var r, eir_opcode op)
 {
   if (is_vector(&l) || is_vector(&r)) { return vector_operate(l, r, op); }
 
-  if (op == E_OPCODE_NOT) return (e_var){ .type = E_VARTYPE_BOOL, .val.b = (bool)!e_var_to_bool(r) };
+  if (op == EIR_OPCODE_NOT) return (e_var){ .type = E_VARTYPE_BOOL, .val.b = (bool)!e_var_to_bool(r) };
 
   switch (op) {
-    case E_OPCODE_ADD: return COERCE_BINOP(l, r, +);
-    case E_OPCODE_SUB: return COERCE_BINOP(l, r, -);
-    case E_OPCODE_MUL: return COERCE_BINOP(l, r, *);
-    case E_OPCODE_DIV:
+    case EIR_OPCODE_ADD: return COERCE_BINOP(l, r, +);
+    case EIR_OPCODE_SUB: return COERCE_BINOP(l, r, -);
+    case EIR_OPCODE_MUL: return COERCE_BINOP(l, r, *);
+    case EIR_OPCODE_DIV:
       if (e_cast_to_int(&r) == 0) return E_NULLVAR;
       return COERCE_BINOP(l, r, /);
-    case E_OPCODE_MOD:
+    case EIR_OPCODE_MOD:
       if (e_cast_to_int(&r) == 0) return E_NULLVAR;
       return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) % e_cast_to_int(&r) };
-    case E_OPCODE_EQL: return (e_var){ .type = E_VARTYPE_BOOL, .val.b = e_var_equal(&l, &r) };
-    case E_OPCODE_NEQ: return (e_var){ .type = E_VARTYPE_BOOL, .val.b = (bool)!e_var_equal(&l, &r) };
-    case E_OPCODE_LT: return COERCE_BOOLEAN_BINOP(l, r, <);
-    case E_OPCODE_LTE: return COERCE_BOOLEAN_BINOP(l, r, <=);
-    case E_OPCODE_GT: return COERCE_BOOLEAN_BINOP(l, r, >);
-    case E_OPCODE_GTE: return COERCE_BOOLEAN_BINOP(l, r, >=);
-    case E_OPCODE_AND: return COERCE_BOOLEAN_BINOP(l, r, &&);
-    case E_OPCODE_OR: return COERCE_BOOLEAN_BINOP(l, r, ||);
-    case E_OPCODE_NEG:
+    case EIR_OPCODE_EQL: return (e_var){ .type = E_VARTYPE_BOOL, .val.b = e_var_equal(&l, &r) };
+    case EIR_OPCODE_NEQ: return (e_var){ .type = E_VARTYPE_BOOL, .val.b = (bool)!e_var_equal(&l, &r) };
+    case EIR_OPCODE_LT: return COERCE_BOOLEAN_BINOP(l, r, <);
+    case EIR_OPCODE_LTE: return COERCE_BOOLEAN_BINOP(l, r, <=);
+    case EIR_OPCODE_GT: return COERCE_BOOLEAN_BINOP(l, r, >);
+    case EIR_OPCODE_GTE: return COERCE_BOOLEAN_BINOP(l, r, >=);
+    case EIR_OPCODE_AND: return COERCE_BOOLEAN_BINOP(l, r, &&);
+    case EIR_OPCODE_OR: return COERCE_BOOLEAN_BINOP(l, r, ||);
+    case EIR_OPCODE_NEG:
       switch (r.type) {
         case E_VARTYPE_INT: return (e_var){ .type = E_VARTYPE_INT, .val.i = -r.val.i };
         case E_VARTYPE_CHAR: return (e_var){ .type = E_VARTYPE_CHAR, .val.c = (char)-(int)r.val.c };
@@ -261,10 +261,10 @@ operate(e_var l, e_var r, e_opcode op)
         case E_VARTYPE_FLOAT: return (e_var){ .type = E_VARTYPE_FLOAT, .val.f = -r.val.f };
         default: break;
       }
-    case E_OPCODE_BNOT: return (e_var){ .type = E_VARTYPE_INT, .val.i = ~e_cast_to_int(&r) };
-    case E_OPCODE_BAND: return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) & e_cast_to_int(&r) };
-    case E_OPCODE_BOR: return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) | e_cast_to_int(&r) };
-    case E_OPCODE_XOR: return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) ^ e_cast_to_int(&r) };
+    case EIR_OPCODE_BNOT: return (e_var){ .type = E_VARTYPE_INT, .val.i = ~e_cast_to_int(&r) };
+    case EIR_OPCODE_BAND: return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) & e_cast_to_int(&r) };
+    case EIR_OPCODE_BOR: return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) | e_cast_to_int(&r) };
+    case EIR_OPCODE_XOR: return (e_var){ .type = E_VARTYPE_INT, .val.i = e_cast_to_int(&l) ^ e_cast_to_int(&r) };
     default: break;
   }
   return E_NULLVAR;

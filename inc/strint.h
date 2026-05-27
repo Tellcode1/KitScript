@@ -73,12 +73,12 @@ e_str_intern(const char* s, e_str_interner* table)
     u32 new_capacity = MAX(table->strings_capacity * 2, 4);
 
     u32* new_hashes = realloc(table->string_hashes, sizeof(u32) * new_capacity);
-    if (!new_hashes) return nullptr;
+    if (!new_hashes) return NULL;
 
     char** new_strings = (char**)realloc((void*)table->strings, sizeof(char*) * new_capacity);
     if (!new_strings) {
       table->string_hashes = new_hashes;
-      return nullptr;
+      return NULL;
     }
 
     table->string_hashes    = new_hashes;
@@ -87,7 +87,7 @@ e_str_intern(const char* s, e_str_interner* table)
   }
 
   char* sdup = e_strdup(s);
-  if (!sdup) return nullptr;
+  if (!sdup) return NULL;
 
   u32 i = table->strings_count;
 

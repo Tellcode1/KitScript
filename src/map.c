@@ -87,7 +87,7 @@ e_map_find(e_map* map, const e_var* key)
   for (u32 i = 0; i < map->size; i++) {
     if (hash == map->hashes[i] && e_var_equal(key, &map->keys[i])) { return &map->vals[i]; }
   }
-  return nullptr;
+  return NULL;
 }
 
 e_var*

@@ -39,8 +39,8 @@
 extern "C" {
 #endif
 
-#ifndef nullptr
-#  define nullptr (0)
+#ifndef NULL
+#  define NULL (0)
 #endif
 
 #ifndef MAX
@@ -202,19 +202,19 @@ e_strdup(const char* s)
 static inline char*
 read_file(const char* path, u64* size)
 {
-  FILE* f        = nullptr;
-  char* contents = nullptr;
+  FILE* f        = NULL;
+  char* contents = NULL;
   long  fsize    = 0;
 
   f = fopen(path, "rb");
-  if (f == nullptr) return nullptr;
+  if (f == NULL) return NULL;
 
   if ((bool)fseek(f, 0, SEEK_END)) goto CLEANUP;
 
   fsize = ftell(f);
   if (fsize <= 0) goto CLEANUP;
 
-  if (size != nullptr) *size = (int)fsize;
+  if (size != NULL) *size = (int)fsize;
 
   if ((bool)fseek(f, 0, SEEK_SET)) goto CLEANUP;
 
@@ -227,9 +227,9 @@ read_file(const char* path, u64* size)
   return contents;
 
 CLEANUP:
-  if (f != nullptr) fclose(f);
-  if (contents != nullptr) free(contents);
-  return nullptr;
+  if (f != NULL) fclose(f);
+  if (contents != NULL) free(contents);
+  return NULL;
 }
 
 static inline void* e_aligned_malloc(size_t size, size_t alignment);

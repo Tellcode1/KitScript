@@ -220,7 +220,7 @@ parse_braces(e_parser* p, int** outstmts, u32* outnstmts)
   int* stmts    = e_xalloc(capacity, sizeof(int));
   if (!stmts) goto err;
 
-  while (peek(p) != nullptr && peek(p)->type != E_TOKEN_TYPE_CLOSEBRACE) {
+  while (peek(p) != NULL && peek(p)->type != E_TOKEN_TYPE_CLOSEBRACE) {
     if (nstmts + 1 >= capacity) {
       u32  newcap   = MAX(capacity * 2, 1);
       int* newstmts = realloc(stmts, sizeof(int) * newcap);
@@ -264,7 +264,7 @@ parse_braces(e_parser* p, int** outstmts, u32* outnstmts)
   return 0;
 
 err:
-  if (outstmts) *outstmts = nullptr;
+  if (outstmts) *outstmts = NULL;
   if (outnstmts) *outnstmts = 0;
   for (u32 i = 0; i < nstmts; i++) e_ast_node_free(p->ast, stmts[i]);
   free(stmts);
@@ -284,7 +284,7 @@ static inline RETURNS_ERRCODE int
 parse_body(e_parser* p, int** outstmts, u32* outnstmts)
 {
   int  nstmts = 0;
-  int* stmts  = nullptr;
+  int* stmts  = NULL;
   int  stmt   = 0;
 
   if (peek(p) && peek(p)->type == E_TOKEN_TYPE_OPENBRACE) {
@@ -295,7 +295,7 @@ parse_body(e_parser* p, int** outstmts, u32* outnstmts)
   // Explicity handle zero expression lists.
   if (peek(p) && peek(p)->type == E_TOKEN_TYPE_SEMICOLON) {
     next(p);
-    if (outstmts) *outstmts = nullptr;
+    if (outstmts) *outstmts = NULL;
     if (outnstmts) *outnstmts = 0;
   }
   // Single line expressions ending with a semi colon.
@@ -382,7 +382,7 @@ parse_variable_decleration(e_parser* p, bool is_const, int node)
   u32         capacity = 16;
   u32         ndecls   = 0;
   int*        decls    = e_xalloc(capacity, sizeof(int));
-  const char* name     = nullptr;
+  const char* name     = NULL;
   if (!decls) goto err;
 
   while (peek(p)) {
@@ -416,6 +416,8 @@ parse_variable_decleration(e_parser* p, bool is_const, int node)
         goto err;
       }
     }
+
+    // fprintf(stderr, "initializer provided to %s [%i]\n", name, initializer);
 
     E_GET_NODE(p->ast, decl_node)->let.initializer = initializer;
 
@@ -480,18 +482,18 @@ parse_if(e_parser* p, int node)
   u32        num_else_ifs = 0;
   e_if_stmt* else_ifs     = e_xalloc(cap_else_ifs, sizeof(e_if_stmt));
 
-  int* body   = nullptr;
+  int* body   = NULL;
   u32  nstmts = 0;
 
-  int* else_body   = nullptr;
+  int* else_body   = NULL;
   u32  nelse_stmts = 0;
 
   int  condition         = -1;
   int  else_if_condition = -1;
-  int* else_if_body      = nullptr;
+  int* else_if_body      = NULL;
   u32  else_if_nstmts    = 0;
 
-  if (else_ifs == nullptr) goto err;
+  if (else_ifs == NULL) goto err;
 
   if (e_ast_expect(p, E_TOKEN_TYPE_OPENPAREN)) {
     asterror(prev(p)->span, "Expected '(' after 'if', got '%s' [if statement]\n", e_token_type_to_string(prev(p)->type));
@@ -616,7 +618,7 @@ parse_while(e_parser* p, int node)
   if (node < 0) return node;
 
   int  cnd    = -1;
-  int* stmts  = nullptr;
+  int* stmts  = NULL;
   u32  nstmts = 0;
 
   // if (e_ast_expect(p, E_TOKEN_TYPE_OPENPAREN)) {
@@ -789,11 +791,11 @@ parse_function(e_parser* p, bool external, int node)
 
   u32            names_capacity       = 0;
   u32            arg_names_size       = 0;
-  const char**   arg_names            = nullptr;
-  const char*    intern_function_name = nullptr;
-  const char*    arg_name             = nullptr;
-  const e_token* name_tk              = nullptr;
-  int*           stmts                = nullptr;
+  const char**   arg_names            = NULL;
+  const char*    intern_function_name = NULL;
+  const char*    arg_name             = NULL;
+  const e_token* name_tk              = NULL;
+  int*           stmts                = NULL;
   u32            nstmts               = 0;
 
   name_tk = peek(p);
@@ -913,7 +915,7 @@ parse_function_call(e_parser* p, const e_token* tk, int node)
       int* new_args     = realloc(args, newcap * sizeof(int));
       u32  new_capacity = newcap;
 
-      if (new_args == nullptr) goto err;
+      if (new_args == NULL) goto err;
 
       args     = new_args;
       capacity = new_capacity;
@@ -1448,7 +1450,7 @@ e_ast_nud(e_parser* p, const e_token* tk)
 
     /* { stmts;stmts;stmts; } */
     case E_TOKEN_TYPE_OPENBRACE: {
-      int* stmts  = nullptr;
+      int* stmts  = NULL;
       u32  nstmts = 0;
       if (parse_braces(p, &stmts, &nstmts)) {
         e_ast_node_free(p->ast, node);
@@ -1791,18 +1793,6 @@ e_ast_led(e_parser* p, const e_token* tk, int leftidx, int rbp)
         asterror(prev_span, "Failed to evaluate RHS [binary operator]\n");
 
         return -1;
-      }
-
-      if (E_GET_NODE(p->ast, leftidx)->type == E_AST_NODE_INDEX && tk->val.op.is_compound) {
-        E_GET_NODE(p->ast, node)->type                 = E_AST_NODE_INDEX_COMPOUND_OP;
-        E_GET_NODE(p->ast, node)->index_compound.op    = op;
-        E_GET_NODE(p->ast, node)->index_compound.base  = E_GET_NODE(p->ast, leftidx)->index.base;
-        E_GET_NODE(p->ast, node)->index_compound.index = E_GET_NODE(p->ast, leftidx)->index.index;
-        E_GET_NODE(p->ast, node)->index_compound.value = right;
-
-        E_GET_NODE(p->ast, leftidx)->type = E_AST_NODE_NOP;
-
-        return node;
       }
 
       E_GET_NODE(p->ast, node)->type                 = E_AST_NODE_BINARYOP;

@@ -36,7 +36,7 @@
 #include <string.h>
 #include <time.h>
 
-char** e_argv = nullptr;
+char** e_argv = NULL;
 int    e_argc = 0;
 
 e_var

@@ -52,7 +52,7 @@
 FILE*
 file_from_var(const e_var* v)
 {
-  FILE* f = nullptr;
+  FILE* f = NULL;
   if (v->type == E_VARTYPE_DESCRIPTOR) {
     f = (FILE*)v->val.descriptor;
   } else if (v->type == E_VARTYPE_INT) {

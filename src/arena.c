@@ -20,7 +20,7 @@ add_free_page(size_t size, e_arena* arena)
   size = ((size + E_PAGE_SIZE - 1) / E_PAGE_SIZE) * E_PAGE_SIZE;
 
   e_arena_page* page = (e_arena_page*)malloc(size);
-  if (page == nullptr) return -1;
+  if (page == NULL) return -1;
 
   page->size = size - sizeof(e_arena_page); // size - metadata_size
   page->head = 0;
@@ -101,7 +101,7 @@ e_arnalloc(e_arena* a, size_t size)
   // If current pages doesn't meet our requirements,
   // Create an link a new one
 
-  if (fits == nullptr || (fits->size - fits->head) < total) {
+  if (fits == NULL || (fits->size - fits->head) < total) {
     fits = get_and_unmark_free_page(a, total);
     if (!fits) return NULL; // FAILURE!
   }
@@ -138,8 +138,8 @@ e_arnalloc(e_arena* a, size_t size)
 char*
 e_arnstrdup(e_arena* arena, const char* s)
 {
-  char* new_s = nullptr;
-  if (s != nullptr) {
+  char* new_s = NULL;
+  if (s != NULL) {
     size_t l = strlen(s);
     new_s    = (char*)e_arnalloc(arena, l + 1);
     memcpy(new_s, s, l);
@@ -152,13 +152,13 @@ void
 e_arena_free(e_arena* arena)
 {
   e_arena_page* next = arena->current;
-  while (next != nullptr) {
+  while (next != NULL) {
     e_arena_page* new_next = next->next;
     free(next);
     next = new_next;
   }
   next = arena->free_pages;
-  while (next != nullptr) {
+  while (next != NULL) {
     e_arena_page* new_next = next->next;
     free(next);
     next = new_next;

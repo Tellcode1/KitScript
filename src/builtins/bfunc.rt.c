@@ -6,7 +6,6 @@
 #include "../../inc/exec.h"
 #include "../../inc/list.h"
 #include "../../inc/perr.h"
-#include "../../inc/stack.h"
 #include "../../inc/stdafx.h"
 #include "../../inc/strint.h"
 #include "../../inc/struct.h"
@@ -33,11 +32,10 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e_ast                ast      = { 0, .root = -1 };
   e_parser             parser   = { 0 };
-  e_token*             tokens   = nullptr;
+  e_token*             tokens   = NULL;
   u32                  ntoks    = 0;
   e_arena              arena    = { 0 };
   e_compilation_result compiled = { 0 };
-  e_stack              stack    = { 0 };
   int                  e        = 0;
 
   e_str_interner interner = { 0 };
@@ -104,7 +102,7 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
     .arena              = &arena,
     .ast                = &ast,
     .root_node          = ast.root,
-    .custom_entry_point = nullptr,
+    .custom_entry_point = NULL,
     .opt_level          = optimization_level,
   };
 
@@ -120,16 +118,6 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
     goto RET;
   }
 
-  const u32 init_stack_capacity    = 32;
-  const u32 init_variable_capacity = 8;
-  const u32 init_frame_capacity    = 4;
-
-  e = e_stack_init(init_stack_capacity, init_frame_capacity, init_variable_capacity, &stack);
-  if (e) {
-    e_xerror("esl::exec: Failed to initialize stack\n");
-    goto RET;
-  }
-
   e_exec_info exec_info = {
     .args            = NULL,
     .arg_slots       = NULL,
@@ -138,10 +126,9 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
     .literals_hashes = compiled.literals_hashes,
     .funcs           = compiled.functions,
     .code            = compiled.instructions,
-    .code_size       = compiled.instructions_count,
+    .code_count      = compiled.instructions_count,
     .nliterals       = compiled.literals_count,
     .nfuncs          = compiled.functions_count,
-    .stack           = &stack,
     .nextern_funcs   = 0,
     .extern_funcs    = NULL,
     .names           = (const char**)compiled.names,
@@ -152,10 +139,9 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
   };
   e_ecode err = e_exec(&exec_info, &ret); // Global variable initialization.
 
-  exec_info.code      = entry_func.code;
-  exec_info.code_size = entry_func.code_size;
-  exec_info.arg_slots = entry_func.arg_slots;
-  exec_info.stack     = &stack;
+  exec_info.code       = entry_func.code;
+  exec_info.code_count = entry_func.code_count;
+  exec_info.arg_slots  = entry_func.arg_slots;
 
   exec_info.nargs = arguments->size;
   exec_info.args  = arguments->vars;
@@ -173,7 +159,7 @@ RET:
   e_compilation_result_free(&compiled);
   e_str_interner_free(&interner);
   e_arena_free(&arena);
-  e_stack_free(&stack);
+  // e_stack_free(&stack);
   return ret;
 }
 

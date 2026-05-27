@@ -181,7 +181,7 @@ main(int argc, char* argv[])
   // Feed into the AST
   for (u32 fi = 0; fi < nfiles; fi++) {
     e_parser parser   = { 0 };
-    e_token* tokens   = nullptr;
+    e_token* tokens   = NULL;
     u32      ntoks    = 0;
     char*    contents = NULL;
 
@@ -197,7 +197,7 @@ main(int argc, char* argv[])
       f = fopen(in, "rb");
     }
 
-    if (f == nullptr) {
+    if (f == NULL) {
       if (verbose) fprintf(stderr, "error!\n"); // Follow up the "Opening %s: " message.
       print_err("Failed to open %s: %s\n", in, strerror(errno));
       e = -1;
@@ -207,7 +207,7 @@ main(int argc, char* argv[])
     if (verbose) fprintf(stderr, "success\n");
 
     contents = read_file_arena_better(f);
-    if (contents == nullptr) {
+    if (contents == NULL) {
       print_err("Failed to load input file: %s. Next.\n", strerror(errno));
       e = -1;
       goto ERR;
@@ -274,7 +274,7 @@ main(int argc, char* argv[])
     .arena              = &arena,
     .ast                = &ast,
     .root_node          = ast.root,
-    .custom_entry_point = nullptr,
+    .custom_entry_point = NULL,
     .opt_level          = opt_level,
   };
 

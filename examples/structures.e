@@ -25,6 +25,7 @@ fn main() {
    rand::seed("12345678910ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 
    let fvec = fourvectors(vec2::ZERO,vec2::ZERO,vec2::ZERO,vec2::ZERO);
+   println(fvec);
    fvec.v0 = rand::vec2();
    fvec.v1 = rand::vec2();
    fvec.v2 = rand::vec2();

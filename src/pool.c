@@ -112,10 +112,10 @@ e_refdobj_pool_acquire(e_refdobj_pool* pool)
     u32 old_branch_count = pool->nbranches;
 
     e_refdobj_branch** new_branches = E_ARR_REALLOC(pool->branches, e_refdobj_branch*, new_branch_count);
-    if (!new_branches) return nullptr;
+    if (!new_branches) return NULL;
 
     u32* new_free_lists = E_ARR_REALLOC(pool->in_use_masks, u32, new_branch_count);
-    if (!new_free_lists) return nullptr;
+    if (!new_free_lists) return NULL;
 
     pool->branches     = new_branches;
     pool->in_use_masks = new_free_lists;
@@ -126,7 +126,7 @@ e_refdobj_pool_acquire(e_refdobj_pool* pool)
     /* Setup all new branches. Running from old branch count to new branch count. */
     for (u32 i = old_branch_count; i < pool->nbranches; i++) {
       pool->branches[i] = (e_refdobj_branch*)e_aligned_malloc(sizeof(e_refdobj_branch), 16);
-      if (!pool->branches[i]) return nullptr;
+      if (!pool->branches[i]) return NULL;
 
       branch_init(pool, pool->branches[i]);
     }
@@ -183,7 +183,7 @@ e_refdobj_pool_trim(e_refdobj_pool* pool)
     // Every leaf is free
     if (pool->in_use_masks[i] == 0) {
       e_aligned_free(br);
-      pool->branches[i] = nullptr;
+      pool->branches[i] = NULL;
     }
   }
 }

@@ -131,6 +131,18 @@ void e_var_release(e_var* v);
 u32  e_var_hash(const e_var* var);
 bool e_var_equal(const e_var* a, const e_var* b);
 
+/**
+ * Index a container (excluding strings).
+ * strings are tightly packed so individual elements can not
+ * be accessed.
+ */
+int e_var_index(const e_var* left, const e_var* right, e_var** result);
+
+/**
+ * Get a character from a string
+ */
+int e_str_index(e_string* s, int i, e_var* o);
+
 void e_var_free(e_var* var);
 
 /**

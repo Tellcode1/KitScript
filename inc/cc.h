@@ -29,6 +29,7 @@
 #include "bstructs.h"
 #include "bvar.h"
 #include "cerr.h"
+#include "ir.h"
 #include "stdafx.h"
 #include "var.h"
 
@@ -114,6 +115,7 @@ typedef struct ecc_namespace_stack {
 
 typedef struct ecc_variable_information {
   e_filespan span; // Span at where the variable (name) is.
+  int        reg;
   u32        name_hash;
   int        initializer;   // initializer provided during creation.
   int        current_value; // <0 if no value currently (void)
@@ -129,6 +131,7 @@ typedef struct ecc_struct_information {
   u32*   field_hashes;
   u32    fields_count;
   u32    field_capacity;
+  u32    name_hash;
   char*  name; // Arena allocated.
 } ecc_struct_information;
 
@@ -171,11 +174,11 @@ typedef struct ecc_builtin_variables_table {
  * Compiled function structure.
  */
 typedef struct ecc_function {
-  u32  name_hash;
-  u32  nargs;
-  u32  code_size;
-  u8*  code;
-  u32* arg_slots; /* The ID of the arguments, in order. */
+  u32     name_hash;
+  u32     nargs;
+  u32     code_count;
+  e_ins*  code;
+  ereg_t* arg_slots; /* The registers of the arguments (in which they need to be put), in order. */
 } ecc_function;
 
 /**
@@ -263,11 +266,22 @@ typedef struct ecc_label_table {
   ecc_label_jumps_table* labels;
 } ecc_label_table;
 
-typedef struct ecc_frame_table {
-  u32* stack;
-  u32  capacity;
-  u32  top;
-} ecc_frame_table;
+typedef struct ecc_var {
+  e_filespan span;
+  u32        name_hash;
+  union {
+    ereg_t reg;
+    u32    global_id;
+  } slot;
+  bool            is_const;
+  bool            is_global;
+  struct ecc_var* next;
+} ecc_var;
+
+typedef struct ecc_scope {
+  ecc_var*          vars;
+  struct ecc_scope* parent;
+} ecc_scope;
 
 typedef struct e_compiler {
   const ecc_info* info;
@@ -282,17 +296,19 @@ typedef struct e_compiler {
   ecc_defer_scope*             defer_stack;
   ecc_struct_table*            struct_table;
 
+  ecc_scope*           scope;
   ecc_loop_location*   loop;
   ecc_namespace_stack* ns;
 
   /* Stack for storing information about variables during compilation. */
   struct e_stackemu* stack;
 
-  u8* emit;
-  u32 num_bytes_emitted;
-  u32 emit_capacity;
+  e_ins* instructions;
+  u32    ninstructions;
+  u32    cinstructions;
 
   u32 next_label;
+  int next_reg;
 } e_compiler;
 
 typedef struct e_compilation_result {
@@ -305,7 +321,7 @@ typedef struct e_compilation_result {
   e_var*                  literals;        // Array allocated by struct, don't free inviduals.
   u32*                    literals_hashes; // Array allocated by struct. Free after use.
   ecc_function*           functions;       // Array allocated by struct. Free after use.
-  u8*                     instructions;    // Array allocated by struct. Free after use.
+  e_ins*                  instructions;    // Array allocated by struct. Free after use.
   ecc_struct_information* structs;         // Array (and arrays inside) allocated by struct. Free after use.
 
   /* Debug symbols. Optional. */
@@ -320,15 +336,15 @@ typedef struct e_compilation_result {
 int e_compile(const ecc_info* info, e_compilation_result* result);
 
 static inline void
-ecc_stream_resize(e_compiler* cc, int new_cap)
+ecc_stream_resize(e_compiler* cc, u32 new_cap)
 {
-  if (cc == nullptr || new_cap == 0) return;
+  if (cc == NULL || new_cap == 0) return;
 
-  u8* newcode = (u8*)realloc(cc->emit, sizeof(u8) * new_cap);
-  if (newcode == nullptr) { return; }
+  e_ins* newcode = (e_ins*)realloc(cc->instructions, sizeof(e_ins) * new_cap);
+  if (newcode == NULL) { return; }
 
-  cc->emit          = newcode;
-  cc->emit_capacity = new_cap;
+  cc->instructions  = newcode;
+  cc->cinstructions = new_cap;
 }
 
 static inline void

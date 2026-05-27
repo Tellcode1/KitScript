@@ -27,6 +27,7 @@
 
 #include "bfunc.h"
 #include "cc.h"
+#include "perr.h"
 #include "stack.h"
 #include "stdafx.h"
 #include "var.h"
@@ -66,12 +67,13 @@ e_script_init(
   s->extern_vars  = extern_vars;
   s->nextern_vars = nextern_vars;
   s->compiled     = *r;
-  return e_stack_init(16, 4, 4, &s->stack);
+  return 0;
 }
 
 static inline void
 e_script_free(e_script* s)
-{ e_stack_free(&s->stack); }
+{
+}
 
 /**
  * Find the variable with the hash specified
@@ -79,9 +81,9 @@ e_script_free(e_script* s)
  * You can safely modify the value only when
  * the program is not running (after/before).
  */
-static inline e_var*
-e_script_get_variable(u32 name_hash, const e_script* s)
-{ return e_stack_find(&s->stack, name_hash); }
+// static inline e_var*
+// e_script_get_variable(u32 name_hash, const e_script* s)
+// { return e_stack_find(&s->stack, name_hash); }
 
 static inline bool
 e_script_has_function(e_script* s, const char* func_name)

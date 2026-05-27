@@ -1,8 +1,9 @@
-#include "../inc/bc.h"
 #include "../inc/cc.h"
+#include "../inc/ir.h"
 #include "../inc/rwhelp.h"
 #include "../inc/stdafx.h"
 
+#include <assert.h>
 #include <string.h>
 
 e_file_read_error
@@ -25,7 +26,7 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
   }
 
   *root_allocation = e_xalloc(bytes_req, 1);
-  if (*root_allocation == nullptr) return E_FILE_READ_ERR_ROOT_ALLOCATION_FAILED;
+  if (*root_allocation == NULL) return E_FILE_READ_ERR_ROOT_ALLOCATION_FAILED;
 
   uchar* alloc = (uchar*)*root_allocation;
 
@@ -52,8 +53,8 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
         lit->val.s = (e_refdobj*)(alloc);
         alloc += sizeof(e_refdobj);
 
-        /* Initialize ref counter to 1. Not used for literals but VM expects it */
-        lit->val.s->refc = 1;
+        /* Initialize ref counter to 2. They are immortal for the length of the program. */
+        lit->val.s->refc = 2;
 
         E_VAR_AS_STRING(lit)->s = (char*)(alloc);
         alloc += len + 1;
@@ -98,6 +99,8 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
     if (fread(st->name, name_len, 1, f) != 1) goto ERR;
     st->name[name_len] = 0;
 
+    st->name_hash = e_hash(st->name, strlen(st->name));
+
     if (fread(&st->fields_count, sizeof(u32), 1, f) != 1) goto ERR;
 
     alloc            = e_align_ptr(alloc, 4);
@@ -131,31 +134,31 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
 
   for (u32 i = 0; i < r->functions_count; i++) {
     ecc_function func = { 0 };
-    if (fread(&func.code_size, sizeof(func.code_size), 1, f) != 1) goto ERR;
+    if (fread(&func.code_count, sizeof(func.code_count), 1, f) != 1) goto ERR;
     if (fread(&func.nargs, sizeof(func.nargs), 1, f) != 1) goto ERR;
     if (fread(&func.name_hash, sizeof(func.name_hash), 1, f) != 1) goto ERR;
 
     alloc = e_align_ptr(alloc, 8);
 
-    func.arg_slots = (u32*)alloc;
+    func.arg_slots = (ereg_t*)alloc;
     alloc += sizeof(u32) * func.nargs;
     if (fread(func.arg_slots, sizeof(*func.arg_slots), func.nargs, f) != func.nargs) goto ERR;
 
     alloc = e_align_ptr(alloc, 8);
 
-    func.code = (u8*)alloc;
-    alloc += func.code_size;
-    if (func.code == nullptr) return -1;
+    func.code = (e_ins*)alloc;
+    alloc += func.code_count * sizeof(e_ins);
+    if (func.code == NULL) return -1;
 
-    if (fread(func.code, 1, func.code_size, f) != func.code_size) goto ERR;
+    if (fread(func.code, sizeof(e_ins), func.code_count, f) != func.code_count) goto ERR;
     r->functions[i] = func;
   }
 
   if (fread(&r->instructions_count, sizeof(r->instructions_count), 1, f) != 1) goto ERR;
 
   alloc           = e_align_ptr(alloc, 8);
-  r->instructions = (u8*)alloc;
-  if (fread(r->instructions, sizeof(u8), r->instructions_count, f) != r->instructions_count) goto ERR;
+  r->instructions = (e_ins*)alloc;
+  if (fread(r->instructions, sizeof(e_ins), r->instructions_count, f) != r->instructions_count) goto ERR;
 
   alloc += r->instructions_count;
   alloc = e_align_ptr(alloc, 4);
@@ -248,11 +251,11 @@ e_file_bytes_required(const e_compilation_result* r)
     }
 
     size = e_align_size(size, 8);
-    size += fn->code_size; // code
+    size += fn->code_count * sizeof(e_ins); // code
   }
 
   size = e_align_size(size, 8);
-  size += r->instructions_count;
+  size += r->instructions_count * sizeof(e_ins);
 
   size = e_align_size(size, 4);
   size += sizeof(r->names_count);
@@ -323,15 +326,15 @@ e_file_write(const e_compilation_result* r, FILE* f)
   fwrite(&r->functions_count, sizeof(r->functions_count), 1, f);
   for (u32 i = 0; i < r->functions_count; i++) {
     const ecc_function* fn = &r->functions[i];
-    fwrite(&fn->code_size, sizeof(fn->code_size), 1, f);
+    fwrite(&fn->code_count, sizeof(fn->code_count), 1, f);
     fwrite(&fn->nargs, sizeof(fn->nargs), 1, f);
     fwrite(&fn->name_hash, sizeof(fn->name_hash), 1, f);
     if (fn->arg_slots && fn->nargs > 0) fwrite(fn->arg_slots, sizeof(*fn->arg_slots), fn->nargs, f);
-    fwrite(fn->code, 1, fn->code_size, f);
+    fwrite(fn->code, sizeof(e_ins), fn->code_count, f);
   }
 
   fwrite(&r->instructions_count, sizeof(r->instructions_count), 1, f);
-  fwrite(r->instructions, sizeof(u8), r->instructions_count, f);
+  fwrite(r->instructions, sizeof(e_ins), r->instructions_count, f);
 
   fwrite(&r->names_count, sizeof(r->names_count), 1, f);
   for (u32 i = 0; i < r->names_count; i++) {
@@ -341,78 +344,144 @@ e_file_write(const e_compilation_result* r, FILE* f)
   }
 }
 
+void
+e_emit_ins(e_compiler* cc, e_ins ins)
+{
+  if (cc->ninstructions >= cc->cinstructions) ecc_stream_resize(cc, cc->cinstructions * 2U);
+  memcpy(&cc->instructions[cc->ninstructions++], &ins, sizeof(e_ins));
+}
+
 e_ins
 e_read_ins(const u8** ip)
 {
-  e_ins i  = { 0 };
-  i.opcode = e_read_u8(ip);
-  switch ((e_opcode_bck)i.opcode) {
-    case E_OPCODE_NOOP:
-    case E_OPCODE_ADD:
-    case E_OPCODE_SUB:
-    case E_OPCODE_MUL:
-    case E_OPCODE_DIV:
-    case E_OPCODE_MOD:
-    case E_OPCODE_EXP:
-    case E_OPCODE_AND:
-    case E_OPCODE_OR:
-    case E_OPCODE_NOT:
-    case E_OPCODE_BAND:
-    case E_OPCODE_BOR:
-    case E_OPCODE_XOR:
-    case E_OPCODE_BNOT:
-    case E_OPCODE_EQL:
-    case E_OPCODE_NEQ:
-    case E_OPCODE_LT:
-    case E_OPCODE_LTE:
-    case E_OPCODE_GT:
-    case E_OPCODE_GTE:
-    case E_OPCODE_NEG:
-    case E_OPCODE_INC:
-    case E_OPCODE_POP:
-    case E_OPCODE_DUP:
-    case E_OPCODE_INDEX_ASSIGN:
-    case E_OPCODE_INDEX_PEEK:
-    case E_OPCODE_PUSH_FRAME:
-    case E_OPCODE_POP_FRAME:
-    case E_OPCODE_INDEX:
-    case E_OPCODE_DEC: break;
+  e_ins i = { 0 };
+  memcpy(&i, *ip, sizeof(e_ins));
+  *ip += sizeof(e_ins);
+  // i.opcode = e_read_u8(ip);
 
-    case E_OPCODE_CALL:
-      i.v.call.hash  = e_read_u32(ip);
-      i.v.call.nargs = e_read_u16(ip);
-      break;
+  // switch (i.opcode) {
+  //   case EIR_OPCODE_LOADK: {
+  //     i.loadk.dst = e_read_u32(ip);
+  //     i.loadk.id  = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_MOVG:
+  //   case EIR_OPCODE_GETG:
+  //   case EIR_OPCODE_SETG:
+  //   case EIR_OPCODE_MOV: {
+  //     i.mov.dst = e_read_u32(ip);
+  //     i.mov.src = e_read_u32(ip);
+  //     break;
+  //   }
 
-    case E_OPCODE_RETURN: i.v.has_return_value = e_read_u8(ip); break;
+  //   case EIR_OPCODE_ADD:
+  //   case EIR_OPCODE_SUB:
+  //   case EIR_OPCODE_MUL:
+  //   case EIR_OPCODE_DIV:
+  //   case EIR_OPCODE_MOD:
+  //   case EIR_OPCODE_EXP:
+  //   case EIR_OPCODE_AND:
+  //   case EIR_OPCODE_OR:
+  //   case EIR_OPCODE_BAND:
+  //   case EIR_OPCODE_BOR:
+  //   case EIR_OPCODE_XOR:
+  //   case EIR_OPCODE_EQL:
+  //   case EIR_OPCODE_NEQ:
+  //   case EIR_OPCODE_LT:
+  //   case EIR_OPCODE_LTE:
+  //   case EIR_OPCODE_GT:
+  //   case EIR_OPCODE_GTE: {
+  //     i.binop.dst = e_read_u32(ip);
+  //     i.binop.a   = e_read_u32(ip);
+  //     i.binop.b   = e_read_u32(ip);
+  //     break;
+  //   }
 
-    case E_OPCODE_LITERAL: i.v.literal = e_read_u32(ip); break;
-    case E_OPCODE_ASSERT: i.v.assertion = e_read_u32(ip); break;
-    case E_OPCODE_LOAD: i.v.load = e_read_u32(ip); break;
-    case E_OPCODE_ASSIGN: i.v.assign = e_read_u32(ip); break;
-    case E_OPCODE_INIT: i.v.init = e_read_u32(ip); break;
+  //   case EIR_OPCODE_INC:
+  //   case EIR_OPCODE_DEC:
+  //   case EIR_OPCODE_BNOT:
+  //   case EIR_OPCODE_NEG:
+  //   case EIR_OPCODE_NOT: {
+  //     i.unop.dst = e_read_u32(ip);
+  //     i.unop.a   = e_read_u32(ip);
+  //     break;
+  //   }
 
-    case E_OPCODE_MK_LIST: i.v.mk_list = e_read_u32(ip); break;
-    case E_OPCODE_MK_MAP: i.v.mk_map = e_read_u32(ip); break;
-    case E_OPCODE_LABEL: i.v.label = e_read_u32(ip); break;
+  //   case EIR_OPCODE_RET: {
+  //     i.ret.return_value = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_NOP: break;
 
-    case E_OPCODE_JMP:
-    case E_OPCODE_JE:
-    case E_OPCODE_JNE:
-    case E_OPCODE_JZ:
-    case E_OPCODE_JNZ: i.v.jmp = e_read_u32(ip); break;
+  //   case EIR_OPCODE_MK_LIST: {
+  //     i.mk_list.dst        = e_read_u32(ip);
+  //     i.mk_list.base_elems = e_read_u32(ip);
+  //     i.mk_list.nelems     = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_MK_MAP: {
+  //     i.mk_map.dst        = e_read_u32(ip);
+  //     i.mk_map.base_pairs = e_read_u32(ip);
+  //     i.mk_map.npairs     = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_INDEX: {
+  //     i.index.dst   = e_read_u32(ip);
+  //     i.index.base  = e_read_u32(ip);
+  //     i.index.index = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_INDEX_ASSIGN: {
+  //     i.index_assign.value = e_read_u32(ip);
+  //     i.index_assign.base  = e_read_u32(ip);
+  //     i.index_assign.index = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_CALL: {
+  //     i.call.dst         = e_read_u32(ip);
+  //     i.call.function_id = e_read_u32(ip);
+  //     i.call.base_args   = e_read_u32(ip);
+  //     i.call.nargs       = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_JZ:
+  //   case EIR_OPCODE_JNZ: {
+  //     i.cj.target    = e_read_u32(ip);
+  //     i.cj.condition = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_JMP: {
+  //     i.jmp.target = e_read_u32(ip);
+  //     break;
+  //   }
 
-    case E_OPCODE_MK_STRUCT: i.v.mk_struct = e_read_u32(ip); break;
+  //   case EIR_OPCODE_LABEL: {
+  //     i.label.id = e_read_u32(ip);
+  //     break;
+  //   }
 
-    case E_OPCODE_STRUCT_CONSTRUCT: {
-      i.v.struct_construct.id       = e_read_u32(ip);
-      i.v.struct_construct.arg_mode = e_read_u8(ip);
-      break;
-    }
-
-    case E_OPCODE_MEMBER_ACCESS:
-    case E_OPCODE_MEMBER_ASSIGN: i.v.member = e_read_u32(ip); break;
-    case E_OPCODE_HALT:
-    case E_OPCODE_COUNT: break;
-  }
+  //   case EIR_OPCODE_MEMBER_ACCESS: {
+  //     i.member_access.dst       = e_read_u32(ip);
+  //     i.member_access.base      = e_read_u32(ip);
+  //     i.member_access.member_id = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_MEMBER_ASSIGN: {
+  //     i.member_assign.value     = e_read_u32(ip);
+  //     i.member_assign.base      = e_read_u32(ip);
+  //     i.member_assign.member_id = e_read_u32(ip);
+  //     break;
+  //   }
+  //   case EIR_OPCODE_MK_STRUCT: {
+  //     i.mk_struct.dst          = e_read_u32(ip);
+  //     i.mk_struct.struct_id    = e_read_u32(ip);
+  //     i.mk_struct.base_members = e_read_u32(ip);
+  //     break;
+  //   }
+  // }
   return i;
 }
+
+u8*
+e_ins_serialize(e_ins* ins, u32 nins)
+{ return NULL; }

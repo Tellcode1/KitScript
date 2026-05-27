@@ -39,8 +39,8 @@ typedef struct e_struct {
 } e_struct;
 
 int  e_struct_init_from(const e_struct* from, e_struct* s);
-int  e_struct_init_paired(u32 nmembers, const char** member_names, const struct e_struct_member_pair* pairs, e_struct* s);
-int  e_struct_init(u32 nmembers, const char** member_names, e_struct* s); // All variables initialized to NULL
+int  e_struct_init_paired(const char* name, u32 nmembers, const char** member_names, const struct e_struct_member_pair* pairs, e_struct* s);
+int  e_struct_init(const char* name, u32 nmembers, const char** member_names, e_struct* s); // All variables initialized to NULL
 void e_struct_free(e_struct* s);
 
 struct e_var* e_struct_get_member(u32 hash, const e_struct* s);

@@ -70,7 +70,7 @@ e_list_append(const e_var* v, struct e_list* list)
 e_var*
 e_list_index(const struct e_list* list, u32 index)
 {
-  if (index >= list->size) return nullptr;
+  if (index >= list->size) return NULL;
   return &list->vars[index];
 }
 

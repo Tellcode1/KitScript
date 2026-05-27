@@ -8,17 +8,27 @@
       "name": "(gdb) Launch",
       "type": "lldb",
       "request": "launch",
-      // "program": "${workspaceFolder}/build/eexec",
+<<<<<<< HEAD
+      "program": "${workspaceFolder}/build/eexec",
+      "args": [
+        "build/test",
+=======
+      // "program": "${workspaceFolder}/build/dc",
       // "args": [
       //   "build/test",
       // ],
-      "program": "${workspaceRoot}/build/ec",
+      "program": "${workspaceRoot}/build/eexec",
       "args": [
-        "-O3",
-        "examples/example.e",
-        "-o",
         "build/test"
+>>>>>>> c22bbf9 (Switch to using registers for speed (using LSRA rn) basic features are implemented. Needs some more work)
       ],
+      // "program": "${workspaceRoot}/build/ec",
+      // "args": [
+      //   "-O3",
+      //   "examples/example.e",
+      //   "-o",
+      //   "build/test"
+      // ],
       "stopOnEntry": false,
       "cwd": "${workspaceFolder}",
     }

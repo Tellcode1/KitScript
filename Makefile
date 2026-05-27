@@ -7,7 +7,7 @@ PREFIX?=/usr/bin/
 SRC_DIR=src
 BUILD_DIR?=build
 
-SOURCES=ast.c ast.free.c lex.c var.c list.c map.c builtins/bfunc.c builtins/bfunc.rt.c builtins/bfunc.str.c builtins/bfunc.list.c builtins/bfunc.io.c builtins/bfunc.sys.c builtins/bfunc.math.c builtins/bfunc.rand.c builtins/bfunc.log.c builtins/bfunc.time.c pool.c ldfile.c validate.c stackemu.c stack.c arena.c cvt.c struct.c
+SOURCES=ast.c ast.free.c lex.c var.c list.c map.c builtins/bfunc.c builtins/bfunc.rt.c builtins/bfunc.str.c builtins/bfunc.list.c builtins/bfunc.io.c builtins/bfunc.sys.c builtins/bfunc.math.c builtins/bfunc.rand.c builtins/bfunc.log.c builtins/bfunc.time.c pool.c ldfile.c validate.c stackemu.c stack.c arena.c cvt.c struct.c regalloc.c
 COMPILER_SOURCES=frontend.c
 DECOMPILER_SOURCES=dc.c
 RUNTIME_SOURCES=execprog.c

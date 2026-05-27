@@ -28,16 +28,18 @@
 #include "bfunc.h"
 #include "bvar.h"
 #include "cc.h"
-#include "stack.h"
+#include "ir.h"
+#include "perr.h"
 #include "stdafx.h"
 #include "var.h"
 
 #include <stddef.h>
 
 typedef struct e_exec_info {
-  const u8*                     code;
-  const e_var*                  args;      // nullptr if nargs == 0, shallow copied.
-  const u32*                    arg_slots; // The IDs which the arguments take
+  e_var*                        gvars;
+  const e_ins*                  code;
+  const e_var*                  args;      // NULL if nargs == 0, shallow copied.
+  const ereg_t*                 arg_slots; // The registers in which the arguments need to be put.
   const e_var*                  literals;  // must outlive the exec function.
   const u32*                    literals_hashes;
   const ecc_function*           funcs;
@@ -48,14 +50,8 @@ typedef struct e_exec_info {
   const char** names;
   const u32*   names_hashes;
 
-  /**
-   * Must not be NULL.
-   * A temporary scratchpad for the VM.
-   */
-  e_stack* stack;
-
-  u32 code_size; // must not be equal to 0
-  u32 nargs;     // can be equal to 0 (no arguments passed :<)
+  u32 code_count; // can be equal to 0.
+  u32 nargs;      // can be equal to 0 (no arguments passed :<)
   u32 nliterals;
   u32 nfuncs;
   u32 nextern_funcs;

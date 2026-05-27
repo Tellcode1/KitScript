@@ -28,8 +28,9 @@ e_struct_init_from(const e_struct* from, e_struct* s)
 }
 
 int
-e_struct_init(u32 nmembers, const char** member_names, e_struct* s)
+e_struct_init(const char* name, u32 nmembers, const char** member_names, e_struct* s)
 {
+  s->name         = name;
   s->member_count = nmembers;
   s->member_names = (const char**)e_xalloc(nmembers, sizeof(const char*));
   if (!s->member_names) return -1;
@@ -56,9 +57,9 @@ e_struct_init(u32 nmembers, const char** member_names, e_struct* s)
 }
 
 int
-e_struct_init_paired(u32 nmembers, const char** member_names, const struct e_struct_member_pair* pairs, e_struct* s)
+e_struct_init_paired(const char* name, u32 nmembers, const char** member_names, const struct e_struct_member_pair* pairs, e_struct* s)
 {
-  if (e_struct_init(nmembers, member_names, s)) return -1;
+  if (e_struct_init(name, nmembers, member_names, s)) return -1;
 
   int e = 0;
   for (u32 i = 0; i < nmembers; i++) {

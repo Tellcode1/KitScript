@@ -188,6 +188,7 @@ eb_rand_float(e_var* args, u32 nargs)
   return (e_var){ .type = E_VARTYPE_FLOAT, .val = { .f = (double)xrand() / (double)UINT32_MAX } };
 }
 
+#include "../../inc/bfunc.h"
 e_var
 eb_rand_vec2(e_var* args, u32 nargs)
 {

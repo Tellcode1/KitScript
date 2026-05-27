@@ -76,12 +76,6 @@ e_ast_node_free(e_ast* p, int id)
       e_ast_node_free(p, node->member_assign.value);
       break;
 
-    case E_AST_NODE_INDEX_COMPOUND_OP:
-      e_ast_node_free(p, node->index_compound.base);
-      e_ast_node_free(p, node->index_compound.index);
-      e_ast_node_free(p, node->index_compound.value);
-      break;
-
     case E_AST_NODE_MEMBER_ACCESS: e_ast_node_free(p, node->member_access.left); break;
 
     case E_AST_NODE_CALL:

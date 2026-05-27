@@ -94,6 +94,7 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
       e_var*       members = calloc(s->member_count, sizeof(e_var));
       const char** names   = (const char**)calloc(s->member_count, sizeof(char*));
       u32*         hashes  = calloc(s->member_count, sizeof(u32));
+      const char*  name    = s->name;
 
       for (u32 i = 0; i < s->member_count; i++) {
         e_var_deep_cpy(&s->members[i], &members[i]);
@@ -103,6 +104,7 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
 
       dst->val.struc = e_refdobj_pool_acquire(&ge_pool);
       if (dst->val.struc) {
+        E_VAR_AS_STRUCT(dst)->name          = name;
         E_VAR_AS_STRUCT(dst)->members       = members;
         E_VAR_AS_STRUCT(dst)->member_hashes = hashes;
         E_VAR_AS_STRUCT(dst)->member_names  = names;
@@ -143,16 +145,16 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
 i32
 e_var_acquire(e_var* v)
 {
-  int* refc = nullptr;
+  int* refc = NULL;
   switch (v->type) {
     case E_VARTYPE_MAP: refc = &v->val.map->refc; break;
     case E_VARTYPE_LIST: refc = &v->val.list->refc; break;
     case E_VARTYPE_STRING: refc = &v->val.s->refc; break;
     case E_VARTYPE_STRUCT: refc = &v->val.struc->refc; break;
-    default: refc = nullptr; break;
+    default: refc = NULL; break;
   }
 
-  if (refc == nullptr) return -1;
+  if (refc == NULL) return -1;
   return (*refc)++;
 }
 
@@ -160,16 +162,16 @@ void
 e_var_release(e_var* v)
 {
   if (!v) return;
-  int* refc = nullptr;
+  int* refc = NULL;
   switch (v->type) {
     case E_VARTYPE_MAP: refc = &v->val.map->refc; break;
     case E_VARTYPE_LIST: refc = &v->val.list->refc; break;
     case E_VARTYPE_STRING: refc = &v->val.s->refc; break;
     case E_VARTYPE_STRUCT: refc = &v->val.struc->refc; break;
-    default: refc = nullptr; break;
+    default: refc = NULL; break;
   }
 
-  if (refc == nullptr) return;
+  if (refc == NULL) return;
 
   (*refc)--;
   if (*refc <= 0) e_var_free(v);
@@ -228,7 +230,7 @@ e_var_free(e_var* var)
   }
 
   /* safety: Zero out the variable */
-  memset(var, 0, sizeof(*var));
+  *var = E_NULLVAR;
 }
 
 void
@@ -392,17 +394,17 @@ e_var_to_string_size(const struct e_var* v)
   switch (v->type) {
     default:
     case E_VARTYPE_NULL: total += strlen("null"); break;
-    case E_VARTYPE_INT: total += snprintf(nullptr, 0, "%i", v->val.i); break;
-    case E_VARTYPE_CHAR: total += snprintf(nullptr, 0, "%c", v->val.c); break;
+    case E_VARTYPE_INT: total += snprintf(NULL, 0, "%i", v->val.i); break;
+    case E_VARTYPE_CHAR: total += snprintf(NULL, 0, "%c", v->val.c); break;
     case E_VARTYPE_BOOL: return strlen((int)v->val.b ? "true" : "false"); break;
-    case E_VARTYPE_FLOAT: total += snprintf(nullptr, 0, "%g", v->val.f); break;
+    case E_VARTYPE_FLOAT: total += snprintf(NULL, 0, "%g", v->val.f); break;
     case E_VARTYPE_VEC2:
     case E_VARTYPE_VEC3:
     case E_VARTYPE_VEC4: {
       e_vec4 vooctor;
       evector_zero_extend(v, vooctor);
       for (u32 i = 0; i < 4; i++) {
-        total += snprintf(nullptr, 0, "c=%g", vooctor[i]);
+        total += snprintf(NULL, 0, "c=%g", vooctor[i]);
         if (i != 3) total += strlen(", ");
       }
       break;
@@ -412,7 +414,7 @@ e_var_to_string_size(const struct e_var* v)
       e_vec4 vooctor;
       evector_zero_extend(v, vooctor);
       for (u32 i = 0; i < 3; i++) {
-        for (u32 j = 0; j < 3; j++) { total += snprintf(nullptr, 0, "%g", E_VAR_AS_MAT3(v)->m[i][j]); }
+        for (u32 j = 0; j < 3; j++) { total += snprintf(NULL, 0, "%g", E_VAR_AS_MAT3(v)->m[i][j]); }
       }
       break;
     }
@@ -569,9 +571,40 @@ e_make_var_from_string(char* s)
 struct e_var*
 e_struct_get_member(u32 hash, const e_struct* s)
 {
-  if (!s) return nullptr;
+  if (!s) return NULL;
   for (u32 i = 0; i < s->member_count; i++) {
     if (s->member_hashes[i] == hash) { return &s->members[i]; }
   }
-  return nullptr;
+  return NULL;
+}
+
+int
+e_var_index(const e_var* left, const e_var* right, e_var** result)
+{
+  switch (left->type) {
+    case E_VARTYPE_LIST: {
+      e_list* list  = E_VAR_AS_LIST(left);
+      int     index = e_cast_to_int(right);
+
+      e_var* ptr = e_list_index(list, index);
+      if (!ptr) return -1;
+
+      if (result) *result = ptr;
+      return 0;
+    }
+
+    default: return -1;
+  }
+}
+
+int
+e_str_index(e_string* s, int i, e_var* o)
+{
+  if (!s) return -1;
+
+  char ch = '\0';
+  if (i < strlen(s->s)) { ch = s->s[i]; }
+  *o = (e_var){ .type = E_VARTYPE_CHAR, .val.c = ch };
+
+  return 0;
 }

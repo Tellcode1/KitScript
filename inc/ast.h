@@ -57,8 +57,7 @@ typedef enum e_ast_nodetype {
   E_AST_NODE_VARIABLE_DECL,
   E_AST_NODE_ASSIGN,
   E_AST_NODE_INDEX,
-  E_AST_NODE_INDEX_ASSIGN,      // Assign to member
-  E_AST_NODE_INDEX_COMPOUND_OP, // Assign to member, using a compound operator (unary/binary)
+  E_AST_NODE_INDEX_ASSIGN, // Assign to member
 
   // x.y
   E_AST_NODE_MEMBER_ACCESS,

@@ -132,6 +132,7 @@ eb_time_local(e_var* args, u32 nargs)
   s.val.struc = e_refdobj_pool_acquire(&ge_pool);
 
   const char* members[]              = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
+  E_VAR_AS_STRUCT(&s)->name          = "time::timestamp";
   E_VAR_AS_STRUCT(&s)->member_count  = E_ARRLEN(members);
   E_VAR_AS_STRUCT(&s)->member_hashes = e_xalloc(E_ARRLEN(members), sizeof(u32));
   E_VAR_AS_STRUCT(&s)->member_names  = (const char**)e_xalloc(E_ARRLEN(members), sizeof(char*));
@@ -164,6 +165,7 @@ eb_time_utc(e_var* args, u32 nargs)
 
   const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
 
+  E_VAR_AS_STRUCT(&s)->name          = "time::timestamp";
   E_VAR_AS_STRUCT(&s)->member_count  = E_ARRLEN(members);
   E_VAR_AS_STRUCT(&s)->member_hashes = e_xalloc(E_ARRLEN(members), sizeof(u32));
   E_VAR_AS_STRUCT(&s)->member_names  = (const char**)e_xalloc(E_ARRLEN(members), sizeof(char*));
