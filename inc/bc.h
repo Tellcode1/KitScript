@@ -97,7 +97,7 @@ typedef enum e_opcode_bck {
 
   /**
    * Call a function, be it builtin, external or user defined.
-   * Arguments are pushed to stack, in correct order:
+   * Arguments are pushed to stack, in correct order.
    * If function does not return a value explicitly, it will return nullvar. Always.
    *
    * Stack state before: [... arg0, arg1, arg2]
@@ -365,7 +365,14 @@ typedef enum e_opcode_bck {
 
   /**
    * A special opcode for making a structure (with specified hash)
-   * and filling it one by one with the arguments to the function, in order.
+   * and filling it one by one with values from the stack.
+   * Optionally, this function can directly copy the arguments from the
+   * current function's argument list.
+   * Stack mode (default) moves the structure members from the stack to our structure.
+   *
+   * Stack state before [Stack mode]: [..., member0, member1, member2, ...]
+   * Stack state after: [..., structure]
+   * Instruction signature: STRUCT_CONSTRUCT [Structure ID : u32] [Copy from argument list : u8]
    */
   E_OPCODE_STRUCT_CONSTRUCT,
 
@@ -398,12 +405,16 @@ typedef struct e_ins {
     u32 index_assign;
     u32 label;
     u32 literal, assertion; // assert refers to the literal in which error string is stored.
-    u8  has_return_value;
+    u8  has_return_value;   // return
     struct {
       u16 nargs;
       u32 hash;
     } call;
-    u32 mk_struct; // , struct_construct
+    u32 mk_struct;
+    struct {
+      u32 id;
+      u8  arg_mode;
+    } struct_construct;
     u32 member;
   } v;
 } e_ins;

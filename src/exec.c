@@ -835,10 +835,20 @@ e_exec(const e_exec_info* info, e_var* ret)
         s->members       = (e_var*)e_xalloc(lookup->fields_count, sizeof(e_var));
         s->member_count  = lookup->fields_count;
 
+        const e_var* copy_from = NULL;
+        if (ins.v.struct_construct.arg_mode) {
+          copy_from = info->args;
+        } else {
+          const e_var* stack      = info->stack->stack;
+          u32          stack_size = info->stack->size;
+
+          copy_from = &stack[stack_size - lookup->fields_count];
+        }
+
         for (u32 i = 0; i < lookup->fields_count; i++) {
           s->member_hashes[i] = lookup->field_hashes[i];
           s->member_names[i]  = lookup->field_names[i];
-          e_var_shallow_cpy(&info->args[i], &s->members[i]); // Copy over arguments
+          e_var_shallow_cpy(&copy_from[i], &s->members[i]); // Copy over members
           e_var_acquire(&s->members[i]);
         }
 

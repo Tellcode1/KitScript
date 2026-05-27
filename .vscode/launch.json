@@ -8,16 +8,17 @@
       "name": "(gdb) Launch",
       "type": "lldb",
       "request": "launch",
-      "program": "${workspaceFolder}/build/eexec",
-      "args": [
-        "build/test",
-      ],
-      // "program": "${workspaceRoot}/build/ec",
+      // "program": "${workspaceFolder}/build/eexec",
       // "args": [
-      //   "example.e",
-      //   "-o",
-      //   "build/test"
+      //   "build/test",
       // ],
+      "program": "${workspaceRoot}/build/ec",
+      "args": [
+        "-O3",
+        "examples/example.e",
+        "-o",
+        "build/test"
+      ],
       "stopOnEntry": false,
       "cwd": "${workspaceFolder}",
     }

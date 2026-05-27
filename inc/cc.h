@@ -117,6 +117,7 @@ typedef struct ecc_variable_information {
   u32        name_hash;
   int        initializer;   // initializer provided during creation.
   int        current_value; // <0 if no value currently (void)
+  u32        times_loaded;  // How many times this variable has been loaded.
   bool       is_const;
 } ecc_variable_information;
 

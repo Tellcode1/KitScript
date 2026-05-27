@@ -58,6 +58,71 @@ static const u32 init_fields_capacity      = 32;
 static const u32 init_defer_entry_capacity = 32;
 static const u32 init_jumps_capacity       = 64;
 
+static ATTR_NODISCARD char* qualify_name(const e_compiler* cc, const char* name);
+
+static inline RETURNS_ERRCODE int defer_push_scope(e_compiler* cc);
+static inline void                defer_pop_scope(e_compiler* cc);
+static inline RETURNS_ERRCODE int defer_emit_current_scope(e_compiler* cc);
+static inline RETURNS_ERRCODE int defer_emit_all_scopes(e_compiler* cc);
+static inline RETURNS_ERRCODE int defer_emit_to_depth(e_compiler* cc, u32 target_depth);
+static inline u32                 defer_get_current_depth(e_compiler* cc);
+
+static inline ATTR_NODISCARD u32  label_find(u32 label_id, const ecc_label_table* table);
+static inline RETURNS_ERRCODE int emit_and_record_jmp(e_compiler* cc, e_opcode opcode, u32 label_id);
+static inline void                define_and_emit_label(e_compiler* cc, u32 label_id);
+
+static RETURNS_ERRCODE int           append_defer_entry(e_compiler* cc, int* exprs, u32 nexprs);
+static RETURNS_ERRCODE int           append_function_entry(e_arena* a, ecc_function_table* funcs, const ecc_function* func);
+static RETURNS_ERRCODE int           append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* deposit);
+static RETURNS_ERRCODE int           append_literal_variable(ecc_literal_table* literals, const e_var* v);
+static inline ecc_label_jumps_table* append_label_entry(e_arena* a, u32 label_id, ecc_label_table* table);
+
+static RETURNS_ERRCODE int collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_information* deposit);
+static RETURNS_ERRCODE int append_struct_info(e_compiler* cc, const ecc_struct_information* data);
+
+static inline RETURNS_ERRCODE int compiler_make_fork(const e_compiler* old_c, e_compiler* new_c);
+static inline void                compiler_join_fork(const e_compiler* copy, e_compiler* cc);
+
+static RETURNS_ERRCODE int        value_init(e_compiler* cc, int node, struct val_t* d);
+static void                       value_free(struct val_t* lv);
+static RETURNS_ERRCODE int        emit_lvalue_load(e_compiler* cc, struct val_t lv);
+static RETURNS_ERRCODE int        emit_lvalue_assign(e_compiler* cc, int value, struct val_t lv);
+static inline RETURNS_ERRCODE int emit_lvalue_assign_prologue(e_compiler* cc, struct val_t lv);
+static inline RETURNS_ERRCODE int emit_lvalue_assign_epilogue(e_compiler* cc, struct val_t lv);
+
+static inline e_ast_node_type     var_type_to_node_type(e_vartype var_type);
+static inline RETURNS_ERRCODE int convert_literal_to_node(e_ast* p, int override_node, const e_var* lit);
+static inline RETURNS_ERRCODE int convert_node_to_literal(const e_compiler* cc, int node, e_var* o);
+static inline bool                is_literal_value(const e_ast* ast, int node);
+
+static RETURNS_ERRCODE int compile_and_push_literal_variable(e_compiler* cc, const e_var* v);
+static RETURNS_ERRCODE int compile_literal(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_list(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_map(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_function_definition(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_binary_op(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_unary_op(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_index(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_index_assign(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_index_compound(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_function_call(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_if_statement(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_while_statement(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_for_statement(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_member_access(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_assign(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_return(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_information* struc);
+static RETURNS_ERRCODE int compile_struct_decleration(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_variable_decleration(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_variable_load(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_namespace_decleration(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b);
+static RETURNS_ERRCODE int compile_builtin_structures(e_compiler* cc);
+static RETURNS_ERRCODE int compile_function(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile_root(e_compiler* cc, int node);
+static RETURNS_ERRCODE int compile(e_compiler* cc, int node);
+
 /**
  * Operators like SUB (-) can be used
  * as unary operators and that would add confusion
@@ -93,66 +158,6 @@ e_binary_operator_to_opcode(e_operator op)
   }
   return -1;
 }
-
-static ATTR_NODISCARD char* qualify_name(const e_compiler* cc, const char* name);
-
-static inline RETURNS_ERRCODE int defer_push_scope(e_compiler* cc);
-static inline void                defer_pop_scope(e_compiler* cc);
-static inline RETURNS_ERRCODE int defer_emit_current_scope(e_compiler* cc);
-static inline RETURNS_ERRCODE int defer_emit_all_scopes(e_compiler* cc);
-static inline RETURNS_ERRCODE int defer_emit_to_depth(e_compiler* cc, u32 target_depth);
-static inline u32                 defer_get_current_depth(e_compiler* cc);
-
-static inline ATTR_NODISCARD u32  label_find(u32 label_id, const ecc_label_table* table);
-static inline RETURNS_ERRCODE int emit_and_record_jmp(e_compiler* cc, e_opcode opcode, u32 label_id);
-static inline void                define_and_emit_label(e_compiler* cc, u32 label_id);
-
-static RETURNS_ERRCODE int           append_defer_entry(e_compiler* cc, int* exprs, u32 nexprs);
-static RETURNS_ERRCODE int           append_function_entry(e_arena* a, ecc_function_table* funcs, const ecc_function* func);
-static RETURNS_ERRCODE int           append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* deposit);
-static RETURNS_ERRCODE int           append_literal_variable(ecc_literal_table* literals, const e_var* v);
-static inline ecc_label_jumps_table* append_label_entry(e_arena* a, u32 label_id, ecc_label_table* table);
-
-static RETURNS_ERRCODE int collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_information* deposit);
-static RETURNS_ERRCODE int append_struct_info(e_compiler* cc, const ecc_struct_information* data);
-
-static inline RETURNS_ERRCODE int compiler_make_fork(const e_compiler* old_c, e_compiler* new_c);
-static inline void                compiler_join_fork(const e_compiler* copy, e_compiler* cc);
-
-static RETURNS_ERRCODE int        value_init(e_compiler* cc, int node, struct val_t* d);
-static void                       value_free(struct val_t* lv);
-static RETURNS_ERRCODE int        emit_lvalue_load(e_compiler* cc, struct val_t lv);
-static RETURNS_ERRCODE int        emit_lvalue_assign(e_compiler* cc, int value, struct val_t lv);
-static inline RETURNS_ERRCODE int emit_lvalue_assign_prologue(e_compiler* cc, struct val_t lv);
-static inline RETURNS_ERRCODE int emit_lvalue_assign_epilogue(e_compiler* cc, struct val_t lv);
-
-static RETURNS_ERRCODE int compile_and_push_literal_variable(e_compiler* cc, e_var v);
-static RETURNS_ERRCODE int compile_literal(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_list(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_map(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_function_definition(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_binary_op(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_unary_op(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_index(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_index_assign(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_index_compound(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_function_call(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_if_statement(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_while_statement(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_for_statement(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_member_access(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_assign(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_return(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_information* struc);
-static RETURNS_ERRCODE int compile_struct_decleration(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_variable_decleration(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_variable_load(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_namespace_decleration(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b);
-static RETURNS_ERRCODE int compile_builtin_structures(e_compiler* cc);
-static RETURNS_ERRCODE int compile_function(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile_root(e_compiler* cc, int node);
-static RETURNS_ERRCODE int compile(e_compiler* cc, int node);
 
 typedef enum e_lval_type {
   E_LVAL_VAR,
@@ -725,6 +730,10 @@ emit_lvalue_assign_epilogue(e_compiler* cc, val_t lv)
     if (base.type == E_LVAL_VAR) {
       e_emit_instruction(cc, E_OPCODE_ASSIGN);
       e_emit_u32(cc, base.val.var.id);
+
+      /* Set value of base to undefined */
+      ecc_variable_information* base_info = e_stackemu_find_var(cc->stack, base.val.var.id);
+      if (base_info) base_info->current_value = -1;
     }
     value_free(&base);
 
@@ -770,6 +779,10 @@ emit_lvalue_assign(e_compiler* cc, int value, val_t lv)
     if (base.type == E_LVAL_VAR) {
       e_emit_instruction(cc, E_OPCODE_ASSIGN);
       e_emit_u32(cc, base.val.var.id);
+
+      /* Set value of base to undefined */
+      ecc_variable_information* base_info = e_stackemu_find_var(cc->stack, base.val.var.id);
+      if (base_info) base_info->current_value = -1;
     }
     value_free(&base);
 
@@ -788,9 +801,40 @@ emit_lvalue_assign(e_compiler* cc, int value, val_t lv)
 }
 
 static int
+try_replace_var_with_constant(e_compiler* cc, val_t lv)
+{
+  ecc_variable_information* exists = e_stackemu_find_var(cc->stack, lv.val.var.id);
+  if (!exists) { return -1; }
+
+  int curr_value = exists->current_value;
+
+  if (curr_value < 0 || !is_literal_value(cc->ast, curr_value)) { return -1; }
+  // Is a valid node && Is a constant
+
+  /* Supposedly a literal value. Try to compile it */
+  e_var value = E_NULLVAR;
+  int   e     = convert_node_to_literal(cc, curr_value, &value);
+  if (e) return e;
+
+  /* Was successful? Push the constant value up and return */
+  e = compile_and_push_literal_variable(cc, &value);
+  if (e) return e;
+
+  return 0;
+}
+
+static int
 emit_lvalue_load(e_compiler* cc, val_t lv)
 {
   if (lv.type == E_LVAL_VAR) {
+    /* Optimization: If we know the variables current value, and it is a constant, use the constant instead */
+    // if (cc->info->opt_level >= 1) {
+    //   int e = try_replace_var_with_constant(cc, lv);
+    //   if (!e) return 0; // Function returned successfully?
+    // }
+    /* We need to install barriers for loops and if statements and the likes! */
+    /* This system is assuming the values of variables stay constant throought the loop! */
+
     e_emit_instruction(cc, E_OPCODE_LOAD);
     e_emit_u32(cc, lv.val.var.id);
   } else if (lv.type == E_LVAL_INDEX) {
@@ -832,8 +876,46 @@ make_string_variable(char* s, e_var* v) // s will be onwed by variable after thi
   return 0;
 }
 
+static inline e_ast_node_type
+var_type_to_node_type(e_vartype var_type)
+{
+  switch (var_type) {
+    case E_VARTYPE_INT: return E_AST_NODE_INT;
+    case E_VARTYPE_BOOL: return E_AST_NODE_BOOL;
+    case E_VARTYPE_CHAR: return E_AST_NODE_CHAR;
+    case E_VARTYPE_FLOAT: return E_AST_NODE_FLOAT;
+    case E_VARTYPE_STRING: return E_AST_NODE_STRING;
+    default: return E_AST_NODE_NOP;
+  }
+}
+
 static inline RETURNS_ERRCODE int
-lower_node_to_literal(const e_compiler* cc, int node, e_var* o)
+convert_literal_to_node(e_ast* p, int override_node, const e_var* lit)
+{
+  /* Set literal type */
+  E_GET_NODE(p, override_node)->type = var_type_to_node_type(lit->type);
+
+  /* Set literal value */
+  switch (lit->type) {
+    case E_VARTYPE_INT: E_GET_NODE(p, override_node)->i.i = lit->val.i; break;
+    case E_VARTYPE_BOOL: E_GET_NODE(p, override_node)->b.b = lit->val.b; break;
+    case E_VARTYPE_CHAR: E_GET_NODE(p, override_node)->c.c = lit->val.c; break;
+    case E_VARTYPE_FLOAT: E_GET_NODE(p, override_node)->f.f = lit->val.f; break;
+    case E_VARTYPE_STRING: E_GET_NODE(p, override_node)->i.i = lit->val.i; break;
+    default: return -1;
+  }
+  return 0;
+}
+
+static inline bool
+is_literal_value(const e_ast* ast, int node)
+{
+  e_ast_node_type type = E_GET_NODE(ast, node)->type;
+  return type == E_AST_NODE_INT || type == E_AST_NODE_CHAR || type == E_AST_NODE_BOOL || type == E_AST_NODE_STRING || type == E_AST_NODE_FLOAT;
+}
+
+static inline RETURNS_ERRCODE int
+convert_node_to_literal(const e_compiler* cc, int node, e_var* o)
 {
   e_ast* p = cc->ast;
   switch (E_GET_NODE(p, node)->type) {
@@ -933,31 +1015,31 @@ append_literal_variable(ecc_literal_table* literals, const e_var* v)
 }
 
 static RETURNS_ERRCODE int
-compile_and_push_literal_variable(e_compiler* cc, e_var v)
+compile_and_push_literal_variable(e_compiler* cc, const e_var* v)
 {
   ecc_literal_table* literals = cc->lit_table;
 
   bool found = false;
 
   /* Search for the literal in our table. */
-  u32 hash = e_var_hash(&v);
+  u32 hash = e_var_hash(v);
   for (u32 i = 0; i < literals->literals_count; i++) {
-    if (literals->literal_hashes[i] == hash && e_var_equal(&v, &literals->literals[i])) {
+    if (literals->literal_hashes[i] == hash && e_var_equal(v, &literals->literals[i])) {
       found = true;
       break;
     }
   }
 
   if (!found) {
-    int e = append_literal_variable(literals, &v);
+    int e = append_literal_variable(literals, v);
     if (e) return e;
-  } else if (v.type == E_VARTYPE_STRING) {
+  } else if (v->type == E_VARTYPE_STRING) {
     /**
      * We allocate strings on the ge_pool ourselves
      * And so need to free them.
      */
     // free(E_VAR_AS_STRING(&v)->s);
-    e_refdobj_pool_return(&ge_pool, v.val.s);
+    e_refdobj_pool_return(&ge_pool, v->val.s);
 
     /**
      * Since the variables all have the same lifetime, using the refcounter
@@ -982,10 +1064,10 @@ compile_literal(e_compiler* cc, int node)
 {
   // Convert the node to a variable and
   e_var v = { .type = E_VARTYPE_NULL };
-  if (lower_node_to_literal(cc, node, &v)) return -1;
+  if (convert_node_to_literal(cc, node, &v)) return -1;
 
   // Compile it
-  return compile_and_push_literal_variable(cc, v);
+  return compile_and_push_literal_variable(cc, &v);
 }
 
 static RETURNS_ERRCODE int
@@ -1367,6 +1449,37 @@ get_builtin_func(const char* name)
   return nullptr;
 }
 
+static inline int
+fold_vector(e_compiler* cc, int replace_node, const int* elems, u32 nelems)
+{
+  e_vec4 vector = { 0 };
+  for (u32 i = 0; i < nelems; i++) {
+    e_var elem = E_NULLVAR;
+    int   e    = convert_node_to_literal(cc, elems[i], &elem);
+    if (e) return e;
+
+    double d  = e_cast_to_float(&elem);
+    vector[i] = d;
+  }
+
+  e_var v = {
+    .type = E_VARTYPE_NULL,
+  };
+  switch (nelems) {
+    default:
+    case 2: v.type = E_VARTYPE_VEC2; break;
+    case 3: v.type = E_VARTYPE_VEC3; break;
+    case 4: v.type = E_VARTYPE_VEC4; break;
+  }
+  memcpy(v.val.vec4, vector, sizeof(vector));
+
+  /* Compile this vector into a literal */
+  int e = compile_and_push_literal_variable(cc, &v);
+  if (e) return e;
+
+  return 0;
+}
+
 static int
 compile_function_call(e_compiler* cc, int node)
 {
@@ -1378,15 +1491,6 @@ compile_function_call(e_compiler* cc, int node)
 
   char* full = qualify_name(cc, function_name);
   u32   hash = e_hash(full, strlen(full));
-
-  int e = 0;
-  for (u32 i = 0; i < nargs; i++) {
-    e = compile(cc, args[i]); // Pushes stack top
-    if (e) {
-      cerror(E_GET_NODE(cc->ast, args[i])->common.span, "Failed to compile argument #%i [function call]\n", i);
-      return e;
-    }
-  }
 
   if (is_builtin_func(function_name)) {
     /* Validate arguments */
@@ -1424,6 +1528,48 @@ compile_function_call(e_compiler* cc, int node)
           func->nargs,
           nargs);
       return -1;
+    }
+  }
+
+  /**
+   * OPTIMIZATION: Replace vec* initializers with a literal value
+   * if they have constant values.
+   */
+  if (cc->info->opt_level >= 1) {
+    if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
+      bool constant_vector = true;
+      for (u32 i = 0; i < nargs; i++) {
+        if (!is_literal_value(cc->ast, args[i])) {
+          constant_vector = false;
+          break;
+        }
+      }
+
+      if (constant_vector) { return fold_vector(cc, node, args, nargs); }
+    }
+  }
+
+  int e = 0;
+  for (u32 i = 0; i < nargs; i++) {
+    e = compile(cc, args[i]); // Pushes stack top
+    if (e) {
+      cerror(E_GET_NODE(cc->ast, args[i])->common.span, "Failed to compile argument #%i [function call]\n", i);
+      return e;
+    }
+  }
+
+  /* Arguments are compiled by now! */
+  if (cc->info->opt_level >= 1) {
+    /* Not a vector. Try to check if it is a struct that we can replace with a single struct_construct instruction */
+    for (u32 i = 0; i < cc->struct_table->structs_count; i++) {
+      const ecc_struct_information* st = &cc->struct_table->structs[i];
+      if (strcmp(st->name, function_name) == 0 && st->fields_count == nargs) {
+        /* Calling the struct constructor. Replace with a single struct_construct instruction. */
+        e_emit_instruction(cc, E_OPCODE_STRUCT_CONSTRUCT);
+        e_emit_u32(cc, hash); // Function name hash == struct name hash.
+        e_emit_u8(cc, false); // Copy over from stack please :3
+        return 0;
+      }
     }
   }
 
@@ -1887,6 +2033,9 @@ compile_assign(e_compiler* cc, int node)
   value_free(&lv);
   if (e) return e;
 
+  /* Set current value of our variable */
+  exists->current_value = right;
+
   return 0;
 }
 
@@ -2031,6 +2180,7 @@ compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_i
     /* This sums up to about ~7 bytes. */
     e_emit_instruction(fork, E_OPCODE_STRUCT_CONSTRUCT);
     e_emit_u32(fork, struct_id);
+    e_emit_u8(fork, true); // Copy over from argument list please :3
 
     /* struct_construct doesn't return the value... */
     e_emit_instruction(fork, E_OPCODE_RETURN);
@@ -2260,7 +2410,7 @@ compile_variable_load(e_compiler* cc, int node)
         .val  = builtin_var->value,
       };
 
-      return compile_and_push_literal_variable(cc, v); // compile_literal_variable loads the value! Return.
+      return compile_and_push_literal_variable(cc, &v); // compile_literal_variable loads the value! Return.
     }
   }
 
@@ -2600,41 +2750,6 @@ compile_builtin_structures(e_compiler* cc)
   return 0;
 }
 
-static inline e_ast_node_type
-var_type_to_node_type(e_vartype var_type)
-{
-  switch (var_type) {
-    case E_VARTYPE_INT: return E_AST_NODE_INT;
-    case E_VARTYPE_BOOL: return E_AST_NODE_BOOL;
-    case E_VARTYPE_CHAR: return E_AST_NODE_CHAR;
-    case E_VARTYPE_FLOAT: return E_AST_NODE_FLOAT;
-    case E_VARTYPE_STRING: return E_AST_NODE_STRING;
-    default: return E_AST_NODE_NOP;
-  }
-}
-
-static inline RETURNS_ERRCODE int
-convert_literal_to_node(e_ast* p, int override_node, const e_var* lit)
-{
-  E_GET_NODE(p, override_node)->type = var_type_to_node_type(lit->type);
-  switch (lit->type) {
-    case E_VARTYPE_INT: E_GET_NODE(p, override_node)->i.i = lit->val.i; break;
-    case E_VARTYPE_BOOL: E_GET_NODE(p, override_node)->b.b = lit->val.b; break;
-    case E_VARTYPE_CHAR: E_GET_NODE(p, override_node)->c.c = lit->val.c; break;
-    case E_VARTYPE_FLOAT: E_GET_NODE(p, override_node)->f.f = lit->val.f; break;
-    case E_VARTYPE_STRING: E_GET_NODE(p, override_node)->i.i = lit->val.i; break;
-    default: return -1;
-  }
-  return 0;
-}
-
-static inline bool
-is_literal_value(const e_ast* ast, int node)
-{
-  e_ast_node_type type = E_GET_NODE(ast, node)->type;
-  return type == E_AST_NODE_INT || type == E_AST_NODE_CHAR || type == E_AST_NODE_BOOL || type == E_AST_NODE_STRING || type == E_AST_NODE_FLOAT;
-}
-
 static inline int
 fold(e_compiler* cc, int node)
 {
@@ -2657,10 +2772,10 @@ fold(e_compiler* cc, int node)
       e_var lv;
       e_var rv;
 
-      e = lower_node_to_literal(cc, l, &lv);
+      e = convert_node_to_literal(cc, l, &lv);
       if (e) return e;
 
-      e = lower_node_to_literal(cc, r, &rv);
+      e = convert_node_to_literal(cc, r, &rv);
       if (e) return e;
 
       e_var result = operate(lv, rv, e_binary_operator_to_opcode(E_GET_NODE(cc->ast, node)->binaryop.op));
@@ -2823,21 +2938,6 @@ fold(e_compiler* cc, int node)
   return 0;
 }
 
-static inline int
-replace_assigns_with_movs(u8* code, u32 code_size)
-{
-  u8* ip = code;
-
-  while (ip < (code + code_size)) {
-    e_ins i = e_read_ins((const u8**)&ip);
-    switch ((e_opcode_bck)i.opcode) {
-      default: break;
-    }
-  }
-
-  return 0;
-}
-
 int
 e_compile(const ecc_info* info, e_compilation_result* result)
 {
@@ -2947,8 +3047,10 @@ e_compile(const ecc_info* info, e_compilation_result* result)
   if (!cc.emit) return -1;
 
   /* First of all, call the optimization routines (if requested) */
-  e = fold(&cc, cc.ast->root);
-  if (e) goto ERR;
+  if (info->opt_level >= 2) {
+    e = fold(&cc, cc.ast->root);
+    if (e) goto ERR;
+  }
 
   e = defer_push_scope(&cc);
   if (e) goto ERR;
