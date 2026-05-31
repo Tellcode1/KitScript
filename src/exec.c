@@ -42,6 +42,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define PASTE(x, y) x##y
 
@@ -74,6 +75,15 @@ get_builtin_func_hashed(u32 hash)
   return NULL;
 }
 
+static inline const char*
+lookup(const char** names, const u32* names_hashes, u32 nnames, u32 name)
+{
+  for (u32 i = 0; i < nnames; i++) {
+    if (names_hashes[i] == name) { return names[i]; }
+  }
+  return "[symbol not found]";
+}
+
 static e_ecode
 call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
 {
@@ -82,9 +92,11 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
   // Special handling
   // builtin functions can not return errors...
   if (hash == e_hash("PANIC", strlen("PANIC"))) {
-    fprintf(stderr, "---> PANIC <---\n");
+    print_err("---> PANIC <---\n");
     return E_EPANIC;
   }
+
+  // printf("call %s\n", lookup(info->names, info->names_hashes, info->nnames, hash));
 
   /**
    * Copy argumenst into a temporary array and remove them from the stack.
@@ -92,6 +104,7 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
   e_var* args_copy = nargs > 0 ? e_xalloc(nargs, sizeof(e_var)) : NULL;
   if (nargs > 0) memcpy(args_copy, args, nargs * sizeof(e_var));
 
+  /* temporarily acquire all arguments */
   for (u32 i = 0; i < nargs; i++) e_var_acquire(&args_copy[i]);
 
   // builtins
@@ -117,7 +130,6 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
       .gvars           = info->gvars,
       .code            = info->funcs[f].code,
       .args            = args_copy,
-      .arg_slots       = info->funcs[f].arg_slots,
       .literals        = info->literals,
       .literals_hashes = info->literals_hashes,
       .funcs           = info->funcs,
@@ -139,7 +151,7 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
     goto pop_and_ret;
   }
 
-  fprintf(stderr, "Function %u not defined\n", hash);
+  print_err("Function %u not defined\n", hash);
 
   *ret = E_NULLVAR;
   return -1;
@@ -150,6 +162,7 @@ pop_and_ret:
   // eb_println(&return_value, 1);
   // #endif
 
+  /* release all temporary acquires. */
   if (args_copy) {
     for (u32 i = 0; i < nargs; i++) e_var_release(&args_copy[i]);
     free(args_copy);
@@ -161,28 +174,203 @@ pop_and_ret:
 e_var*
 read_args_vector(e_var* regs, e_var* stack, u32 sp, u32 nelems)
 {
-  e_var* tmp = malloc(nelems * sizeof(e_var));
+  e_var* tmp = e_xalloc(nelems, sizeof(e_var));
   if (!tmp) return NULL;
 
   u32 i = 0;
 
   /* copy first 16 arguments from registers */
-  for (; i < MIN(nelems, E_REG_ARG_COUNT); i++) { memcpy(&tmp[i], &regs[E_REG_ARG0 + i], sizeof(e_var)); }
-
-  /* copy rest of the arguments from the stack */
-  for (; i < nelems; i++) {
-    u32 abs_i = i - E_REG_ARG0;
-    memcpy(&tmp[i], &stack[sp - nelems + abs_i], sizeof(e_var));
+  for (; i < MIN(nelems, E_REG_ARG_COUNT); i++) {
+    memcpy(&tmp[i], &regs[E_REG_ARG0 + i], sizeof(e_var));
+    regs[E_REG_ARG0 + i] = E_NULLVAR; /* remove. */
   }
 
+  /* copy rest of the arguments from the stack */
+  for (; i < nelems; i++) { memcpy(&tmp[i], &stack[sp - nelems + i], sizeof(e_var)); }
+
   return tmp;
+}
+
+static inline const char*
+get_register_name(u32 reg_id, char buff[32])
+{
+  if (reg_id >= E_REG_ARG0 && reg_id <= E_REG_ARG15) {
+    snprintf(buff, 32, "arg%i", reg_id - E_REG_ARG0);
+  } else if (reg_id >= E_REG_GENERAL_BEGIN && reg_id <= E_REG_GENERAL_END) {
+    snprintf(buff, 32, "r%i", reg_id - E_REG_GENERAL_BEGIN);
+  } else if (reg_id == E_REG_SP) {
+    snprintf(buff, 32, "rsp");
+  } else if (reg_id == E_REG_TMP1) {
+    snprintf(buff, 32, "tmp1");
+  } else if (reg_id == E_REG_TMP2) {
+    snprintf(buff, 32, "tmp2");
+  } else if (reg_id == E_REG_IP) {
+    snprintf(buff, 32, "rip");
+  } else {
+    snprintf(buff, 32, "ru%i", reg_id);
+  }
+  return buff;
+}
+
+static inline void
+e_print_instruction(e_ins i, const char** names, const u32* names_hashes, u32 nnames)
+{
+  char buf0[32] = { 0 };
+  char buf1[32] = { 0 };
+  char buf2[32] = { 0 };
+  switch (i.opcode) {
+    case EIR_OPCODE_LOADK: {
+      printf("loadk dst=%s, id=%u\n", get_register_name(i.loadk.dst, buf0), i.loadk.id);
+      break;
+    }
+    case EIR_OPCODE_MOV: {
+      printf("mov dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1));
+      break;
+    }
+
+    case EIR_OPCODE_MOVI: {
+      printf("movi dst=%s, value=%i\n", get_register_name(i.movi.dst, buf0), i.movi.value);
+      break;
+    }
+    case EIR_OPCODE_MOVF: {
+      printf("movf dst=%s, value=%f\n", get_register_name(i.movf.dst, buf0), i.movf.value);
+      break;
+    }
+
+    case EIR_OPCODE_ADD:
+      printf(
+          "add dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_SUB:
+      printf(
+          "sub dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_MUL:
+      printf(
+          "mul dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_DIV:
+      printf(
+          "div dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_MOD:
+      printf(
+          "mod dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_EXP:
+      printf(
+          "exp dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_AND:
+      printf(
+          "and dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_OR:
+      printf("or dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_BAND:
+      printf(
+          "band dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_BOR:
+      printf(
+          "bor dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_XOR:
+      printf(
+          "xor dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_EQL:
+      printf(
+          "eql dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_NEQ:
+      printf(
+          "neq dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_LT:
+      printf("lt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_LTE:
+      printf(
+          "lte dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_GT:
+      printf("gt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+    case EIR_OPCODE_GTE:
+      printf(
+          "gte dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      break;
+
+    case EIR_OPCODE_INC: printf("inc dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_DEC: printf("dec dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_BNOT: printf("bnot dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_NEG: printf("neg dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_NOT: printf("not dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+
+    case EIR_OPCODE_RET: {
+      printf("ret val=%s\n", get_register_name(i.ret.return_value, buf0));
+      break;
+    }
+    case EIR_OPCODE_NOP: printf("nop\n"); break;
+    case EIR_OPCODE_MK_LIST: printf("mk_list dst=%s, nelems=%u\n", get_register_name(i.mk_list.dst, buf0), i.mk_list.nelems); break;
+    case EIR_OPCODE_MK_MAP: printf("mk_map dst=%s, npairs=%u\n", get_register_name(i.mk_map.dst, buf0), i.mk_map.npairs); break;
+    case EIR_OPCODE_INDEX:
+      printf(
+          "index dst=%s, base=%s, index=%s\n",
+          get_register_name(i.index.dst, buf0),
+          get_register_name(i.index.base, buf1),
+          get_register_name(i.index.index, buf2));
+      break;
+    case EIR_OPCODE_CALL:
+      printf(
+          "call dst=%s, id=%u|name=%s, nargs=%u\n",
+          get_register_name(i.call.dst, buf0),
+          i.call.function_id,
+          lookup(names, names_hashes, nnames, i.call.function_id),
+          i.call.nargs);
+      break;
+    case EIR_OPCODE_INDEX_ASSIGN:
+      printf(
+          "index_assign value=%s, base=%s, index=%s\n",
+          get_register_name(i.index_assign.value, buf0),
+          get_register_name(i.index_assign.base, buf1),
+          get_register_name(i.index_assign.index, buf2));
+      break;
+
+    case EIR_OPCODE_LABEL: printf("label id=%u\n", i.label.id); break;
+    case EIR_OPCODE_JMP: printf("jmp target=%u\n", i.jmp.target); break;
+    case EIR_OPCODE_JZ: printf("jz target=%u, condition=%s\n", i.jz.target, get_register_name(i.jz.condition, buf0)); break;
+    case EIR_OPCODE_JNZ: printf("jnz target=%u, condition=%s\n", i.jnz.target, get_register_name(i.jnz.condition, buf0)); break;
+    case EIR_OPCODE_MEMBER_ACCESS:
+      printf(
+          "member_access dst=%s, base=%s, member_id=%u\n",
+          get_register_name(i.member_access.dst, buf0),
+          get_register_name(i.member_access.base, buf1),
+          i.member_access.member_id);
+      break;
+    case EIR_OPCODE_MEMBER_ASSIGN:
+      printf(
+          "member_assign value=%s, base=%s, member_id=%u\n",
+          get_register_name(i.member_assign.value, buf0),
+          get_register_name(i.member_assign.base, buf1),
+          i.member_assign.member_id);
+      break;
+    case EIR_OPCODE_MK_STRUCT: printf("mk_struct dst=%s, id=%u\n", get_register_name(i.mk_struct.dst, buf0), i.mk_struct.struct_id); break;
+    case EIR_OPCODE_GETG: printf("getg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
+    case EIR_OPCODE_SETG: printf("setg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
+    case EIR_OPCODE_MOVG: printf("movg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
+    case EIR_OPCODE_PUSH: printf("push %s\n", get_register_name(i.push.reg, buf0)); break;
+    case EIR_OPCODE_POP: printf("pop %s\n", get_register_name(i.pop.reg, buf0)); break;
+  }
 }
 
 e_ecode
 e_exec(const e_exec_info* info, e_var* ret)
 {
   /* Initial state check. */
-  if ((info->nargs > 0 && (info->args == NULL || info->arg_slots == NULL)) || (info->code == NULL && info->code_count != 0)
+  if ((info->nargs > 0 && info->args == NULL) || (info->code == NULL && info->code_count != 0)
       || (info->extern_funcs == NULL && info->nextern_funcs > 0) || (info->extern_vars == NULL && info->nextern_vars > 0)
       || (info->funcs == NULL && info->nfuncs > 0) || (info->literals == NULL && info->nliterals > 0)) {
     print_err("Corrupted info during execution (broken fork?)\n");
@@ -190,22 +378,37 @@ e_exec(const e_exec_info* info, e_var* ret)
   }
 
   /* error code */
-  int e = 0;
+  e_ecode e = E_OK;
 
-  e_var  regs[128]      = { E_NULLVAR };
-  size_t stack_capacity = 1024;
-  e_var* stack          = malloc(stack_capacity * sizeof(e_var));
-  e_var  sp             = e_var_from_int(0);
-  e_var  ip             = e_var_from_int(0);
+  e_var* regs = malloc(sizeof(e_var) * 2048);
+  for (u32 i = 0; i < 2048; i++) regs[i] = E_NULLVAR;
+
+  size_t stack_capacity = 256;
+  e_var* stack          = e_xalloc(stack_capacity, sizeof(e_var));
+  e_var* sp             = &regs[E_REG_SP];
+  e_var* ip             = &regs[E_REG_IP];
+
+  *sp = e_var_from_int(0);
+  *ip = e_var_from_int(0);
 
   for (u32 i = 0; i < info->nargs; i++) {
-    u32 dst = info->arg_slots[i];
-    e_var_shallow_cpy(&info->args[i], &regs[dst]);
-    e_var_acquire(&regs[dst]);
+    u32 dst = E_REG_ARG0 + i;
+    if (dst < E_REG_ARG_COUNT) {
+      e_var_shallow_cpy(&info->args[i], &regs[dst]);
+      e_var_acquire(&regs[dst]);
+    } else {
+      /* Push to stack */
+      stack[sp->val.i] = info->args[i];
+      e_var_acquire(&stack[sp->val.i]);
+      sp->val.i++;
+    }
   }
 
-  for (ip.val.i = 0; ip.val.i < info->code_count; ip.val.i++) {
-    e_ins ins = info->code[ip.val.i];
+  for (ip->val.i = 0; ip->val.i < info->code_count; ip->val.i++) {
+    e_ins ins = info->code[ip->val.i];
+    // fprintf(stdout, "next instruction: ");
+    // e_print_instruction(ins, info->names, info->names_hashes, info->nnames);
+
     switch (ins.opcode) {
       case EIR_OPCODE_LOADK: {
         u32 dst = ins.loadk.dst;
@@ -213,11 +416,19 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e_var v = E_NULLVAR;
 
+        bool found = false;
         for (u32 i = 0; i < info->nliterals; i++) {
           if (id == info->literals_hashes[i]) {
-            v = info->literals[i];
+            v     = info->literals[i];
+            found = true;
             break;
           }
+        }
+
+        if (!found) {
+          print_err("LOADK: hash %u not found in literal table\n", id);
+          e = E_EBADARG;
+          goto RET;
         }
 
         e_var_release(&regs[dst]);
@@ -228,7 +439,8 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32 ret_val = ins.ret.return_value;
 
         /* store return value */
-        e_var_deep_cpy(&regs[ret_val], ret);
+        e_var_shallow_cpy(&regs[ret_val], ret);
+        e_var_acquire(ret);
 
         /* return from this procedure */
         e = 0;
@@ -238,9 +450,34 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_MOV: {
         u32 src = ins.mov.src;
         u32 dst = ins.mov.dst;
+        if (src == dst) break;
 
         e_var_release(&regs[dst]);
         e_var_shallow_cpy(&regs[src], &regs[dst]);
+        e_var_acquire(&regs[dst]);
+        break;
+      }
+
+      case EIR_OPCODE_MOVI: {
+        int value = ins.movi.value;
+        u32 dst   = ins.movi.dst;
+
+        e_var src = e_var_from_int(value);
+
+        e_var_release(&regs[dst]);
+        e_var_shallow_cpy(&src, &regs[dst]);
+        e_var_acquire(&regs[dst]);
+        break;
+      }
+
+      case EIR_OPCODE_MOVF: {
+        double value = ins.movf.value;
+        u32    dst   = ins.movf.dst;
+
+        e_var src = e_var_from_float(value);
+
+        e_var_release(&regs[dst]);
+        e_var_shallow_cpy(&src, &regs[dst]);
         e_var_acquire(&regs[dst]);
         break;
       }
@@ -270,8 +507,17 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var r = regs[b];
 
         e_var_release(&regs[dst]);
-        regs[dst] = operate(l, r, ins.opcode);
-        e_var_acquire(&regs[dst]);
+        e_var result = operate(l, r, ins.opcode);
+        e_var_acquire(&result);
+
+        /* removing elements from the stack, free them */
+        if (dst == E_REG_SP && (result.val.i < sp->val.i)) {
+          while (sp->val.i > result.val.i) { /* while old value is greater than new value */
+            e_var_release(&stack[--sp->val.i]);
+          }
+        }
+
+        regs[dst] = result;
         break;
       }
       case EIR_OPCODE_BNOT:
@@ -301,13 +547,35 @@ e_exec(const e_exec_info* info, e_var* ret)
         if (r->type == E_VARTYPE_INT || r->type == E_VARTYPE_CHAR || r->type == E_VARTYPE_BOOL) {
           d->val.i = e_cast_to_int(r) + (ins.opcode == EIR_OPCODE_INC ? 1 : -1);
         } else if (r->type == E_VARTYPE_FLOAT) {
-          d->val.f = r->val.f + (ins.opcode == EIR_OPCODE_INC ? 1 : -1);
+          d->val.f = e_cast_to_float(r) + (ins.opcode == EIR_OPCODE_INC ? 1 : -1);
         }
 
         break;
       }
 
-      case EIR_OPCODE_MK_MAP:
+      case EIR_OPCODE_MK_MAP: {
+        u32 dst    = ins.mk_map.dst;
+        u32 npairs = ins.mk_map.npairs;
+
+        /* read every variable */
+        e_var* tmp = read_args_vector(regs, stack, sp->val.i, npairs * 2);
+
+        e_var* dstp = &regs[dst];
+        e_var_release(dstp); // overwriting it
+
+        dstp->type    = E_VARTYPE_MAP;
+        dstp->val.map = e_refdobj_pool_acquire(&ge_pool);
+
+        /* Constructing it directly in our register. No need for refcounting here. */
+        if (e_map_init(tmp, npairs, E_VAR_AS_MAP(dstp)) != 0) {
+          e = E_EMALLOC;
+          free(tmp);
+          goto RET;
+        }
+
+        free(tmp);
+        break;
+      }
         // default: printf("%i\n", ins.opcode); assert(0);
 
       case EIR_OPCODE_LABEL:
@@ -317,7 +585,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32 dst    = ins.mk_list.dst;
         u32 nelems = ins.mk_list.nelems;
 
-        e_var* tmp = read_args_vector(regs, stack, sp.val.i, nelems);
+        e_var* tmp = read_args_vector(regs, stack, sp->val.i, nelems);
 
         e_var* dstp = &regs[dst];
         e_var_release(dstp); // overwriting it
@@ -342,16 +610,9 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e_var tmp = E_NULLVAR;
 
-        if (regs[base].type == E_VARTYPE_STRING) {
-          int i = e_cast_to_int(&regs[index]);
-          e_str_index(E_VAR_AS_STRING(&regs[base]), i, &tmp);
-        } else {
-          e_var* ptr = NULL;
-          if (e_var_index(&regs[base], &regs[index], &ptr)) {
-            tmp = E_NULLVAR;
-            break;
-          }
-          e_var_shallow_cpy(ptr, &tmp);
+        if (e_var_index(&regs[base], &regs[index], &tmp)) {
+          tmp = E_NULLVAR;
+          break;
         }
 
         e_var_release(&regs[dst]);
@@ -367,14 +628,15 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         if (regs[base].type == E_VARTYPE_STRING) {
           print_err("Can not index assign strings\n");
-          return E_EMALFORM;
+          e = E_EMALFORM;
+          goto RET;
         }
 
-        e_var* ptr = NULL;
-        if (e_var_index(&regs[base], &regs[index], &ptr)) { break; }
-
-        e_var_shallow_cpy(&regs[value], ptr);
-        e_var_acquire(ptr);
+        if (e_var_index_assign(&regs[base], &regs[index], &regs[value])) {
+          print_err("e_var_index_assign (%i): error\n", ip->val.i);
+          e = E_EMALFORM;
+          goto RET;
+        }
         break;
       }
 
@@ -383,7 +645,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32 function_id = ins.call.function_id;
         u32 nargs       = ins.call.nargs;
 
-        e_var* args = read_args_vector(regs, stack, sp.val.i, nargs);
+        e_var* args = read_args_vector(regs, stack, sp->val.i, nargs);
         if (!args) {
           e = E_EMALLOC;
           goto RET;
@@ -394,10 +656,14 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e = call(info, function_id, args, nargs, &regs[dst]);
         /* No need to acquire regs[dst], it's deep copied / preacquired. */
+        e_var_acquire(&regs[dst]);
 
         free(args);
 
-        if (e) goto RET;
+        if (e) {
+          print_err("e_var_index_assign: error\n");
+          goto RET;
+        }
 
         break;
       }
@@ -405,24 +671,24 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_JMP: {
         u32 target = ins.jmp.target;
 
-        /* loop increments i */
-        ip.val.i = (int)(target - 1);
+        /* loop increments ip */
+        ip->val.i = (int)(target - 1);
         break;
       }
       case EIR_OPCODE_JZ: {
-        u32 target = ins.jmp.target;
+        u32 target = ins.cj.target;
         u32 cond   = ins.cj.condition;
 
-        /* loop increments i */
-        if (!e_cast_to_bool(&regs[cond])) { ip.val.i = (int)(target - 1); }
+        /* loop increments ip */
+        if (!e_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); }
         break;
       }
       case EIR_OPCODE_JNZ: {
-        u32 target = ins.jmp.target;
+        u32 target = ins.cj.target;
         u32 cond   = ins.cj.condition;
 
-        /* loop increments i */
-        if (e_cast_to_bool(&regs[cond])) { ip.val.i = (int)(target - 1); }
+        /* loop increments ip */
+        if (e_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); }
         break;
       }
 
@@ -431,6 +697,35 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32 dst       = ins.member_access.dst;
         u32 base      = ins.member_access.base;
         u32 member_id = ins.member_access.member_id;
+
+        if (regs[base].type == E_VARTYPE_VEC2 || regs[base].type == E_VARTYPE_VEC3 || regs[base].type == E_VARTYPE_VEC4) {
+          const u32 x = e_hash("x", strlen("x"));
+          const u32 y = e_hash("y", strlen("y"));
+          const u32 z = e_hash("z", strlen("z"));
+          const u32 w = e_hash("w", strlen("w"));
+
+          e_vec4* ptr = &regs[base].val.vec4;
+
+          double component = 0.0;
+          if (member_id == x) {
+            component = (*ptr)[0];
+          } else if (member_id == y) {
+            component = (*ptr)[1];
+          } else if (member_id == z) {
+            component = (*ptr)[2];
+          } else if (member_id == w) {
+            component = (*ptr)[3];
+          } else {
+            print_err("Member access %u invalid for vector\n", member_id);
+            e = E_EMALFORM;
+            goto RET;
+          }
+
+          e_var_release(&regs[dst]);
+          regs[dst] = e_var_from_float(component);
+          e_var_acquire(&regs[dst]); // useless
+          break;
+        }
 
         if (regs[base].type != E_VARTYPE_STRUCT) {
           print_err("Can not access a member within non struct type: %s\n", e_var_type_to_string(regs[base].type));
@@ -459,10 +754,36 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32 base      = ins.member_assign.base;
         u32 member_id = ins.member_assign.member_id;
 
+        if (regs[base].type == E_VARTYPE_VEC2 || regs[base].type == E_VARTYPE_VEC3 || regs[base].type == E_VARTYPE_VEC4) {
+          const u32 x = e_hash("x", strlen("x"));
+          const u32 y = e_hash("y", strlen("y"));
+          const u32 z = e_hash("z", strlen("z"));
+          const u32 w = e_hash("w", strlen("w"));
+
+          e_vec4* ptr = &regs[base].val.vec4;
+          double  val = e_cast_to_float(&regs[value]);
+
+          if (member_id == x) {
+            (*ptr)[0] = val;
+          } else if (member_id == y) {
+            (*ptr)[1] = val;
+          } else if (member_id == z) {
+            (*ptr)[2] = val;
+          } else if (member_id == w) {
+            (*ptr)[3] = val;
+          } else {
+            print_err("Member access %u invalid for vector\n", member_id);
+            e = E_EMALFORM;
+            goto RET;
+          }
+          break;
+        }
+
         e_struct* st = E_VAR_AS_STRUCT(&regs[base]);
         for (u32 i = 0; i < st->member_count; i++) {
           if (st->member_hashes[i] == member_id) {
             e_var* member = &st->members[i];
+            e_var_release(member);
             e_var_shallow_cpy(&regs[value], member);
             e_var_acquire(member);
             break;
@@ -502,7 +823,7 @@ e_exec(const e_exec_info* info, e_var* ret)
           goto RET;
         }
 
-        e_var* args = read_args_vector(regs, stack, sp.val.i, st->fields_count);
+        e_var* args = read_args_vector(regs, stack, sp->val.i, st->fields_count);
         for (u32 i = 0; i < st->fields_count; i++) {
           e_var* member = &E_VAR_AS_STRUCT(dstp)->members[i];
           e_var_release(member);
@@ -539,7 +860,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_PUSH: {
         u32 reg = ins.push.reg;
 
-        if (sp.val.i >= stack_capacity) {
+        if (sp->val.i >= stack_capacity) {
           size_t new_capacity = stack_capacity * 2;
           e_var* new_stack    = realloc(stack, sizeof(e_var) * new_capacity);
           if (!new_stack) {
@@ -551,26 +872,29 @@ e_exec(const e_exec_info* info, e_var* ret)
           stack_capacity = new_capacity;
         }
 
-        e_var_release(&stack[sp.val.i]); /* overwriting it. */
-        stack[sp.val.i] = regs[reg];
-        e_var_acquire(&stack[sp.val.i]); /* temporary hold */
-        sp.val.i++;
+        e_var_release(&stack[sp->val.i]); /* overwriting it. */
+        stack[sp->val.i] = regs[reg];
+        e_var_acquire(&stack[sp->val.i]); /* temporary hold */
+
+        sp->val.i++;
         break;
       }
       case EIR_OPCODE_POP: {
         u32 reg = ins.push.reg;
-        sp.val.i--;
         e_var_release(&regs[reg]); /* overwriting it. */
-        regs[reg] = stack[sp.val.i];
-        e_var_release(&stack[sp.val.i]); /* release temporary hold */
+
+        sp->val.i--;
+        regs[reg] = stack[sp->val.i];
+        e_var_release(&stack[sp->val.i]); /* release temporary hold */
         break;
       }
     }
   }
 
 RET:
-  for (u32 i = 0; i < E_ARRLEN(regs); i++) { e_var_release(&regs[i]); }
-  for (i32 i = 0; i < sp.val.i; i++) { e_var_release(&stack[i]); }
+  for (u32 i = 0; i < 2048; i++) { e_var_release(&regs[i]); }
+  for (i32 i = 0; i < sp->val.i; i++) { e_var_release(&stack[i]); }
+  free(regs);
   free(stack);
   return e;
 }
@@ -585,7 +909,6 @@ e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs, e_var*
       e_exec_info info = {
         .code            = s->compiled.functions[i].code,
         .args            = args,
-        .arg_slots       = s->compiled.functions[i].arg_slots,
         .literals        = s->compiled.literals,
         .literals_hashes = s->compiled.literals_hashes,
         .funcs           = s->compiled.functions,
@@ -602,7 +925,7 @@ e_script_call(e_script* s, const char* func_name, e_var* args, u32 nargs, e_var*
       };
 
       if (s->compiled.functions[i].nargs != nargs) {
-        fprintf(stderr, "Function expects %u arguments (%u were provided)\n", s->compiled.functions[i].nargs, nargs);
+        print_err("Function expects %u arguments (%u were provided)\n", s->compiled.functions[i].nargs, nargs);
         return E_EBADARG;
       }
 

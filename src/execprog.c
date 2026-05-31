@@ -167,7 +167,6 @@ main(int argc, char* argv[])
   e_exec_info info = {
     .gvars           = gvars,
     .args            = NULL,
-    .arg_slots       = NULL,
     .nargs           = 0,
     .literals        = r.literals,
     .literals_hashes = r.literals_hashes,
@@ -217,7 +216,6 @@ main(int argc, char* argv[])
   info.code       = entry_point_func.code;
   info.code_count = entry_point_func.code_count;
   info.nargs      = 0;
-  info.arg_slots  = NULL;
 
   /* Execute main function. */
   e = e_exec(&info, &v);

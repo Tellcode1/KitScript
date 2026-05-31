@@ -1,7 +1,7 @@
-CC ?= cc
+CC = clang
 AR ?= ar
-CFLAGS ?= -std=c99 -g -Wall -Wpedantic -fsanitize=address,undefined
-LDFLAGS ?= -g -lm -fsanitize=address,undefined
+CFLAGS ?= -std=c99 -g -Wall -Wpedantic
+LDFLAGS ?= -g -lm -Wall -Wpedantic
 PREFIX?=/usr/bin/
 
 SRC_DIR=src
@@ -17,10 +17,8 @@ OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
 COMPILER_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(COMPILER_SOURCES))
 DECOMPILER_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(DECOMPILER_SOURCES))
 RUNTIME_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(RUNTIME_SOURCES))
-SCRIPTS = $(wildcard tests/*.e)
-COMPILED_SCRIPTS = $(patsubst tests/%.e,$(BUILD_DIR)/%.eb,$(SCRIPTS))
 
-.PHONY: all clean clean_scripts
+.PHONY: all clean
 
 all: $(BUILD_DIR) $(BUILD_DIR)/libesl.a $(BUILD_DIR)/ec $(BUILD_DIR)/dc $(BUILD_DIR)/eexec
 

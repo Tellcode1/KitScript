@@ -1,9 +1,11 @@
-const BAR_START = '[';
-const BAR_END = ']';
-const PROGRESS_CHAR = '#';
-const EMPTY_CHAR = 'x';
 
 fn progressbar(i, max) {
+  let BAR_START = '[';
+  let BAR_END = ']';
+  let PROGRESS_CHAR = '#';
+  let EMPTY_CHAR = 'x';
+
+  println(i, " << >> ", max);
   print(BAR_START);
   for (let j = 0; j < max; j++) {
     if (j < i) print(PROGRESS_CHAR);
@@ -13,10 +15,8 @@ fn progressbar(i, max) {
 }
 
 fn main() {
-  let count = 5;
-  for (let j = 1; j <= count; j++) {
-    for (let i = 0; i <= count; i++) {
-      progressbar(i, j);
-    }
+  const count = 20;
+  for (let i = 0; i <= count; i++) {
+    progressbar(i, count);
   }
 }

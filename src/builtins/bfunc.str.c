@@ -239,7 +239,7 @@ repl_str(const char* str, const char* from, const char* to)
     tolen  = strlen(to);
     retlen = orglen + ((tolen - fromlen) * count);
   } else retlen = orglen;
-  ret = malloc(retlen + 1);
+  ret = e_xalloc(1, retlen + 1);
   if (ret == NULL) { goto end_repl_str; }
 
   if (count == 0) {

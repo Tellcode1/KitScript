@@ -193,9 +193,12 @@ e_strlpcat(char* d, const char* s, const char* dabs, size_t dsize)
 static inline char*
 e_strdup(const char* s)
 {
-  size_t len = strlen(s) + 1;
-  char*  p   = (char*)e_xalloc(1, len);
-  if (p) { memcpy(p, s, len); }
+  size_t sz = strlen(s) + 1;
+  char*  p  = (char*)e_xalloc(1, sz);
+  if (p) {
+    memcpy(p, s, sz);
+    p[sz - 1] = 0;
+  }
   return p;
 }
 
@@ -218,7 +221,7 @@ read_file(const char* path, u64* size)
 
   if ((bool)fseek(f, 0, SEEK_SET)) goto CLEANUP;
 
-  contents = (char*)malloc(fsize + 1);
+  contents = (char*)e_xalloc(1, fsize + 1);
   if (fread(contents, fsize, 1, f) != 1) { goto CLEANUP; }
   contents[fsize] = 0;
 
@@ -254,7 +257,7 @@ e_aligned_malloc(size_t size, size_t alignment)
   if (alignment < sizeof(void*) || (alignment & (alignment - 1))) return NULL; // must be power of 2
 
   size_t total    = size + alignment - 1 + sizeof(void*);
-  void*  original = malloc(total);
+  void*  original = e_xalloc(1, total);
   if (!original) return NULL;
 
   void* aligned = e_align_ptr((char*)original + sizeof(void*), alignment);

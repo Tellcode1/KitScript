@@ -41,7 +41,7 @@ int  e_map_init(struct e_var* vars, u32 npairs, e_map* map);
 void e_map_free(e_map* map);
 
 struct e_var* e_map_find(e_map* map, const struct e_var* key);
-struct e_var* e_map_find_or_insert(e_map* map, struct e_var* key);
+struct e_var* e_map_find_or_insert(e_map* map, const struct e_var* key);
 
 /**
  * Get all the keys as a list

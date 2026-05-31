@@ -6,13 +6,7 @@
 typedef int ereg_t;
 
 typedef enum eir_opcode {
-  EIR_OPCODE_NOP,
-
-  /**
-   * Load a constant from the constant table
-   * LOADK [dst] [which]
-   */
-  EIR_OPCODE_LOADK,
+  EIR_OPCODE_NOP = 0,
 
   /**
    * Move values between two registers.
@@ -20,6 +14,18 @@ typedef enum eir_opcode {
    * MOV [dst] [src]
    */
   EIR_OPCODE_MOV,
+
+  /**
+   * Move an integer into the register specified.
+   * MOVI [dst] [value]
+   */
+  EIR_OPCODE_MOVI,
+
+  /**
+   * Move a floating point number into the register specified.
+   * MOVF [dst] [value]
+   */
+  EIR_OPCODE_MOVF,
 
   /**
    * Move a global variable to a local register.
@@ -131,6 +137,12 @@ typedef enum eir_opcode {
   EIR_OPCODE_PUSH,
   /* Pop a register from the stack [regID]*/
   EIR_OPCODE_POP,
+
+  /**
+   * Load a constant from the constant table
+   * LOADK [dst] [which]
+   */
+  EIR_OPCODE_LOADK,
 } eir_opcode;
 
 /**
@@ -160,6 +172,16 @@ typedef union e_ins {
     u32        dst;
     u32        src;
   } mov, movg, getg, setg;
+  struct eir_ins_movi {
+    eir_opcode opcode;
+    u32        dst;
+    int        value;
+  } movi;
+  struct eir_ins_movf {
+    eir_opcode opcode;
+    u32        dst;
+    double     value;
+  } movf;
   struct eir_ins_ret {
     eir_opcode opcode;
     u32        return_value;

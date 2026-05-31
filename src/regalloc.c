@@ -21,7 +21,7 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
     e_ins ins = cc->instructions[i];
 
     /* mark vreg is defined at this instruction */
-#define DEFINE_VAR(r)                                                                                                                                \
+#define WRITES_TO(r)                                                                                                                                 \
   do {                                                                                                                                               \
     u32 _r = (r);                                                                                                                                    \
     if (_r < ERA_MAX_VREGS) {                                                                                                                        \
@@ -31,7 +31,7 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
   } while (0)
 
     /* mark vreg is used at this instruction */
-#define USED_VAR(r)                                                                                                                                  \
+#define READS_FROM(r)                                                                                                                                \
   do {                                                                                                                                               \
     u32 _r = (r);                                                                                                                                    \
     if (_r < ERA_MAX_VREGS) {                                                                                                                        \
@@ -42,16 +42,23 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
     switch (ins.opcode) {
       /* getg, setg and movg  */
       case EIR_OPCODE_MOV:
-        DEFINE_VAR(ins.mov.dst);
-        USED_VAR(ins.mov.src);
+        WRITES_TO(ins.mov.dst);
+        READS_FROM(ins.mov.src);
         break;
 
-      case EIR_OPCODE_GETG: DEFINE_VAR(ins.mov.dst); break;
-      case EIR_OPCODE_SETG: USED_VAR(ins.mov.src); break;
+      case EIR_OPCODE_MOVI: WRITES_TO(ins.movi.dst); break; /* values are not registers */
+      case EIR_OPCODE_MOVF: WRITES_TO(ins.movf.dst); break; /* values are not registers */
+
+      case EIR_OPCODE_GETG: WRITES_TO(ins.mov.dst); break;
+      case EIR_OPCODE_SETG: READS_FROM(ins.mov.src); break;
       case EIR_OPCODE_MOVG: {
         break;
       }
-      case EIR_OPCODE_LOADK: DEFINE_VAR(ins.loadk.dst); break;
+      case EIR_OPCODE_LOADK:
+        WRITES_TO(ins.loadk.dst);
+        break; /* id is not a register */
+
+      // case EIR_OPCODE_LOADK: break;
       case EIR_OPCODE_ADD:
       case EIR_OPCODE_SUB:
       case EIR_OPCODE_MUL:
@@ -69,50 +76,77 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
       case EIR_OPCODE_LTE:
       case EIR_OPCODE_GT:
       case EIR_OPCODE_GTE:
-        DEFINE_VAR(ins.binop.dst);
-        USED_VAR(ins.binop.a);
-        USED_VAR(ins.binop.b);
+        WRITES_TO(ins.binop.dst);
+        READS_FROM(ins.binop.a);
+        READS_FROM(ins.binop.b);
         break;
       case EIR_OPCODE_NOT:
       case EIR_OPCODE_NEG:
       case EIR_OPCODE_BNOT:
-        DEFINE_VAR(ins.unop.dst);
-        USED_VAR(ins.unop.a);
+        WRITES_TO(ins.unop.dst);
+        READS_FROM(ins.unop.a);
         break;
-      case EIR_OPCODE_CALL: DEFINE_VAR(ins.call.dst); break;
+      case EIR_OPCODE_CALL:
+        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        WRITES_TO(ins.call.dst);
+        break;
       case EIR_OPCODE_INDEX:
-        DEFINE_VAR(ins.index.dst);
-        USED_VAR(ins.index.base);
-        USED_VAR(ins.index.index);
+        WRITES_TO(ins.index.dst);
+        READS_FROM(ins.index.base);
+        READS_FROM(ins.index.index);
         break;
       case EIR_OPCODE_INDEX_ASSIGN:
-        USED_VAR(ins.index_assign.value);
-        USED_VAR(ins.index_assign.base);
-        USED_VAR(ins.index_assign.index);
+        READS_FROM(ins.index_assign.value);
+        READS_FROM(ins.index_assign.index);
+        READS_FROM(ins.index_assign.base);
         break;
-      case EIR_OPCODE_MK_LIST: DEFINE_VAR(ins.mk_list.dst); break;
-      case EIR_OPCODE_MK_MAP: DEFINE_VAR(ins.mk_map.dst); break;
-      case EIR_OPCODE_MK_STRUCT: DEFINE_VAR(ins.mk_struct.dst); break;
+      case EIR_OPCODE_MK_LIST:
+        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        WRITES_TO(ins.mk_list.dst);
+        break;
+      case EIR_OPCODE_MK_MAP:
+        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        WRITES_TO(ins.mk_map.dst);
+        break;
+      case EIR_OPCODE_MK_STRUCT:
+        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        WRITES_TO(ins.mk_struct.dst);
+        break;
       case EIR_OPCODE_MEMBER_ACCESS:
-        DEFINE_VAR(ins.member_access.dst);
-        USED_VAR(ins.member_access.base);
+        WRITES_TO(ins.member_access.dst);
+        READS_FROM(ins.member_access.base);
         break;
       case EIR_OPCODE_MEMBER_ASSIGN:
-        USED_VAR(ins.member_assign.value);
-        USED_VAR(ins.member_assign.base);
+        READS_FROM(ins.member_assign.value);
+        READS_FROM(ins.member_assign.base);
         break;
-      case EIR_OPCODE_RET: USED_VAR(ins.ret.return_value); break;
+      case EIR_OPCODE_RET: READS_FROM(ins.ret.return_value); break;
       case EIR_OPCODE_JZ:
-      case EIR_OPCODE_JNZ: USED_VAR(ins.cj.condition); break;
-      case EIR_OPCODE_PUSH:
-      case EIR_OPCODE_POP: {
-        USED_VAR(ins.push.reg);
+      case EIR_OPCODE_JNZ: READS_FROM(ins.cj.condition); break;
+      case EIR_OPCODE_PUSH: {
+        READS_FROM(ins.push.reg);
         break;
       }
-      default: break;
+      case EIR_OPCODE_POP: {
+        WRITES_TO(ins.pop.reg);
+        break;
+      }
+
+      // default: break;
+      case EIR_OPCODE_DEC:
+      case EIR_OPCODE_INC: {
+        READS_FROM(ins.unop.a);
+        WRITES_TO(ins.unop.dst);
+        break;
+      }
+      case EIR_OPCODE_NOP:
+      case EIR_OPCODE_LABEL:
+      case EIR_OPCODE_JMP: {
+        break;
+      }
     }
-#undef DEFINE_VAR
-#undef USED_VAR
+#undef WRITES_TO
+#undef READS_FROM
   }
 
   // collect only ranges that were actually used
@@ -138,7 +172,7 @@ era_allocate(era_state* ra)
   memset(phys_free, 1, sizeof(phys_free));
 
   /* mark non general registers as always in use */
-  for (u32 i = E_REG_ARG0; i < E_REG_GENERAL_BEGIN; i++) { phys_free[i] = false; }
+  for (u32 i = 0; i < E_REG_GENERAL_BEGIN; i++) { phys_free[i] = false; }
 
   era_range* active[ERA_NUM_PHYS] = { 0 };
   u32        nactive              = 0;
@@ -223,12 +257,16 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
         MAP(ins.mov.src);
         break;
 
+      case EIR_OPCODE_MOVI: MAP(ins.movi.dst); break;
+      case EIR_OPCODE_MOVF: MAP(ins.movf.dst); break;
+
       case EIR_OPCODE_PUSH:
       case EIR_OPCODE_POP: {
         MAP(ins.push.reg);
         break;
       }
       case EIR_OPCODE_LOADK: MAP(ins.loadk.dst); break;
+      // case EIR_OPCODE_LOADK: break;
       case EIR_OPCODE_ADD:
       case EIR_OPCODE_SUB:
       case EIR_OPCODE_MUL:
@@ -267,7 +305,6 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
         MAP(ins.index_assign.base);
         MAP(ins.index_assign.index);
         break;
-      case EIR_OPCODE_MK_LIST: MAP(ins.mk_list.dst); break;
       case EIR_OPCODE_MEMBER_ACCESS:
         MAP(ins.member_access.dst);
         MAP(ins.member_access.base);
@@ -281,7 +318,25 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
       case EIR_OPCODE_JNZ: MAP(ins.cj.condition); break;
       case EIR_OPCODE_GETG: MAP(ins.getg.dst); break;
       case EIR_OPCODE_SETG: MAP(ins.setg.src); break;
-      default: break;
+
+      case EIR_OPCODE_MK_LIST: MAP(ins.mk_list.dst); break;
+      case EIR_OPCODE_MK_MAP: MAP(ins.mk_map.dst); break;
+      case EIR_OPCODE_MK_STRUCT:
+        MAP(ins.mk_struct.dst);
+        break;
+
+        // default: break;
+
+      case EIR_OPCODE_INC:
+      case EIR_OPCODE_DEC:
+        MAP(ins.unop.dst);
+        MAP(ins.unop.a);
+        break;
+
+      case EIR_OPCODE_NOP:
+      case EIR_OPCODE_MOVG:
+      case EIR_OPCODE_LABEL:
+      case EIR_OPCODE_JMP: break;
     }
 
     // write the patched instruction back to the same location

@@ -38,9 +38,8 @@
 typedef struct e_exec_info {
   e_var*                        gvars;
   const e_ins*                  code;
-  const e_var*                  args;      // NULL if nargs == 0, shallow copied.
-  const ereg_t*                 arg_slots; // The registers in which the arguments need to be put.
-  const e_var*                  literals;  // must outlive the exec function.
+  const e_var*                  args;     // NULL if nargs == 0, shallow copied.
+  const e_var*                  literals; // must outlive the exec function.
   const u32*                    literals_hashes;
   const ecc_function*           funcs;
   const e_builtin_func*         extern_funcs;

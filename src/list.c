@@ -82,8 +82,9 @@ e_list_remove(u32 index, struct e_list* list)
   e_var_release(&list->vars[index]);
 
   // shift elements down. could use memmove but whatever.
-  for (u32 i = index; i < list->size - 1; i++) { list->vars[i] = list->vars[i + 1]; }
+  for (u32 i = index; i < list->size - 1; i++) { e_var_shallow_cpy(&list->vars[i + 1], &list->vars[i]); }
 
+  list->vars[list->size - 1] = E_NULLVAR;
   list->size--;
 }
 
@@ -114,7 +115,11 @@ e_list_insert(u32 index, const e_var* v, struct e_list* l)
   }
 
   // shr
-  for (u32 i = l->size; i > index; i--) { e_var_shallow_cpy(&l->vars[i - 1], &l->vars[i]); }
+  for (u32 i = l->size; i > index; i--) {
+    e_var_release(&l->vars[i]);
+    e_var_shallow_cpy(&l->vars[i - 1], &l->vars[i]);
+    e_var_acquire(&l->vars[i]); /* need acquire here. */
+  }
   // I've started to optimize my language... Interesting.
 
   e_var_shallow_cpy(v, &l->vars[index]);

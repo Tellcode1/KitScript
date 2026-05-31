@@ -120,7 +120,6 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   e_exec_info exec_info = {
     .args            = NULL,
-    .arg_slots       = NULL,
     .nargs           = 0,
     .literals        = compiled.literals,
     .literals_hashes = compiled.literals_hashes,
@@ -141,7 +140,6 @@ eb_rt_compile_and_exec(e_var* args, u32 nargs)
 
   exec_info.code       = entry_func.code;
   exec_info.code_count = entry_func.code_count;
-  exec_info.arg_slots  = entry_func.arg_slots;
 
   exec_info.nargs = arguments->size;
   exec_info.args  = arguments->vars;

@@ -69,6 +69,7 @@ void
 e_refdobj_pool_free(e_refdobj_pool* pool)
 {
   for (u32 i = 0; i < pool->nbranches; i++) e_aligned_free(pool->branches[i]);
+  E_ARR_FREE(pool->in_use_masks);
   E_ARR_FREE(pool->branches);
 }
 

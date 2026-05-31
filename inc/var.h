@@ -133,15 +133,15 @@ bool e_var_equal(const e_var* a, const e_var* b);
 
 /**
  * Index a container (excluding strings).
- * strings are tightly packed so individual elements can not
- * be accessed.
+ * Strings *are* supported.
  */
-int e_var_index(const e_var* left, const e_var* right, e_var** result);
+int e_var_index(const e_var* base, const e_var* index, e_var* result);
 
 /**
- * Get a character from a string
+ * Set the element at the index given to the specified value.
+ * Strings are *not* supported (they are immutable).
  */
-int e_str_index(e_string* s, int i, e_var* o);
+int e_var_index_assign(e_var* base, const e_var* index, const e_var* value);
 
 void e_var_free(e_var* var);
 

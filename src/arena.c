@@ -19,7 +19,7 @@ add_free_page(size_t size, e_arena* arena)
   // Round to page size
   size = ((size + E_PAGE_SIZE - 1) / E_PAGE_SIZE) * E_PAGE_SIZE;
 
-  e_arena_page* page = (e_arena_page*)malloc(size);
+  e_arena_page* page = (e_arena_page*)e_xalloc(1, size);
   if (page == NULL) return -1;
 
   page->size = size - sizeof(e_arena_page); // size - metadata_size
@@ -79,7 +79,7 @@ e_arnalloc(e_arena* a, size_t size)
 
   /* can't fit in regular page. */
   if (total > (E_PAGE_SIZE - sizeof(e_arena_page))) {
-    e_arena_page* page = (e_arena_page*)malloc(sizeof(e_arena_page) + total);
+    e_arena_page* page = (e_arena_page*)e_xalloc(1, sizeof(e_arena_page) + total);
     if (!page) return NULL;
 
     page->size = total;

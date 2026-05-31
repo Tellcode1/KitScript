@@ -59,7 +59,7 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
   dst->type = var->type;
 
   switch (var->type) {
-    case E_VARTYPE_NULL:
+    case E_VARTYPE_NULL: /* only type tag needs to be copied */
     default: break;
 
     case E_VARTYPE_INT:
@@ -90,26 +90,12 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
     }
     case E_VARTYPE_STRUCT: {
       e_struct* s = E_VAR_AS_STRUCT(var);
-
-      e_var*       members = calloc(s->member_count, sizeof(e_var));
-      const char** names   = (const char**)calloc(s->member_count, sizeof(char*));
-      u32*         hashes  = calloc(s->member_count, sizeof(u32));
-      const char*  name    = s->name;
-
-      for (u32 i = 0; i < s->member_count; i++) {
-        e_var_deep_cpy(&s->members[i], &members[i]);
-        hashes[i] = s->member_hashes[i];
-        names[i]  = s->member_names[i];
-      }
+      if (!s) return -1;
 
       dst->val.struc = e_refdobj_pool_acquire(&ge_pool);
-      if (dst->val.struc) {
-        E_VAR_AS_STRUCT(dst)->name          = name;
-        E_VAR_AS_STRUCT(dst)->members       = members;
-        E_VAR_AS_STRUCT(dst)->member_hashes = hashes;
-        E_VAR_AS_STRUCT(dst)->member_names  = names;
-        E_VAR_AS_STRUCT(dst)->member_count  = s->member_count;
-      }
+      if (!dst->val.struc) return -1;
+
+      if (e_struct_init_from(s, E_VAR_AS_STRUCT(dst))) return -1;
 
       return 0;
     }
@@ -120,7 +106,7 @@ e_var_deep_cpy(const e_var* var, e_var* dst)
        * And use it to create the map.
        */
       u32    npairs    = E_VAR_AS_MAP(var)->size;
-      e_var* flattened = calloc(npairs, sizeof(e_var) * 2);
+      e_var* flattened = calloc(npairs * 2ULL, sizeof(e_var));
       memcpy(flattened, E_VAR_AS_MAP(var)->keys, sizeof(e_var) * E_VAR_AS_MAP(var)->size);
       memcpy(flattened + E_VAR_AS_MAP(var)->size, E_VAR_AS_MAP(var)->vals, sizeof(e_var) * E_VAR_AS_MAP(var)->size);
       int e = e_map_init(flattened, E_VAR_AS_MAP(var)->size, E_VAR_AS_MAP(dst));
@@ -155,12 +141,15 @@ e_var_acquire(e_var* v)
   }
 
   if (refc == NULL) return -1;
+  // fprintf(stderr, "ACQUIRE %p -> %d\n", (void*)v->val.list, *refc);
   return (*refc)++;
 }
 
 void
 e_var_release(e_var* v)
 {
+  return;
+
   if (!v) return;
   int* refc = NULL;
   switch (v->type) {
@@ -174,7 +163,12 @@ e_var_release(e_var* v)
   if (refc == NULL) return;
 
   (*refc)--;
-  if (*refc <= 0) e_var_free(v);
+  fprintf(stderr, "RELEASE %p -> %d\n", (void*)v->val.list, *refc);
+
+  if (*refc <= 0) {
+    fprintf(stderr, "FREE %p -> %d\n", (void*)v->val.list, *refc);
+    e_var_free(v);
+  }
 }
 
 void
@@ -215,7 +209,7 @@ e_var_free(e_var* var)
 
     case E_VARTYPE_MAP:
       e_map_free(E_VAR_AS_MAP(var));
-      e_refdobj_pool_return(&ge_pool, var->val.list);
+      e_refdobj_pool_return(&ge_pool, var->val.map);
       break;
 
     case E_VARTYPE_MAT3: {
@@ -250,9 +244,9 @@ e_var_print(const struct e_var* v, FILE* f)
       for (u32 i = 0; i < E_VAR_AS_LIST(v)->size; i++) {
         const e_var* elem = &E_VAR_AS_LIST(v)->vars[i];
 
-        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (elem->type == E_VARTYPE_STRING) fputc('"', f);
         e_var_print(elem, f);
-        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (elem->type == E_VARTYPE_STRING) fputc('"', f);
 
         if (i < E_VAR_AS_LIST(v)->size - 1) { fputs(", ", f); }
       }
@@ -272,9 +266,9 @@ e_var_print(const struct e_var* v, FILE* f)
         fputs(member_name, f);
         fputs("=", f);
 
-        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (elem->type == E_VARTYPE_STRING) fputc('"', f);
         e_var_print(elem, f);
-        if (elem->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (elem->type == E_VARTYPE_STRING) fputc('"', f);
 
         if (i < E_VAR_AS_STRUCT(v)->member_count - 1) { fputs(", ", f); }
       }
@@ -287,15 +281,15 @@ e_var_print(const struct e_var* v, FILE* f)
         const e_var* key = &E_VAR_AS_MAP(v)->keys[i];
         const e_var* val = &E_VAR_AS_MAP(v)->vals[i];
 
-        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (key->type == E_VARTYPE_STRING) fputc('"', f);
         e_var_print(key, f);
-        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (key->type == E_VARTYPE_STRING) fputc('"', f);
 
         fputs(":", f);
 
-        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (val->type == E_VARTYPE_STRING) fputc('"', f);
         e_var_print(val, f);
-        if (key->type == E_VARTYPE_STRING) fputc('\'', f);
+        if (val->type == E_VARTYPE_STRING) fputc('"', f);
 
         if (i < E_VAR_AS_MAP(v)->size - 1) { fputs(", ", f); }
       }
@@ -447,27 +441,29 @@ hash_list(const e_var* list, u32 nelems)
 u32
 e_var_hash(const e_var* var)
 {
+  u32 haha = var->type;
   switch (var->type) {
-    case E_VARTYPE_NULL: return 0;
-    case E_VARTYPE_INT: return e_hash(&var->val.i, sizeof(var->val.i));
-    case E_VARTYPE_BOOL: return e_hash(&var->val.b, sizeof(bool));
-    case E_VARTYPE_CHAR: return e_hash(&var->val.c, sizeof(char));
-    case E_VARTYPE_FLOAT: return e_hash(&var->val.f, sizeof(var->val.f));
-    case E_VARTYPE_DESCRIPTOR: return e_hash((void*)&var->val.descriptor, sizeof(var->val.descriptor)); // hash the pointer.
-    case E_VARTYPE_STRING: return e_hash(E_VAR_AS_STRING(var)->s, strlen(E_VAR_AS_STRING(var)->s));
-    case E_VARTYPE_VEC2: return e_hash(var->val.vec2, sizeof(e_vec2));
-    case E_VARTYPE_VEC3: return e_hash(var->val.vec3, sizeof(e_vec3));
-    case E_VARTYPE_VEC4: return e_hash(var->val.vec4, sizeof(e_vec4));
-    case E_VARTYPE_MAT3: return e_hash(E_VAR_AS_MAT3(var)->m, sizeof(e_mat3));
-    case E_VARTYPE_MAT4: return e_hash(E_VAR_AS_MAT4(var)->m, sizeof(e_mat4));
-    case E_VARTYPE_LIST: return hash_list(E_VAR_AS_LIST(var)->vars, E_VAR_AS_LIST(var)->size);
+    case E_VARTYPE_NULL: return haha ^ e_hash(&var->type, sizeof(var->type));
+    case E_VARTYPE_INT: return haha ^ e_hash(&var->val.i, sizeof(var->val.i));
+    case E_VARTYPE_BOOL: return haha ^ e_hash(&var->val.b, sizeof(bool));
+    case E_VARTYPE_CHAR: return haha ^ e_hash(&var->val.c, sizeof(char));
+    case E_VARTYPE_FLOAT: return haha ^ e_hash(&var->val.f, sizeof(var->val.f));
+    case E_VARTYPE_DESCRIPTOR: return haha ^ e_hash((void*)&var->val.descriptor, sizeof(void*)); // hash the pointer.
+    case E_VARTYPE_STRING: return haha ^ e_hash(E_VAR_AS_STRING(var)->s, strlen(E_VAR_AS_STRING(var)->s));
+    case E_VARTYPE_VEC2: return haha ^ e_hash(var->val.vec2, sizeof(e_vec2));
+    case E_VARTYPE_VEC3: return haha ^ e_hash(var->val.vec3, sizeof(e_vec3));
+    case E_VARTYPE_VEC4: return haha ^ e_hash(var->val.vec4, sizeof(e_vec4));
+    case E_VARTYPE_MAT3: return haha ^ e_hash(E_VAR_AS_MAT3(var)->m, sizeof(e_mat3));
+    case E_VARTYPE_MAT4: return haha ^ e_hash(E_VAR_AS_MAT4(var)->m, sizeof(e_mat4));
+    case E_VARTYPE_LIST: return haha ^ hash_list(E_VAR_AS_LIST(var)->vars, E_VAR_AS_LIST(var)->size);
     case E_VARTYPE_MAP: {
       const u32 random_prime = 61;
-      return hash_list(E_VAR_AS_MAP(var)->keys, E_VAR_AS_MAP(var)->size)
-          + (random_prime * hash_list(E_VAR_AS_MAP(var)->vals, E_VAR_AS_MAP(var)->size));
+      return haha
+          ^ (hash_list(E_VAR_AS_MAP(var)->keys, E_VAR_AS_MAP(var)->size)
+             + (random_prime * hash_list(E_VAR_AS_MAP(var)->vals, E_VAR_AS_MAP(var)->size)));
     }
     case E_VARTYPE_STRUCT: {
-      return hash_list(E_VAR_AS_STRUCT(var)->members, E_VAR_AS_STRUCT(var)->member_count);
+      return haha ^ hash_list(E_VAR_AS_STRUCT(var)->members, E_VAR_AS_STRUCT(var)->member_count);
     }
     default: return e_hash(&var->val, sizeof(var->val));
   }
@@ -492,7 +488,10 @@ e_var_equal(const e_var* a, const e_var* b)
   if (a->type == E_VARTYPE_NULL || b->type == E_VARTYPE_NULL) { return a->type == b->type; }
 
   switch (a->type) {
-    default: assert(0);
+    default: {
+      printf("%i\n", a->type);
+      assert(0);
+    }
 
     case E_VARTYPE_INT: return is_integral(b->type) && (a->val.i == e_cast_to_int(b));
     case E_VARTYPE_BOOL: return is_integral(b->type) && (a->val.b == e_cast_to_bool(b));
@@ -579,32 +578,141 @@ e_struct_get_member(u32 hash, const e_struct* s)
 }
 
 int
-e_var_index(const e_var* left, const e_var* right, e_var** result)
+e_var_index(const e_var* base, const e_var* index, e_var* result)
 {
-  switch (left->type) {
-    case E_VARTYPE_LIST: {
-      e_list* list  = E_VAR_AS_LIST(left);
-      int     index = e_cast_to_int(right);
+  if (result) *result = E_NULLVAR;
 
-      e_var* ptr = e_list_index(list, index);
+  switch (base->type) {
+    case E_VARTYPE_LIST: {
+      e_list* list = E_VAR_AS_LIST(base);
+      int     idx  = e_cast_to_int(index);
+
+      e_var* ptr = e_list_index(list, idx);
       if (!ptr) return -1;
 
-      if (result) *result = ptr;
+      if (result) e_var_shallow_cpy(ptr, result);
+      return 0;
+    }
+    case E_VARTYPE_MAP: {
+      e_map* map    = E_VAR_AS_MAP(base);
+      e_var* search = e_map_find(map, index);
+
+      if (result) {
+        if (search == NULL) {
+          *result = E_NULLVAR;
+        } else {
+          e_var_shallow_cpy(search, result);
+        }
+      }
+      return 0;
+    }
+    case E_VARTYPE_STRING: {
+      const char* s = E_VAR_AS_STRING(base)->s;
+      int         i = e_cast_to_int(index);
+
+      char ch = 0;
+      if (i < strlen(s) && i >= 0) { ch = s[i]; }
+
+      if (result) *result = e_var_from_char(ch);
       return 0;
     }
 
-    default: return -1;
+    case E_VARTYPE_VEC2: {
+      int idx = e_cast_to_int(index);
+      if (idx < 2 && result) *result = e_var_from_float(base->val.vec2[idx]);
+      return 0;
+    }
+    case E_VARTYPE_VEC3: {
+      int idx = e_cast_to_int(index);
+      if (idx < 3 && result) *result = e_var_from_float(base->val.vec3[idx]);
+      return 0;
+    }
+    case E_VARTYPE_VEC4: {
+      int idx = e_cast_to_int(index);
+      if (idx < 4 && result) *result = e_var_from_float(base->val.vec4[idx]);
+      return 0;
+    }
+
+    default: fprintf(stderr, "Attempt to index into invalid base: type=%s\n", e_var_type_to_string(base->type)); return -1;
   }
 }
 
 int
-e_str_index(e_string* s, int i, e_var* o)
+e_var_index_assign(e_var* base, const e_var* index, const e_var* value)
 {
-  if (!s) return -1;
+  switch (base->type) {
+    case E_VARTYPE_LIST: {
+      e_list* list = E_VAR_AS_LIST(base);
+      int     idx  = e_cast_to_int(index);
 
-  char ch = '\0';
-  if (i < strlen(s->s)) { ch = s->s[i]; }
-  *o = (e_var){ .type = E_VARTYPE_CHAR, .val.c = ch };
+      e_var* ptr = e_list_index(list, idx);
+      if (!ptr) {
+        fprintf(stderr, "Out of bounds write to list (idx=%i, list->size=%i)\n", idx, list->size);
+        return -1;
+      }
 
-  return 0;
+      if (ptr && value) {
+        e_var_release(ptr);
+        e_var_shallow_cpy(value, ptr);
+        e_var_acquire(ptr);
+      }
+      return 0;
+    }
+    case E_VARTYPE_MAP: {
+      e_map* map    = E_VAR_AS_MAP(base);
+      e_var* search = e_map_find_or_insert(map, index);
+
+      if (search && value) {
+        e_var_release(search);
+        e_var_shallow_cpy(value, search);
+        e_var_acquire(search);
+      }
+      return 0;
+    }
+    case E_VARTYPE_VEC2: {
+      int    idx    = e_cast_to_int(index);
+      double set_to = e_cast_to_float(value);
+      if (idx < 2) base->val.vec2[idx] = set_to;
+      return 0;
+    }
+    case E_VARTYPE_VEC3: {
+      int    idx    = e_cast_to_int(index);
+      double set_to = e_cast_to_float(value);
+      if (idx < 3) base->val.vec3[idx] = set_to;
+      return 0;
+    }
+    case E_VARTYPE_VEC4: {
+      int    idx    = e_cast_to_int(index);
+      double set_to = e_cast_to_float(value);
+      if (idx < 4) base->val.vec4[idx] = set_to;
+      return 0;
+    }
+    case E_VARTYPE_MAT3: {
+      if (value->type != E_VARTYPE_VEC3) {
+        fprintf(stderr, "Attempt to write to matrix (3x3) with non vec3 value\n");
+        return -1;
+      }
+
+      e_mat3*       mat = E_VAR_AS_MAT3(base);
+      const e_vec3* vec = &value->val.vec3;
+      int           idx = e_cast_to_int(index);
+
+      memcpy(mat->m[idx], *vec, sizeof(e_vec3));
+      return 0;
+    }
+    case E_VARTYPE_MAT4: {
+      if (value->type != E_VARTYPE_VEC4) {
+        fprintf(stderr, "Attempt to write to matrix (4x4) with non vec4 value\n");
+        return -1;
+      }
+
+      e_mat4*       mat = E_VAR_AS_MAT4(base);
+      const e_vec4* vec = &value->val.vec4;
+      int           idx = e_cast_to_int(index);
+
+      memcpy(mat->m[idx], *vec, sizeof(e_vec4));
+      return 0;
+    }
+    default: fprintf(stderr, "Attempt to index assign to invalid base: type=%s\n", e_var_type_to_string(base->type)); return -1;
+  }
 }

@@ -8,19 +8,9 @@
       "name": "(gdb) Launch",
       "type": "lldb",
       "request": "launch",
-<<<<<<< HEAD
       "program": "${workspaceFolder}/build/eexec",
       "args": [
         "build/test",
-=======
-      // "program": "${workspaceFolder}/build/dc",
-      // "args": [
-      //   "build/test",
-      // ],
-      "program": "${workspaceRoot}/build/eexec",
-      "args": [
-        "build/test"
->>>>>>> c22bbf9 (Switch to using registers for speed (using LSRA rn) basic features are implemented. Needs some more work)
       ],
       // "program": "${workspaceRoot}/build/ec",
       // "args": [

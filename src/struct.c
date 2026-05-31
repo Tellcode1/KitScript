@@ -19,6 +19,7 @@ e_struct_init_from(const e_struct* from, e_struct* s)
     names[i]  = from->member_names[i];
   }
 
+  s->name          = from->name;
   s->members       = members;
   s->member_hashes = hashes;
   s->member_names  = names;

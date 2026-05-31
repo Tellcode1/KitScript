@@ -73,6 +73,15 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
       break;
     }
 
+    case EIR_OPCODE_MOVI: {
+      printf("movi dst=%s, value=%i\n", get_register_name(i.movi.dst, buf0), i.movi.value);
+      break;
+    }
+    case EIR_OPCODE_MOVF: {
+      printf("movf dst=%s, value=%f\n", get_register_name(i.movf.dst, buf0), i.movf.value);
+      break;
+    }
+
     case EIR_OPCODE_ADD:
       printf(
           "add dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
@@ -150,12 +159,8 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
       break;
     }
     case EIR_OPCODE_NOP: printf("nop\n"); break;
-    case EIR_OPCODE_MK_LIST:
-      printf("mk_list dst=%s, nelems=%s\n", get_register_name(i.mk_list.dst, buf0), get_register_name(i.mk_list.nelems, buf1));
-      break;
-    case EIR_OPCODE_MK_MAP:
-      printf("mk_map dst=%s, npairs=%s\n", get_register_name(i.mk_map.dst, buf0), get_register_name(i.mk_map.npairs, buf1));
-      break;
+    case EIR_OPCODE_MK_LIST: printf("mk_list dst=%s, nelems=%u\n", get_register_name(i.mk_list.dst, buf0), i.mk_list.nelems); break;
+    case EIR_OPCODE_MK_MAP: printf("mk_map dst=%s, npairs=%u\n", get_register_name(i.mk_map.dst, buf0), i.mk_map.npairs); break;
     case EIR_OPCODE_INDEX:
       printf(
           "index dst=%s, base=%s, index=%s\n",

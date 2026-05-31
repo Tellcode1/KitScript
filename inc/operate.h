@@ -71,6 +71,9 @@ v4_operate(e_var l, e_var r, eir_opcode op)
 {
   if (l.type != E_VARTYPE_VEC4 && r.type != E_VARTYPE_VEC4) return (e_var){ .type = E_VARTYPE_NULL };
 
+  if (op == EIR_OPCODE_EQL) { return e_var_from_bool(e_var_equal(&l, &r)); }
+  if (op == EIR_OPCODE_NEQ) { return e_var_from_bool(!e_var_equal(&l, &r)); }
+
   e_vec4 lv = { 0 };
   e_vec4 rv = { 0 };
 
@@ -122,6 +125,9 @@ v3_operate(e_var l, e_var r, eir_opcode op)
 {
   if (l.type != E_VARTYPE_VEC3 && r.type != E_VARTYPE_VEC3) return (e_var){ .type = E_VARTYPE_NULL };
 
+  if (op == EIR_OPCODE_EQL) { return e_var_from_bool(e_var_equal(&l, &r)); }
+  if (op == EIR_OPCODE_NEQ) { return e_var_from_bool(!e_var_equal(&l, &r)); }
+
   e_vec3 lv = { 0 };
   e_vec3 rv = { 0 };
 
@@ -172,6 +178,9 @@ static inline e_var
 v2_operate(e_var l, e_var r, eir_opcode op)
 {
   if (l.type != E_VARTYPE_VEC2 && r.type != E_VARTYPE_VEC2) return (e_var){ .type = E_VARTYPE_NULL };
+
+  if (op == EIR_OPCODE_EQL) { return e_var_from_bool(e_var_equal(&l, &r)); }
+  if (op == EIR_OPCODE_NEQ) { return e_var_from_bool(!e_var_equal(&l, &r)); }
 
   e_vec2 lv = { 0 };
   e_vec2 rv = { 0 };

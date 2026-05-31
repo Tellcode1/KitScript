@@ -97,6 +97,10 @@ e_var_from_int(int x)
 { return (e_var){ .type = E_VARTYPE_INT, .val = { .i = x } }; }
 
 static inline e_var
+e_var_from_char(char x)
+{ return (e_var){ .type = E_VARTYPE_CHAR, .val = { .c = x } }; }
+
+static inline e_var
 e_var_from_bool(bool x)
 { return (e_var){ .type = E_VARTYPE_BOOL, .val = { .b = x } }; }
 

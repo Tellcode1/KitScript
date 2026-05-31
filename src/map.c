@@ -91,7 +91,7 @@ e_map_find(e_map* map, const e_var* key)
 }
 
 e_var*
-e_map_find_or_insert(e_map* map, struct e_var* key)
+e_map_find_or_insert(e_map* map, const struct e_var* key)
 {
   u32 hash = e_var_hash(key);
 

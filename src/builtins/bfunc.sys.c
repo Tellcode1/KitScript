@@ -87,7 +87,7 @@ eb_sys_get_cwd(e_var* args, u32 nargs)
   const size_t len = strlen(buffer);
 
   // Add a backslash at the end
-  char* s = malloc(len + 2);
+  char* s = e_xalloc(1, len + 2);
   memcpy(s, buffer, len + 1);
   s[len]     = '/';
   s[len + 1] = 0;

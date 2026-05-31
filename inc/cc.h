@@ -174,11 +174,10 @@ typedef struct ecc_builtin_variables_table {
  * Compiled function structure.
  */
 typedef struct ecc_function {
-  u32     name_hash;
-  u32     nargs;
-  u32     code_count;
-  e_ins*  code;
-  ereg_t* arg_slots; /* The registers of the arguments (in which they need to be put), in order. */
+  u32    name_hash;
+  u32    nargs;
+  u32    code_count;
+  e_ins* code;
 } ecc_function;
 
 /**
@@ -267,8 +266,9 @@ typedef struct ecc_label_table {
 } ecc_label_table;
 
 typedef struct ecc_var {
-  e_filespan span;
-  u32        name_hash;
+  e_filespan  span;
+  const char* name;
+  u32         name_hash;
   union {
     ereg_t reg;
     u32    global_id;
@@ -307,8 +307,9 @@ typedef struct e_compiler {
   u32    ninstructions;
   u32    cinstructions;
 
-  u32 next_label;
-  int next_reg;
+  u32    next_label;
+  u32    next_global;
+  ereg_t next_reg;
 } e_compiler;
 
 typedef struct e_compilation_result {
@@ -342,6 +343,8 @@ ecc_stream_resize(e_compiler* cc, u32 new_cap)
 
   e_ins* newcode = (e_ins*)realloc(cc->instructions, sizeof(e_ins) * new_cap);
   if (newcode == NULL) { return; }
+
+  for (u32 i = cc->cinstructions; i < new_cap; i++) { newcode[i] = (e_ins){ .opcode = EIR_OPCODE_NOP }; }
 
   cc->instructions  = newcode;
   cc->cinstructions = new_cap;
