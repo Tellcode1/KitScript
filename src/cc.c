@@ -1283,6 +1283,23 @@ compile_binary_op(e_compiler* cc, int node)
     goto err;
   }
 
+  /* optimization level 2 because requires a bit of work here and produces minimal gains */
+  if (cc->info->opt_level >= 2 && is_literal_value(cc->ast, left) && is_literal_value(cc->ast, right)) {
+    e_var lhs = E_NULLVAR;
+    e_var rhs = E_NULLVAR;
+
+    int e = convert_node_to_literal(cc, left, &lhs);
+    if (e < 0) return e;
+
+    e = convert_node_to_literal(cc, right, &rhs);
+    if (e < 0) return e;
+
+    e_var result = operate(lhs, rhs, opcode);
+
+    /* both input operands are constant. result must be a constant too */
+    return compile_and_push_literal_variable(cc, &result);
+  }
+
   if (is_compound && !can_make_value(cc->ast, left)) {
     cerror(E_GET_NODE(cc->ast, left)->common.span, "Can not assign to left\n");
     goto err;
@@ -1370,7 +1387,9 @@ compile_unary_op(e_compiler* cc, int node)
   e_operator oper = E_GET_NODE(cc->ast, node)->unaryop.op;
   if (oper == E_OPERATOR_INC || oper == E_OPERATOR_DEC) { return compile_inc_or_dec(cc, node); }
 
-  eir_opcode opcode = -1;
+  int        right       = E_GET_NODE(cc->ast, node)->unaryop.right;
+  bool       is_compound = E_GET_NODE(cc->ast, node)->unaryop.is_compound;
+  eir_opcode opcode      = -1;
 
   switch (E_GET_NODE(cc->ast, node)->unaryop.op) {
     case E_OPERATOR_NOT: opcode = EIR_OPCODE_NOT; break;
@@ -1382,10 +1401,20 @@ compile_unary_op(e_compiler* cc, int node)
       return -1;
   }
 
-  bool is_compound = E_GET_NODE(cc->ast, node)->unaryop.is_compound;
+  /* opt level 2 because minimal gains */
+  if (cc->info->opt_level >= 2 && is_literal_value(cc->ast, right)) {
+    e_var rhs = E_NULLVAR;
 
-  int right = E_GET_NODE(cc->ast, node)->unaryop.right;
-  int e     = 0;
+    int e = convert_node_to_literal(cc, right, &rhs);
+    if (e < 0) return e;
+
+    e_var result = operate(E_NULLVAR, rhs, opcode);
+
+    /* both input operands are constant. result must be a constant too */
+    return compile_and_push_literal_variable(cc, &result);
+  }
+
+  int e = 0;
 
   ereg_t dst = vreg_alloc(cc);
 
@@ -2539,189 +2568,6 @@ compile_builtin_structures(e_compiler* cc)
 
   return 0;
 }
-
-// static inline int
-// fold(e_compiler* cc, int node)
-// {
-//   int e = 0;
-
-//   e_ast_node* nodep = e_ast_get_node(cc->ast, node);
-//   switch (nodep->type) {
-//     case E_AST_NODE_BINARYOP: {
-//       int l = nodep->binaryop.left;
-//       int r = nodep->binaryop.right;
-
-//       e = fold(cc, l);
-//       if (e < 0) return e;
-
-//       e = fold(cc, r);
-//       if (e < 0) return e;
-
-//       if (!is_literal_value(cc->ast, l) || !is_literal_value(cc->ast, r)) return 0;
-
-//       e_var lv;
-//       e_var rv;
-
-//       e = convert_node_to_literal(cc, l, &lv);
-//       if (e < 0) return e;
-
-//       e = convert_node_to_literal(cc, r, &rv);
-//       if (e < 0) return e;
-
-//       e_var result = operate(lv, rv, e_binary_operator_to_opcode(E_GET_NODE(cc->ast, node)->binaryop.op));
-
-//       e = convert_literal_to_node(cc->ast, node, &result);
-//       if (e < 0) return e;
-//       return e;
-//     }
-
-//     case E_AST_NODE_ROOT: {
-//       for (u32 i = 0; i < nodep->root.nstmts; i++) {
-//         e = fold(cc, nodep->root.stmts[i]);
-//         if (e < 0) return e;
-//       }
-//       return e;
-//     }
-//     case E_AST_NODE_STATEMENT_LIST: {
-//       for (u32 i = 0; i < nodep->stmts.nstmts; i++) {
-//         e = fold(cc, nodep->stmts.stmts[i]);
-//         if (e < 0) return e;
-//       }
-//       return e;
-//     }
-//     case E_AST_NODE_DEFER: {
-//       for (u32 i = 0; i < nodep->defer.nstmts; i++) {
-//         e = fold(cc, nodep->defer.stmts[i]);
-//         if (e < 0) return e;
-//       }
-//       return e;
-//     }
-
-//     case E_AST_NODE_FUNCTION_DEFINITION: {
-//       for (u32 i = 0; i < nodep->func.nstmts; i++) {
-//         e = fold(cc, nodep->func.stmts[i]);
-//         if (e < 0) return e;
-//       }
-//       /* Can not optimize arguments in function definition. CALL should do that. */
-//       return e;
-//     }
-
-//     case E_AST_NODE_NAMESPACE_DECL: {
-//       for (u32 i = 0; i < nodep->namespace_decl.nstmts; i++) {
-//         e = fold(cc, nodep->namespace_decl.stmts[i]);
-//         if (e < 0) return e;
-//       }
-//       return e;
-//     }
-
-//     case E_AST_NODE_CALL: {
-//       for (u32 i = 0; i < nodep->call.nargs; i++) {
-//         e = fold(cc, nodep->call.args[i]);
-//         if (e < 0) return e;
-//       }
-//       return e;
-//     }
-
-//     case E_AST_NODE_VARIABLE_DECL: {
-//       if (nodep->let.initializer >= 0) {
-//         e = fold(cc, nodep->let.initializer);
-//         if (e < 0) return e;
-//       }
-//       return e;
-//     }
-
-//     case E_AST_NODE_ASSIGN: {
-//       e = fold(cc, nodep->assign.left);
-//       if (e < 0) return e;
-//       e = fold(cc, nodep->assign.right);
-//       return e;
-//     }
-
-//     case E_AST_NODE_MEMBER_ASSIGN: {
-//       e = fold(cc, nodep->member_assign.left);
-//       if (e < 0) return e;
-//       e = fold(cc, nodep->member_assign.value);
-//       return e;
-//     }
-
-//     case E_AST_NODE_INDEX: {
-//       e = fold(cc, nodep->index.index);
-//       return e;
-//     }
-
-//     case E_AST_NODE_INDEX_ASSIGN: {
-//       e = fold(cc, nodep->index_assign.index);
-//       if (e < 0) return e;
-//       e = fold(cc, nodep->index_assign.value);
-//       return e;
-//     }
-
-//     case E_AST_NODE_FOR: {
-//       e = fold(cc, nodep->for_stmt.condition);
-//       if (e < 0) return e;
-
-//       e = fold(cc, nodep->for_stmt.initializers);
-//       if (e < 0) return e;
-
-//       for (u32 i = 0; i < nodep->for_stmt.nstmts; i++) {
-//         e = fold(cc, nodep->for_stmt.stmts[i]);
-//         if (e < 0) return e;
-//       }
-
-//       for (u32 i = 0; i < nodep->for_stmt.niterators; i++) {
-//         e = fold(cc, nodep->for_stmt.iterators[i]);
-//         if (e < 0) return e;
-//       }
-//       return e;
-//     }
-
-//     case E_AST_NODE_WHILE: {
-//       for (u32 i = 0; i < nodep->while_stmt.nstmts; i++) {
-//         e = fold(cc, nodep->while_stmt.stmts[i]);
-//         if (e < 0) return e;
-//       }
-
-//       e = fold(cc, nodep->while_stmt.condition);
-//       if (e < 0) return e;
-
-//       return e;
-//     }
-
-//     case E_AST_NODE_IF: {
-//       e = fold(cc, nodep->if_stmt.condition);
-//       if (e < 0) return e;
-
-//       for (u32 i = 0; i < nodep->if_stmt.nstmts; i++) {
-//         e = fold(cc, nodep->if_stmt.body[i]);
-//         if (e < 0) return e;
-//       }
-
-//       u32 nelse_ifs = nodep->if_stmt.nelse_ifs;
-//       for (u32 i = 0; i < nelse_ifs; i++) {
-//         struct e_if_stmt* else_if = &nodep->if_stmt.else_ifs[i];
-
-//         e = fold(cc, else_if->condition);
-//         if (e < 0) return e;
-
-//         for (u32 j = 0; j < else_if->nstmts; j++) {
-//           e = fold(cc, else_if->body[j]);
-//           if (e < 0) return e;
-//         }
-//       }
-
-//       for (u32 i = 0; i < nodep->if_stmt.nelse_stmts; i++) {
-//         e = fold(cc, nodep->if_stmt.else_body[i]);
-//         if (e < 0) return e;
-//       }
-
-//       return e;
-//     }
-
-//     default: break;
-//   }
-
-//   return 0;
-// }
 
 /* Register ID on success, <0 on error */
 static int
