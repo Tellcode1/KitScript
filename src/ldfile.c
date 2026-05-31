@@ -1,24 +1,12 @@
-#include "../inc/ast.h"
 #include "../inc/cc.h"
 #include "../inc/ir.h"
-#include "../inc/reg.h"
 #include "../inc/rwhelp.h"
 #include "../inc/stdafx.h"
-#include "../inc/strint.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-static inline const char*
-lookup(const char** names, const u32* names_hashes, u32 nnames, u32 name)
-{
-  for (u32 i = 0; i < nnames; i++) {
-    if (names_hashes[i] == name) { return names[i]; }
-  }
-  return "[symbol not found]";
-}
 
 static inline u8
 read_u8(FILE* f)
@@ -341,23 +329,6 @@ write_ins(e_ins i, FILE* f)
       break;
     }
   }
-}
-
-static inline const char*
-get_register_name(u32 reg_id, char buff[32])
-{
-  if (reg_id >= E_REG_ARG0 && reg_id <= E_REG_ARG15) {
-    snprintf(buff, 32, "arg%i", reg_id - E_REG_ARG0);
-  } else if (reg_id >= E_REG_GENERAL_BEGIN && reg_id <= E_REG_GENERAL_END) {
-    snprintf(buff, 32, "r%i", reg_id - E_REG_GENERAL_BEGIN);
-  } else if (reg_id == E_REG_SP) {
-    snprintf(buff, 32, "rsp");
-  } else if (reg_id == E_REG_IP) {
-    snprintf(buff, 32, "rip");
-  } else {
-    snprintf(buff, 32, "ru%i", reg_id);
-  }
-  return buff;
 }
 
 void
@@ -692,160 +663,10 @@ e_file_bytes_required(const e_compilation_result* r)
   return size;
 }
 
-static inline e_ins
-clear_instruction_padding_bits(e_ins src)
-{
-  e_ins r = { 0 };
-  memset(&r, 0, sizeof(e_ins));
-
-  r.opcode = src.opcode;
-
-  switch (src.opcode) {
-    case EIR_OPCODE_LOADK: {
-      r.loadk.dst = src.loadk.dst;
-      r.loadk.id  = src.loadk.id;
-      break;
-    }
-    case EIR_OPCODE_MOVG:
-    case EIR_OPCODE_GETG:
-    case EIR_OPCODE_SETG:
-    case EIR_OPCODE_MOV: {
-      r.mov.dst = src.mov.dst;
-      r.mov.src = src.mov.src;
-      break;
-    }
-
-    case EIR_OPCODE_MOVI: {
-      r.movi.dst   = src.movi.dst;
-      r.movi.value = src.movi.value;
-      break;
-    }
-
-    case EIR_OPCODE_MOVF: {
-      r.movf.dst   = src.movf.dst;
-      r.movf.value = src.movf.value;
-      break;
-    }
-
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE: {
-      r.binop.dst = src.binop.dst;
-      r.binop.a   = src.binop.a;
-      r.binop.b   = src.binop.b;
-      break;
-    }
-
-    case EIR_OPCODE_INC:
-    case EIR_OPCODE_DEC:
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_NEG:
-    case EIR_OPCODE_NOT: {
-      r.unop.dst = src.unop.dst;
-      r.unop.a   = src.unop.a;
-      break;
-    }
-
-    case EIR_OPCODE_RET: {
-      r.ret.return_value = src.ret.return_value;
-      break;
-    }
-    case EIR_OPCODE_NOP: break;
-
-    case EIR_OPCODE_MK_LIST: {
-      r.mk_list.dst    = src.mk_list.dst;
-      r.mk_list.nelems = src.mk_list.nelems;
-      break;
-    }
-    case EIR_OPCODE_MK_MAP: {
-      r.mk_map.dst    = src.mk_map.dst;
-      r.mk_map.npairs = src.mk_map.npairs;
-      break;
-    }
-    case EIR_OPCODE_INDEX: {
-      r.index.dst   = src.index.dst;
-      r.index.base  = src.index.base;
-      r.index.index = src.index.index;
-      break;
-    }
-    case EIR_OPCODE_INDEX_ASSIGN: {
-      r.index_assign.value = src.index_assign.value;
-      r.index_assign.base  = src.index_assign.base;
-      r.index_assign.index = src.index_assign.index;
-      break;
-    }
-    case EIR_OPCODE_CALL: {
-      r.call.dst         = src.call.dst;
-      r.call.function_id = src.call.function_id;
-      r.call.nargs       = src.call.nargs;
-      break;
-    }
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ: {
-      r.cj.target    = src.cj.target;
-      r.cj.condition = src.cj.condition;
-      break;
-    }
-    case EIR_OPCODE_JMP: {
-      r.jmp.target = src.jmp.target;
-      break;
-    }
-
-    case EIR_OPCODE_LABEL: {
-      r.label.id = src.label.id;
-      break;
-    }
-
-    case EIR_OPCODE_MEMBER_ACCESS: {
-      r.member_access.dst       = src.member_access.dst;
-      r.member_access.base      = src.member_access.base;
-      r.member_access.member_id = src.member_access.member_id;
-      break;
-    }
-    case EIR_OPCODE_MEMBER_ASSIGN: {
-      r.member_assign.value     = src.member_assign.value;
-      r.member_assign.base      = src.member_assign.base;
-      r.member_assign.member_id = src.member_assign.member_id;
-      break;
-    }
-    case EIR_OPCODE_MK_STRUCT: {
-      r.mk_struct.dst       = src.mk_struct.dst;
-      r.mk_struct.struct_id = src.mk_struct.struct_id;
-      break;
-    }
-    case EIR_OPCODE_PUSH: {
-      r.push.reg = src.push.reg;
-      break;
-    }
-    case EIR_OPCODE_POP: {
-      r.pop.reg = src.pop.reg;
-      break;
-    }
-  }
-  return r;
-}
-
 void
 e_emit_ins(const char* file, size_t line, e_compiler* cc, e_ins ins)
 {
   if (cc->ninstructions >= cc->cinstructions) ecc_stream_resize(cc, cc->cinstructions * 2U);
-  ins = clear_instruction_padding_bits(ins);
-  // fprintf(stderr, "[%s:%zu] emitted: ", file, line);
-  // e_print_instruction(ins, NULL, NULL, 0, stderr);
   memcpy(&cc->instructions[cc->ninstructions++], &ins, sizeof(e_ins));
 }
 

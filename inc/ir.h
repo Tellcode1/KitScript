@@ -3,7 +3,7 @@
 
 #include "stdafx.h"
 
-typedef int ereg_t;
+typedef int e_vreg_t;
 
 typedef enum eir_opcode {
   EIR_OPCODE_NOP = 0,

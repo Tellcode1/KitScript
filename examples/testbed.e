@@ -56,7 +56,7 @@ fn main() {
       error = true;
    }
 
-   vector += vec2(100, 200);
+   vector += vec2(100, 100);
    if (vector != vec2(110.0, 110.0)) {
       io::println(io::STDERR, "Vector addition (v+v) failed");
       error = true;

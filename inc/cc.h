@@ -270,8 +270,8 @@ typedef struct ecc_var {
   const char* name;
   u32         name_hash;
   union {
-    ereg_t reg;
-    u32    global_id;
+    e_vreg_t reg;
+    u32      global_id;
   } slot;
   bool            is_const;
   bool            is_global;
@@ -307,9 +307,9 @@ typedef struct e_compiler {
   u32    ninstructions;
   u32    cinstructions;
 
-  u32    next_label;
-  u32    next_global;
-  ereg_t next_reg;
+  u32      next_label;
+  u32      next_global;
+  e_vreg_t next_vreg;
 } e_compiler;
 
 typedef struct e_compilation_result {

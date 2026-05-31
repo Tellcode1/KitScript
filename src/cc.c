@@ -73,7 +73,7 @@ static inline RETURNS_ERRCODE int defer_emit_to_depth(e_compiler* cc, u32 target
 static inline u32                 defer_get_current_depth(e_compiler* cc);
 
 static inline ATTR_NODISCARD u32  label_find(u32 label_id, const ecc_label_table* table);
-static inline RETURNS_ERRCODE int emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, ereg_t condition, u32 label_id);
+static inline RETURNS_ERRCODE int emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, e_vreg_t condition, u32 label_id);
 static inline void                define_and_emit_label(e_compiler* cc, u32 label_id);
 
 static RETURNS_ERRCODE int           append_defer_entry(e_compiler* cc, int* exprs, u32 nexprs);
@@ -88,51 +88,49 @@ static RETURNS_ERRCODE int append_struct_info(e_compiler* cc, const ecc_struct_i
 static inline RETURNS_ERRCODE int compiler_make_fork(const e_compiler* old_c, e_compiler* new_c);
 static inline void                compiler_join_fork(const e_compiler* copy, e_compiler* cc);
 
-static RETURNS_ERRCODE int    value_init(e_compiler* cc, int node, struct val_t* d);
-static void                   value_free(struct val_t* lv);
-static RETURNS_ERRCODE ereg_t emit_lvalue_load(e_compiler* cc, struct val_t* lv);
-static RETURNS_ERRCODE ereg_t emit_lvalue_assign(e_compiler* cc, ereg_t value, struct val_t* lv);
+static RETURNS_ERRCODE int      value_init(e_compiler* cc, int node, struct val_t* d);
+static void                     value_free(struct val_t* lv);
+static RETURNS_ERRCODE e_vreg_t emit_lvalue_load(e_compiler* cc, struct val_t* lv);
+static RETURNS_ERRCODE e_vreg_t emit_lvalue_assign(e_compiler* cc, e_vreg_t value, struct val_t* lv);
 
-static inline e_ast_node_type     var_type_to_node_type(e_vartype var_type);
-static inline RETURNS_ERRCODE int convert_literal_to_node(e_ast* p, int override_node, const e_var* lit);
 static inline RETURNS_ERRCODE int convert_node_to_literal(const e_compiler* cc, int node, e_var* o);
 static inline bool                is_literal_value(const e_ast* ast, int node);
 
 /* Return register ID of result, -1 on error */
-static RETURNS_ERRCODE ereg_t compile_and_push_literal_variable(e_compiler* cc, const e_var* v);
-static RETURNS_ERRCODE ereg_t compile_literal(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_list(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_map(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_function_definition(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_binary_op(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_unary_op(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_index(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_function_call(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_if_statement(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_while_statement(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_for_statement(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_member_access(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_assign(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_return(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_and_push_literal_variable(e_compiler* cc, const e_var* v);
+static RETURNS_ERRCODE e_vreg_t compile_literal(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_list(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_map(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_function_definition(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_binary_op(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_unary_op(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_index(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_function_call(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_if_statement(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_while_statement(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_for_statement(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_member_access(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_assign(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_return(e_compiler* cc, int node);
 // static RETURNS_ERRCODE ereg_t compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_information* struc);
-static RETURNS_ERRCODE ereg_t compile_struct_decleration(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_variable_decleration(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_variable_load(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_namespace_decleration(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b);
-static RETURNS_ERRCODE ereg_t compile_builtin_structures(e_compiler* cc);
-static RETURNS_ERRCODE ereg_t compile_function(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile_root(e_compiler* cc, int node);
-static RETURNS_ERRCODE ereg_t compile(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_struct_decleration(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_variable_decleration(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_variable_load(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_namespace_decleration(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b);
+static RETURNS_ERRCODE e_vreg_t compile_builtin_structures(e_compiler* cc);
+static RETURNS_ERRCODE e_vreg_t compile_function(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_root(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile(e_compiler* cc, int node);
 
-static inline ereg_t
+static inline e_vreg_t
 vreg_alloc(e_compiler* cc)
-{ return cc->next_reg++; }
+{ return cc->next_vreg++; }
 
-static ereg_t
+static e_vreg_t
 scope_define(e_compiler* cc, e_filespan span, const char* name, bool is_const)
 {
-  ereg_t reg = vreg_alloc(cc);
+  e_vreg_t reg = vreg_alloc(cc);
 
   ecc_var* v      = e_arnalloc(cc->arena, sizeof(ecc_var));
   v->name         = name;
@@ -144,7 +142,7 @@ scope_define(e_compiler* cc, e_filespan span, const char* name, bool is_const)
   cc->scope->vars = v;
   if (v->is_global) {
     v->slot.global_id = cc->next_global++;
-    return (ereg_t)v->slot.global_id;
+    return (e_vreg_t)v->slot.global_id;
   }
 
   v->slot.reg = reg;
@@ -152,7 +150,7 @@ scope_define(e_compiler* cc, e_filespan span, const char* name, bool is_const)
 }
 
 static void
-scope_define_in_register(e_compiler* cc, ereg_t reg, e_filespan span, const char* name, bool is_const)
+scope_define_in_register(e_compiler* cc, e_vreg_t reg, e_filespan span, const char* name, bool is_const)
 {
   ecc_var* v      = e_arnalloc(cc->arena, sizeof(ecc_var));
   v->name         = name;
@@ -460,7 +458,7 @@ append_label_entry(e_arena* a, u32 label_id, ecc_label_table* table)
  * jump instructions (JMP,JE,JNE,JZ,JNZ,etc.)
  */
 static inline int
-emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, ereg_t condition, u32 label_id)
+emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, e_vreg_t condition, u32 label_id)
 {
   ecc_label_jumps_table* label = append_label_entry(cc->arena, label_id, cc->label_table);
 
@@ -577,7 +575,7 @@ compiler_make_fork(const e_compiler* old_c, e_compiler* new_c)
     .struct_table      = old_c->struct_table,
     .next_label        = old_c->next_label,
     .next_global       = old_c->next_global,
-    .next_reg          = E_REG_GENERAL_BEGIN, // Seperate register for each function
+    .next_vreg         = E_REG_GENERAL_BEGIN, // Seperate register for each function
     .scope             = top_scope,
     .ns                = old_c->ns,
     .stack             = old_c->stack,
@@ -719,7 +717,7 @@ value_free(val_t* lv)
 }
 
 static inline int
-emit_lvalue_assign(e_compiler* cc, ereg_t value, val_t* lv)
+emit_lvalue_assign(e_compiler* cc, e_vreg_t value, val_t* lv)
 {
   switch (lv->type) {
     case E_LVAL_VAR: {
@@ -742,8 +740,8 @@ emit_lvalue_assign(e_compiler* cc, ereg_t value, val_t* lv)
       break;
     }
     case E_LVAL_INDEX: {
-      ereg_t base  = -1;
-      ereg_t index = -1;
+      e_vreg_t base  = -1;
+      e_vreg_t index = -1;
 
       base = compile(cc, lv->val.index.left_node);
       if (base < 0) return base;
@@ -777,7 +775,7 @@ emit_lvalue_assign(e_compiler* cc, ereg_t value, val_t* lv)
       int left      = lv->val.member.base;
       u32 member_id = lv->val.member.member_hash;
 
-      ereg_t base = compile(cc, left);
+      e_vreg_t base = compile(cc, left);
       if (base < 0) return base;
 
       e_emit_ins(cc, (e_ins){ .member_assign = { .opcode = EIR_OPCODE_MEMBER_ASSIGN, .value = value, .base = base, .member_id = member_id } });
@@ -795,7 +793,7 @@ emit_lvalue_load(e_compiler* cc, val_t* lv)
 {
   switch (lv->type) {
     case E_LVAL_VAR: {
-      ereg_t var_reg = scope_lookup_reg(cc, lv->val.var.id);
+      e_vreg_t var_reg = scope_lookup_reg(cc, lv->val.var.id);
       if (var_reg < 0) return -1;
 
       // e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = dst, .src = var_reg } });
@@ -803,7 +801,7 @@ emit_lvalue_load(e_compiler* cc, val_t* lv)
     }
 
     case E_LVAL_GVAR: {
-      ereg_t   dst = vreg_alloc(cc);
+      e_vreg_t dst = vreg_alloc(cc);
       ecc_var* v   = scope_lookup_info(cc, lv->val.var.id);
       if (!v) return -1;
 
@@ -813,10 +811,10 @@ emit_lvalue_load(e_compiler* cc, val_t* lv)
     }
 
     case E_LVAL_INDEX: {
-      ereg_t dst = vreg_alloc(cc);
+      e_vreg_t dst = vreg_alloc(cc);
 
-      ereg_t base  = -1;
-      ereg_t index = -1;
+      e_vreg_t base  = -1;
+      e_vreg_t index = -1;
 
       base = compile(cc, lv->val.index.left_node);
       if (base < 0) return base;
@@ -834,10 +832,10 @@ emit_lvalue_load(e_compiler* cc, val_t* lv)
       u32 member_id = lv->val.member.member_hash;
 
       /* pushes stack top */
-      ereg_t base = compile(cc, left);
+      e_vreg_t base = compile(cc, left);
       if (base < 0) return base;
 
-      ereg_t dst = vreg_alloc(cc);
+      e_vreg_t dst = vreg_alloc(cc);
       e_emit_ins(cc, (e_ins){ .member_access = { .opcode = EIR_OPCODE_MEMBER_ACCESS, .dst = dst, .base = base, .member_id = member_id } });
 
       return dst;
@@ -860,37 +858,6 @@ make_string_variable(char* s, e_var* v) // s will be onwed by variable after thi
   E_OBJ_AS_STRING(obj)->s = s;
 
   *v = (e_var){ .type = E_VARTYPE_STRING, .val.s = obj };
-  return 0;
-}
-
-static inline e_ast_node_type
-var_type_to_node_type(e_vartype var_type)
-{
-  switch (var_type) {
-    case E_VARTYPE_INT: return E_AST_NODE_INT;
-    case E_VARTYPE_BOOL: return E_AST_NODE_BOOL;
-    case E_VARTYPE_CHAR: return E_AST_NODE_CHAR;
-    case E_VARTYPE_FLOAT: return E_AST_NODE_FLOAT;
-    case E_VARTYPE_STRING: return E_AST_NODE_STRING;
-    default: return E_AST_NODE_NOP;
-  }
-}
-
-static inline RETURNS_ERRCODE int
-convert_literal_to_node(e_ast* p, int override_node, const e_var* lit)
-{
-  /* Set literal type */
-  E_GET_NODE(p, override_node)->type = var_type_to_node_type(lit->type);
-
-  /* Set literal value */
-  switch (lit->type) {
-    case E_VARTYPE_INT: E_GET_NODE(p, override_node)->i.i = lit->val.i; break;
-    case E_VARTYPE_BOOL: E_GET_NODE(p, override_node)->b.b = lit->val.b; break;
-    case E_VARTYPE_CHAR: E_GET_NODE(p, override_node)->c.c = lit->val.c; break;
-    case E_VARTYPE_FLOAT: E_GET_NODE(p, override_node)->f.f = lit->val.f; break;
-    case E_VARTYPE_STRING:
-    default: return -1;
-  }
   return 0;
 }
 
@@ -1028,13 +995,13 @@ compile_and_push_literal_variable(e_compiler* cc, const e_var* v)
 {
   /* OPTIMIZATION: If the variable is an integer or a float, emit a MOVI or a MOVF  */
   if (cc->info->opt_level >= 1 && v->type == E_VARTYPE_INT) {
-    ereg_t dst = vreg_alloc(cc);
+    e_vreg_t dst = vreg_alloc(cc);
     e_emit_ins(cc, (e_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = dst, .value = v->val.i } });
     return dst;
   }
 
   if (cc->info->opt_level >= 1 && v->type == E_VARTYPE_FLOAT) {
-    ereg_t dst = vreg_alloc(cc);
+    e_vreg_t dst = vreg_alloc(cc);
     e_emit_ins(cc, (e_ins){ .movf = { .opcode = EIR_OPCODE_MOVF, .dst = dst, .value = v->val.f } });
     return dst;
   }
@@ -1045,14 +1012,14 @@ compile_and_push_literal_variable(e_compiler* cc, const e_var* v)
   int e = add_literal_to_track(cc, v);
   if (e < 0) return e;
 
-  ereg_t dst = vreg_alloc(cc);
+  e_vreg_t dst = vreg_alloc(cc);
 
   e_emit_ins(cc, (e_ins){ .loadk = { .opcode = EIR_OPCODE_LOADK, .dst = dst, .id = hash } });
 
   return dst;
 }
 
-static RETURNS_ERRCODE ereg_t
+static RETURNS_ERRCODE e_vreg_t
 compile_literal(e_compiler* cc, int node)
 {
   // Convert the node to a variable and
@@ -1069,9 +1036,9 @@ compile_list(e_compiler* cc, int node)
   u32 nelems = E_GET_NODE(cc->ast, node)->list.nelems;
   assert(nelems < INT32_MAX);
 
-  ereg_t dst = vreg_alloc(cc);
+  e_vreg_t dst = vreg_alloc(cc);
 
-  ereg_t* elems = e_arnalloc(cc->arena, sizeof(ereg_t) * nelems);
+  e_vreg_t* elems = e_arnalloc(cc->arena, sizeof(e_vreg_t) * nelems);
 
   for (u32 i = 0; i < nelems; i++) {
     int elem_node = E_GET_NODE(cc->ast, node)->list.elems[i];
@@ -1103,18 +1070,18 @@ compile_map(e_compiler* cc, int node)
 {
   u32 npairs = E_GET_NODE(cc->ast, node)->map.npairs;
 
-  ereg_t dst = vreg_alloc(cc);
+  e_vreg_t dst = vreg_alloc(cc);
 
-  ereg_t* pairs = e_arnalloc(cc->arena, npairs * 2ULL * sizeof(ereg_t));
+  e_vreg_t* pairs = e_arnalloc(cc->arena, npairs * 2ULL * sizeof(e_vreg_t));
 
   for (u32 i = 0; i < npairs; i++) {
     int key = E_GET_NODE(cc->ast, node)->map.keys[i];
     int val = E_GET_NODE(cc->ast, node)->map.values[i];
 
-    ereg_t k = compile(cc, key);
+    e_vreg_t k = compile(cc, key);
     if (k < 0) return k;
 
-    ereg_t v = compile(cc, val);
+    e_vreg_t v = compile(cc, val);
     if (v < 0) return v;
 
     pairs[((size_t)i * 2)]     = k;
@@ -1123,8 +1090,8 @@ compile_map(e_compiler* cc, int node)
 
   for (u32 i = 0; i < npairs; i++) {
     /* copy the first 8 pairs (16 registers) and spill the rest to the stack */
-    ereg_t k = pairs[((size_t)i * 2)];
-    ereg_t v = pairs[((size_t)i * 2) + 1];
+    e_vreg_t k = pairs[((size_t)i * 2)];
+    e_vreg_t v = pairs[((size_t)i * 2) + 1];
 
     if (i < (E_REG_ARG_COUNT / 2)) {
       /* copy KV pairs into our argument vector */
@@ -1166,7 +1133,7 @@ append_function_entry(e_arena* a, ecc_function_table* funcs, const ecc_function*
   return 0;
 }
 
-static ereg_t
+static e_vreg_t
 compile_function_definition(e_compiler* cc, int node)
 {
   e_compiler  fork          = { 0 };
@@ -1213,11 +1180,11 @@ compile_function_definition(e_compiler* cc, int node)
     if (!full_arg_name) goto ERR;
 
     /* Move argument variables to local registers so they aren't overridden accidentally */
-    ereg_t dst = vreg_alloc(&fork);
+    e_vreg_t dst = vreg_alloc(&fork);
 
     /* argument in vector, mov it to our register */
     if (i < E_REG_ARG_COUNT) {
-      ereg_t src = (ereg_t)(E_REG_ARG0 + i);
+      e_vreg_t src = (e_vreg_t)(E_REG_ARG0 + i);
       e_emit_ins(&fork, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = dst, .src = src } });
     }
     /* argument on stack, mov it to our register */
@@ -1268,7 +1235,7 @@ ERR:
   return e == 0 ? -1 : e;
 }
 
-static ereg_t
+static e_vreg_t
 compile_binary_op(e_compiler* cc, int node)
 {
   val_t lv = { 0 };
@@ -1305,7 +1272,7 @@ compile_binary_op(e_compiler* cc, int node)
     goto err;
   }
 
-  ereg_t dst = vreg_alloc(cc);
+  e_vreg_t dst = vreg_alloc(cc);
 
   if (is_compound) {
     // Verified  earlier that we can make it into an lvalue
@@ -1313,11 +1280,11 @@ compile_binary_op(e_compiler* cc, int node)
     if (e < 0) goto err;
 
     /* Load left */
-    ereg_t l = emit_lvalue_load(cc, &lv);
+    e_vreg_t l = emit_lvalue_load(cc, &lv);
     if (l < 0) goto err;
 
     /* Load right */
-    ereg_t r = compile(cc, right);
+    e_vreg_t r = compile(cc, right);
     if (r < 0) goto err;
 
     /* Emit operator */
@@ -1327,10 +1294,10 @@ compile_binary_op(e_compiler* cc, int node)
 
     value_free(&lv);
   } else {
-    ereg_t a = compile(cc, left);
+    e_vreg_t a = compile(cc, left);
     if (a < 0) goto err;
 
-    ereg_t b = compile(cc, right);
+    e_vreg_t b = compile(cc, right);
     if (b < 0) goto err;
 
     e_emit_ins(cc, (e_ins){ .binop = { .opcode = opcode, .dst = dst, .a = a, .b = b } });
@@ -1343,7 +1310,7 @@ err:
   return -1;
 }
 
-static ereg_t
+static e_vreg_t
 compile_inc_or_dec(e_compiler* cc, int node)
 {
   eir_opcode opcode = -1;
@@ -1364,12 +1331,12 @@ compile_inc_or_dec(e_compiler* cc, int node)
   int   e  = value_init(cc, right, &lv);
   if (e < 0) return -1;
 
-  ereg_t rhs = emit_lvalue_load(cc, &lv);
+  e_vreg_t rhs = emit_lvalue_load(cc, &lv);
 
-  e_var  one     = e_var_from_int(1);
-  ereg_t one_reg = compile_and_push_literal_variable(cc, &one);
+  e_var    one     = e_var_from_int(1);
+  e_vreg_t one_reg = compile_and_push_literal_variable(cc, &one);
 
-  ereg_t tmp = vreg_alloc(cc);
+  e_vreg_t tmp = vreg_alloc(cc);
   e_emit_ins(cc, (e_ins){ .binop = { .opcode = opcode, .dst = tmp, .a = rhs, .b = one_reg } });
 
   /* Emit operator, both dst and a point to the variables slot */
@@ -1380,7 +1347,7 @@ compile_inc_or_dec(e_compiler* cc, int node)
   return tmp;
 }
 
-static ereg_t
+static e_vreg_t
 compile_unary_op(e_compiler* cc, int node)
 {
   /* Special case, INC and DEC assign to variables directly. */
@@ -1416,7 +1383,7 @@ compile_unary_op(e_compiler* cc, int node)
 
   int e = 0;
 
-  ereg_t dst = vreg_alloc(cc);
+  e_vreg_t dst = vreg_alloc(cc);
 
   if (is_compound) {
     val_t lv = { 0 };
@@ -1431,7 +1398,7 @@ compile_unary_op(e_compiler* cc, int node)
     if (e < 0) goto err;
 
     /* Load right */
-    ereg_t r = compile(cc, right);
+    e_vreg_t r = compile(cc, right);
     if (r < 0) goto err;
 
     /* Emit operator */
@@ -1444,7 +1411,7 @@ compile_unary_op(e_compiler* cc, int node)
     value_free(&lv);
   } else {
     /* Load right */
-    ereg_t rreg = compile(cc, right);
+    e_vreg_t rreg = compile(cc, right);
     if (rreg < 0) goto err;
 
     /* Emit operator */
@@ -1457,22 +1424,22 @@ err:
   return -1;
 }
 
-static ereg_t
+static e_vreg_t
 compile_index(e_compiler* cc, int node)
 {
-  ereg_t base = compile(cc, E_GET_NODE(cc->ast, node)->index.base);
+  e_vreg_t base = compile(cc, E_GET_NODE(cc->ast, node)->index.base);
   if (base < 0) return base;
 
-  ereg_t index = compile(cc, E_GET_NODE(cc->ast, node)->index.index);
+  e_vreg_t index = compile(cc, E_GET_NODE(cc->ast, node)->index.index);
   if (index < 0) return index;
 
-  ereg_t dst = vreg_alloc(cc);
+  e_vreg_t dst = vreg_alloc(cc);
   e_emit_ins(cc, (e_ins){ .index = { .opcode = EIR_OPCODE_INDEX, .dst = dst, .base = base, .index = index } });
 
   return dst;
 }
 
-static ereg_t
+static e_vreg_t
 compile_index_assign(e_compiler* cc, int node)
 {
   int value = E_GET_NODE(cc->ast, node)->index_assign.value;
@@ -1488,8 +1455,8 @@ compile_index_assign(e_compiler* cc, int node)
   int e = value_init(cc, node, &v);
   if (e < 0) return e;
 
-  ereg_t eval_value = compile(cc, value);
-  ereg_t dst        = emit_lvalue_assign(cc, eval_value, &v);
+  e_vreg_t eval_value = compile(cc, value);
+  e_vreg_t dst        = emit_lvalue_assign(cc, eval_value, &v);
   value_free(&v);
 
   return dst;
@@ -1514,7 +1481,7 @@ get_builtin_func(const char* name)
 }
 
 static inline int
-fold_vector(e_compiler* cc, int replace_node, const int* elems, u32 nelems)
+fold_vector(e_compiler* cc, const int* elems, u32 nelems)
 {
   e_vec4 vector = { 0 };
   for (u32 i = 0; i < nelems; i++) {
@@ -1538,13 +1505,13 @@ fold_vector(e_compiler* cc, int replace_node, const int* elems, u32 nelems)
   memcpy(v.val.vec4, vector, sizeof(vector));
 
   /* Compile this vector into a literal */
-  ereg_t compiled = compile_and_push_literal_variable(cc, &v);
+  e_vreg_t compiled = compile_and_push_literal_variable(cc, &v);
   if (compiled < 0) return compiled;
 
   return compiled;
 }
 
-static ereg_t
+static e_vreg_t
 compile_function_call(e_compiler* cc, int node)
 {
   e_filespan function_span = E_GET_NODE(cc->ast, node)->common.span;
@@ -1611,13 +1578,13 @@ compile_function_call(e_compiler* cc, int node)
         }
       }
 
-      if (constant_vector) { return fold_vector(cc, node, args, nargs); }
+      if (constant_vector) { return fold_vector(cc, args, nargs); }
     }
   }
 
   int e = 0;
 
-  ereg_t* arg_registers = (ereg_t*)e_arnalloc(cc->arena, sizeof(ereg_t) * nargs);
+  e_vreg_t* arg_registers = (e_vreg_t*)e_arnalloc(cc->arena, sizeof(e_vreg_t) * nargs);
   for (u32 i = 0; i < nargs; i++) {
     arg_registers[i] = compile(cc, args[i]); // Pushes stack top
     if (arg_registers[i] < 0) {
@@ -1637,7 +1604,7 @@ compile_function_call(e_compiler* cc, int node)
     }
   }
 
-  ereg_t dst = vreg_alloc(cc);
+  e_vreg_t dst = vreg_alloc(cc);
 
   e_emit_ins(cc, (e_ins){ .call = { .opcode = EIR_OPCODE_CALL, .dst = dst, .function_id = hash, .nargs = nargs } });
 
@@ -1651,7 +1618,7 @@ compile_function_call(e_compiler* cc, int node)
 }
 
 // This is the dirtiest of them all...
-static ereg_t
+static e_vreg_t
 compile_if_statement(e_compiler* cc, int node)
 {
   /* Label after if statements body */
@@ -1669,7 +1636,7 @@ compile_if_statement(e_compiler* cc, int node)
   scope_push(cc);
 
   // condition
-  ereg_t cond = compile(cc, condition);
+  e_vreg_t cond = compile(cc, condition);
   if (cond < 0) {
     cerror(E_GET_NODE(cc->ast, condition)->common.span, "Failed to compile condition of top if statement [if statement]\n");
     goto ERR;
@@ -1715,7 +1682,7 @@ compile_if_statement(e_compiler* cc, int node)
     struct e_if_stmt* elif = &E_GET_NODE(cc->ast, node)->if_stmt.else_ifs[else_if_idx];
 
     // CONDITION
-    ereg_t elif_cond = compile(cc, elif->condition);
+    e_vreg_t elif_cond = compile(cc, elif->condition);
     if (elif_cond < 0) {
       cerror(E_GET_NODE(cc->ast, elif->condition)->common.span, "Failed to compile condition of else if statement [if statement]\n");
       goto ERR;
@@ -1804,7 +1771,7 @@ ERR:
  * JMP: Precondition
  * LABEL: End
  */
-static ereg_t
+static e_vreg_t
 compile_while_statement(e_compiler* cc, int node)
 {
   int e = 0;
@@ -1818,7 +1785,7 @@ compile_while_statement(e_compiler* cc, int node)
   define_and_emit_label(cc, pre_condition_label);
 
   /* CONDITION */
-  ereg_t cond = compile(cc, E_GET_NODE(cc->ast, node)->while_stmt.condition);
+  e_vreg_t cond = compile(cc, E_GET_NODE(cc->ast, node)->while_stmt.condition);
   if (cond < 0) goto ERR;
 
   // Break out of loop if condition is false.
@@ -1874,11 +1841,11 @@ ERR:
   return e ? e : -1;
 }
 
-static ereg_t
+static e_vreg_t
 compile_for_statement(e_compiler* cc, int node)
 {
-  int    initializers = -1;
-  ereg_t cond_reg     = -1;
+  int      initializers = -1;
+  e_vreg_t cond_reg     = -1;
 
   /**
    * The for statement is compiled as:
@@ -2002,7 +1969,7 @@ ERR:
   return e ? e : -1;
 }
 
-static ereg_t
+static e_vreg_t
 compile_member_access(e_compiler* cc, int node)
 {
   if (!can_make_value(cc->ast, node)) {
@@ -2018,7 +1985,7 @@ compile_member_access(e_compiler* cc, int node)
   return emit_lvalue_load(cc, &lv);
 }
 
-static ereg_t
+static e_vreg_t
 compile_assign(e_compiler* cc, int node)
 {
   int right = E_GET_NODE(cc->ast, node)->assign.right;
@@ -2061,7 +2028,7 @@ compile_assign(e_compiler* cc, int node)
     return -1;
   }
 
-  ereg_t rreg = compile(cc, right);
+  e_vreg_t rreg = compile(cc, right);
   if (rreg < 0) return rreg;
 
   e = emit_lvalue_assign(cc, rreg, &lv);
@@ -2072,7 +2039,7 @@ compile_assign(e_compiler* cc, int node)
   return rreg;
 }
 
-static ereg_t
+static e_vreg_t
 compile_member_assign(e_compiler* cc, int node)
 {
   int value = E_GET_NODE(cc->ast, node)->member_assign.value;
@@ -2082,20 +2049,20 @@ compile_member_assign(e_compiler* cc, int node)
     return -1;
   }
 
-  ereg_t rhs = compile(cc, value);
+  e_vreg_t rhs = compile(cc, value);
   if (rhs < 0) { return rhs; }
 
   val_t lv;
   int   e = value_init(cc, node, &lv);
   if (e < 0) return e;
 
-  ereg_t propogate_rhs = emit_lvalue_assign(cc, rhs, &lv);
+  e_vreg_t propogate_rhs = emit_lvalue_assign(cc, rhs, &lv);
   value_free(&lv);
 
   return propogate_rhs;
 }
 
-static ereg_t
+static e_vreg_t
 compile_return(e_compiler* cc, int node)
 {
   int r = defer_emit_all_scopes(cc);
@@ -2104,7 +2071,7 @@ compile_return(e_compiler* cc, int node)
   if (E_GET_NODE(cc->ast, node)->ret.has_return_value) {
     int ret_node = E_GET_NODE(cc->ast, node)->ret.expr_id;
     /* Compile the return value */
-    ereg_t rv = compile(cc, ret_node);
+    e_vreg_t rv = compile(cc, ret_node);
     if (rv < 0) {
       cerror(E_GET_NODE(cc->ast, node)->common.span, "Failed to compile return value [return]\n");
       return rv;
@@ -2112,8 +2079,8 @@ compile_return(e_compiler* cc, int node)
 
     e_emit_ins(cc, (e_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = rv } });
   } else {
-    e_var  nil    = E_NULLVAR;
-    ereg_t nilvar = compile_and_push_literal_variable(cc, &nil);
+    e_var    nil    = E_NULLVAR;
+    e_vreg_t nilvar = compile_and_push_literal_variable(cc, &nil);
     if (nilvar < 0) return nilvar;
 
     e_emit_ins(cc, (e_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
@@ -2200,18 +2167,18 @@ append_struct_info(e_compiler* cc, const ecc_struct_information* data)
   return 0;
 }
 
-static ereg_t
+static e_vreg_t
 compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_information* struc)
 {
-  u32    struct_id = e_hash(struc->name, strlen(struc->name));
-  ereg_t tmp       = vreg_alloc(fork);
+  u32      struct_id = e_hash(struc->name, strlen(struc->name));
+  e_vreg_t tmp       = vreg_alloc(fork);
 
   e_str_intern(struc->name, fork->ast->interner);
 
   /* Since struct constructors are called as ordinary functions, we don't have to handle register spilling here */
   for (u32 i = 0; i < struc->fields_count; i++) {
     if (i < E_REG_ARG_COUNT) {
-      ereg_t reg = (ereg_t)(E_REG_ARG0 + i);                                  /* Define our variable in the argument register */
+      e_vreg_t reg = (e_vreg_t)(E_REG_ARG0 + i);                              /* Define our variable in the argument register */
       scope_define_in_register(fork, reg, span, struc->field_names[i], true); // let the compiler say it's constant
     } else {
       /* The rest of the arguments will already be on the stack (call's job). We don't need to do anything. */
@@ -2239,7 +2206,7 @@ compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_i
   return 0;
 }
 
-static ereg_t
+static e_vreg_t
 compile_struct_decleration(e_compiler* cc, int node)
 {
   int                    e           = 0;
@@ -2296,7 +2263,7 @@ ERR:
   return e ? e : -1;
 }
 
-static ereg_t
+static e_vreg_t
 compile_variable_decleration(e_compiler* cc, int node)
 {
   const char* name = E_GET_NODE(cc->ast, node)->let.name;
@@ -2325,20 +2292,20 @@ compile_variable_decleration(e_compiler* cc, int node)
   bool       is_const = E_GET_NODE(cc->ast, node)->let.is_const;
 
   /* Define the variable */
-  ereg_t new_var = scope_define(cc, span, full, is_const);
+  e_vreg_t new_var = scope_define(cc, span, full, is_const);
 
   val_t lv = { 0 };
   if (value_init(cc, node, &lv) < 0) return -1;
   if (initializer_provided) {
     /* need to use the lval system for handling global variable declerations... */
 
-    ereg_t init_reg = compile(cc, initializer);
+    e_vreg_t init_reg = compile(cc, initializer);
     if (init_reg < 0) return init_reg;
 
     if (emit_lvalue_assign(cc, init_reg, &lv) < 0) return -1;
   } else {
-    e_var  nil = E_NULLVAR;
-    ereg_t n   = compile_and_push_literal_variable(cc, &nil);
+    e_var    nil = E_NULLVAR;
+    e_vreg_t n   = compile_and_push_literal_variable(cc, &nil);
     if (n < 0) return n;
 
     /* no initializer specified. initialize it to null. */
@@ -2350,7 +2317,7 @@ compile_variable_decleration(e_compiler* cc, int node)
   return new_var;
 }
 
-static ereg_t
+static e_vreg_t
 compile_root(e_compiler* cc, int node)
 {
   /**
@@ -2377,8 +2344,8 @@ compile_root(e_compiler* cc, int node)
    * and expect the interpreter to jump
    * to the entry point
    */
-  e_var  v      = E_NULLVAR;
-  ereg_t nilvar = compile_and_push_literal_variable(cc, &v);
+  e_var    v      = E_NULLVAR;
+  e_vreg_t nilvar = compile_and_push_literal_variable(cc, &v);
   e_emit_ins(cc, (e_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
 
   era_register_allocation_pass(cc);
@@ -2386,7 +2353,7 @@ compile_root(e_compiler* cc, int node)
   return 0; // Done!
 }
 
-static ereg_t
+static e_vreg_t
 compile_statement_list(e_compiler* cc, int node)
 {
   e_ast_node* nodep  = E_GET_NODE(cc->ast, node);
@@ -2404,7 +2371,7 @@ compile_statement_list(e_compiler* cc, int node)
   return 0;
 }
 
-static ereg_t
+static e_vreg_t
 compile_variable_load(e_compiler* cc, int node)
 {
   char* full = qualify_name(cc, E_GET_NODE(cc->ast, node)->ident.ident);
@@ -2429,7 +2396,7 @@ compile_variable_load(e_compiler* cc, int node)
   int   e = value_init(cc, node, &lv);
   if (e < 0) return e;
 
-  ereg_t dst = emit_lvalue_load(cc, &lv);
+  e_vreg_t dst = emit_lvalue_load(cc, &lv);
   if (e < 0) {
     value_free(&lv);
     return -1;
@@ -2439,7 +2406,7 @@ compile_variable_load(e_compiler* cc, int node)
   return dst;
 }
 
-static ereg_t
+static e_vreg_t
 compile_namespace_decleration(e_compiler* cc, int node)
 {
   const char* ns_name        = E_GET_NODE(cc->ast, node)->namespace_decl.name;
@@ -2463,7 +2430,7 @@ compile_namespace_decleration(e_compiler* cc, int node)
   return 0;
 }
 
-static ereg_t
+static e_vreg_t
 compile_function(e_compiler* cc, int node)
 {
   u32  nstmts = E_GET_NODE(cc->ast, node)->func.nstmts;
@@ -2479,15 +2446,15 @@ compile_function(e_compiler* cc, int node)
     // if (cc->info->opt_level >= 1) pop_value_if_pushes(cc, stmts[i]);
   }
 
-  e_var  nil    = E_NULLVAR;
-  ereg_t nilvar = compile_and_push_literal_variable(cc, &nil);
+  e_var    nil    = E_NULLVAR;
+  e_vreg_t nilvar = compile_and_push_literal_variable(cc, &nil);
   if (nilvar < 0) return nilvar;
 
   e_emit_ins(cc, (e_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
   return 0;
 }
 
-static ereg_t
+static e_vreg_t
 compile_builtin_structure(e_compiler* cc, const e_builtin_struct* b)
 {
   e_compiler fork = { 0 };
@@ -2546,7 +2513,7 @@ ERR:
  *  to work, but will cause issues later, like with
  *  dynamic script execution).
  */
-static ereg_t
+static e_vreg_t
 compile_builtin_structures(e_compiler* cc)
 {
   for (u32 i = 0; i < E_ARRLEN(eb_structs); i++) {
@@ -2735,7 +2702,7 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     .function_table    = &func_table,
     .label_table       = &label_table,
     .struct_table      = &struct_table,
-    .next_reg          = E_REG_GENERAL_BEGIN,
+    .next_vreg         = E_REG_GENERAL_BEGIN,
     .next_global       = 0,
     .instructions      = (e_ins*)e_xalloc(sizeof(e_ins), init_code_capacity),
     .ninstructions     = 0,

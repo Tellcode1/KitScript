@@ -109,6 +109,7 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
         WRITES_TO(ins.mk_map.dst);
         break;
       case EIR_OPCODE_MK_STRUCT:
+        /* we don't know how many members this instruction will initialize. clobber the entire argument vector. */
         for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
         WRITES_TO(ins.mk_struct.dst);
         break;
@@ -164,7 +165,7 @@ era_cmp_start(const void* a, const void* b)
 // { return (int)((const era_range*)a)->end - (int)((const era_range*)b)->end; }
 
 static void
-era_allocate(era_state* ra)
+era_allocate(int opt_level, era_state* ra)
 {
   qsort(ra->ranges, ra->nranges, sizeof(era_range), era_cmp_start);
 
@@ -172,7 +173,11 @@ era_allocate(era_state* ra)
   memset(phys_free, 1, sizeof(phys_free));
 
   /* mark non general registers as always in use */
-  for (u32 i = 0; i < E_REG_GENERAL_BEGIN; i++) { phys_free[i] = false; }
+  if (opt_level >= 1) {
+    /* OPTIMIZATION: Allow usage of non general registers (they're marked free). */
+  } else {
+    for (u32 i = 0; i < E_REG_GENERAL_BEGIN; i++) { phys_free[i] = false; }
+  }
 
   era_range* active[ERA_NUM_PHYS] = { 0 };
   u32        nactive              = 0;
@@ -350,6 +355,6 @@ era_register_allocation_pass(struct e_compiler* cc)
 {
   era_state state;
   era_compute_ranges(cc, &state);
-  era_allocate(&state);
+  era_allocate(cc->info->opt_level, &state);
   era_rewrite(cc, state.vreg_to_phys);
 }
