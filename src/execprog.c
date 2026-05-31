@@ -29,10 +29,8 @@
 #include "../inc/perr.h"
 #include "../inc/pool.h"
 #include "../inc/rwhelp.h"
-#include "../inc/stack.h"
 #include "../inc/stdafx.h"
 #include "../inc/sysexpose.h"
-#include "../inc/validate.h"
 #include "../inc/var.h"
 
 #include <errno.h>
@@ -78,7 +76,6 @@ main(int argc, char* argv[])
   bool wants_to_print_return_value     = false;
   bool interpret_return_value_as_error = false;
   bool run_from_stdin                  = false;
-  bool no_validate                     = false;
 
   FILE* f = NULL;
 
@@ -114,8 +111,6 @@ main(int argc, char* argv[])
       wants_to_print_return_value = true;
     } else if (strcmp(opt, "e") == 0 || strcmp(opt, "error") == 0) {
       interpret_return_value_as_error = true;
-    } else if (strcmp(opt, "no-validate") == 0 || strcmp(opt, "novalidate") == 0) {
-      no_validate = true;
     } else if (!file) { // interpret first non option string as file
       file = argv[i];
     }
@@ -183,14 +178,6 @@ main(int argc, char* argv[])
     .structs         = r.structs,
     .nstructs        = r.structs_count,
   };
-
-  if (!no_validate) {
-    e = e_validate(&info, stderr);
-    if (e) {
-      print_err("Validation failed. Bailing out. (--no-validate to skip validation ; not recommended)\n");
-      goto RET;
-    }
-  }
 
   /* Initialize PRNG subroutine */
   time_now    = eb_time_now(NULL, 0);

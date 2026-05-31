@@ -6,12 +6,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-void
+static int
 era_compute_ranges(e_compiler* cc, era_state* ra)
 {
-  memset(ra, 0, sizeof *ra);
+  memset(ra, 0, sizeof(*ra));
 
-  for (u32 i = 0; i < ERA_MAX_VREGS; i++) {
+  const u32 vreg_count = cc->next_vreg;
+
+  ra->ranges = e_xalloc(vreg_count, sizeof(era_range));
+  if (!ra->ranges) return -1;
+
+  ra->vreg_to_phys = e_xalloc(vreg_count, sizeof(u32));
+  if (!ra->vreg_to_phys) {
+    free(ra->ranges);
+    ra->ranges = NULL;
+    return -1;
+  }
+
+  for (u32 i = 0; i < vreg_count; i++) {
     ra->ranges[i].start = UINT32_MAX;
     ra->ranges[i].end   = 0;
     ra->ranges[i].vreg  = i;
@@ -24,19 +36,15 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
 #define WRITES_TO(r)                                                                                                                                 \
   do {                                                                                                                                               \
     u32 _r = (r);                                                                                                                                    \
-    if (_r < ERA_MAX_VREGS) {                                                                                                                        \
-      if (ra->ranges[_r].start == UINT32_MAX) ra->ranges[_r].start = i;                                                                              \
-      if (i > ra->ranges[_r].end) ra->ranges[_r].end = i;                                                                                            \
-    }                                                                                                                                                \
+    if (ra->ranges[_r].start == UINT32_MAX) ra->ranges[_r].start = i;                                                                                \
+    if (i > ra->ranges[_r].end) ra->ranges[_r].end = i;                                                                                              \
   } while (0)
 
     /* mark vreg is used at this instruction */
 #define READS_FROM(r)                                                                                                                                \
   do {                                                                                                                                               \
     u32 _r = (r);                                                                                                                                    \
-    if (_r < ERA_MAX_VREGS) {                                                                                                                        \
-      if (i > ra->ranges[_r].end) ra->ranges[_r].end = i;                                                                                            \
-    }                                                                                                                                                \
+    if (i > ra->ranges[_r].end) ra->ranges[_r].end = i;                                                                                              \
   } while (0)
 
     switch (ins.opcode) {
@@ -83,6 +91,8 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
       case EIR_OPCODE_NOT:
       case EIR_OPCODE_NEG:
       case EIR_OPCODE_BNOT:
+      case EIR_OPCODE_DEC:
+      case EIR_OPCODE_INC:
         WRITES_TO(ins.unop.dst);
         READS_FROM(ins.unop.a);
         break;
@@ -133,16 +143,12 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
         break;
       }
 
-      // default: break;
-      case EIR_OPCODE_DEC:
-      case EIR_OPCODE_INC: {
-        READS_FROM(ins.unop.a);
-        WRITES_TO(ins.unop.dst);
-        break;
-      }
+        // default: break;
       case EIR_OPCODE_NOP:
       case EIR_OPCODE_LABEL:
       case EIR_OPCODE_JMP: {
+        /* clobber all registers for no reason at all */
+        for (u32 i = 0; i < E_REG_GENERAL_END; i++) { READS_FROM(i); }
         break;
       }
     }
@@ -150,11 +156,34 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
 #undef READS_FROM
   }
 
+  /**
+   * Extend the life of any register inside a backward jump
+   * so that loop conditions (and the like) aren't overwritten.
+   */
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins ins    = cc->instructions[i];
+    u32   target = UINT32_MAX;
+    if (ins.opcode == EIR_OPCODE_JMP) {
+      target = ins.jmp.target;
+    } else if (ins.opcode == EIR_OPCODE_JZ || ins.opcode == EIR_OPCODE_JNZ) {
+      target = ins.cj.target;
+    }
+    if (target != UINT32_MAX && target < i) { // backward jump
+      for (u32 r = 0; r < vreg_count; r++) {
+        if (ra->ranges[r].start != UINT32_MAX && ra->ranges[r].start <= target && ra->ranges[r].end >= target) {
+          if (i > ra->ranges[r].end) ra->ranges[r].end = i;
+        }
+      }
+    }
+  }
+
   // collect only ranges that were actually used
   ra->nranges = 0;
-  for (u32 i = 0; i < ERA_MAX_VREGS; i++) {
+  for (u32 i = 0; i < vreg_count; i++) {
     if (ra->ranges[i].start != UINT32_MAX) { ra->ranges[ra->nranges++] = ra->ranges[i]; }
   }
+
+  return 0;
 }
 
 static int
@@ -164,7 +193,7 @@ era_cmp_start(const void* a, const void* b)
 // era_cmp_end(const void* a, const void* b)
 // { return (int)((const era_range*)a)->end - (int)((const era_range*)b)->end; }
 
-static void
+static int
 era_allocate(int opt_level, era_state* ra)
 {
   qsort(ra->ranges, ra->nranges, sizeof(era_range), era_cmp_start);
@@ -241,9 +270,11 @@ era_allocate(int opt_level, era_state* ra)
 
     ra->vreg_to_phys[r->vreg] = r->phys;
   }
+
+  return 0;
 }
 
-static void
+static int
 era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
 {
 #define MAP(r)                                                                                                                                       \
@@ -296,6 +327,8 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
       case EIR_OPCODE_NOT:
       case EIR_OPCODE_NEG:
       case EIR_OPCODE_BNOT:
+      case EIR_OPCODE_INC:
+      case EIR_OPCODE_DEC:
         MAP(ins.unop.dst);
         MAP(ins.unop.a);
         break;
@@ -332,12 +365,6 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
 
         // default: break;
 
-      case EIR_OPCODE_INC:
-      case EIR_OPCODE_DEC:
-        MAP(ins.unop.dst);
-        MAP(ins.unop.a);
-        break;
-
       case EIR_OPCODE_NOP:
       case EIR_OPCODE_MOVG:
       case EIR_OPCODE_LABEL:
@@ -348,13 +375,26 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
     cc->instructions[i] = ins;
   }
 #undef MAP
+
+  return 0;
 }
 
-void
+int
 era_register_allocation_pass(struct e_compiler* cc)
 {
   era_state state;
-  era_compute_ranges(cc, &state);
-  era_allocate(cc->info->opt_level, &state);
-  era_rewrite(cc, state.vreg_to_phys);
+
+  int e = era_compute_ranges(cc, &state);
+  if (e < 0) return e;
+
+  e = era_allocate(cc->info->opt_level, &state);
+  if (e < 0) return e;
+
+  e = era_rewrite(cc, state.vreg_to_phys);
+  if (e < 0) return e;
+
+  free(state.ranges);
+  free(state.vreg_to_phys);
+
+  return 0;
 }

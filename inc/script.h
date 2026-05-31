@@ -28,7 +28,6 @@
 #include "bfunc.h"
 #include "cc.h"
 #include "perr.h"
-#include "stack.h"
 #include "stdafx.h"
 #include "var.h"
 
@@ -39,7 +38,6 @@
  */
 typedef struct e_script {
   e_compilation_result  compiled;
-  e_stack               stack;
   const e_builtin_func* extern_funcs;
   const e_builtin_var*  extern_vars;
   u32                   nxtern_funcs;

@@ -72,6 +72,8 @@ static inline RETURNS_ERRCODE int defer_emit_all_scopes(e_compiler* cc);
 static inline RETURNS_ERRCODE int defer_emit_to_depth(e_compiler* cc, u32 target_depth);
 static inline u32                 defer_get_current_depth(e_compiler* cc);
 
+static inline int fold_vector(e_compiler* cc, const int* elems, u32 nelems);
+
 static inline ATTR_NODISCARD u32  label_find(u32 label_id, const ecc_label_table* table);
 static inline RETURNS_ERRCODE int emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, e_vreg_t condition, u32 label_id);
 static inline void                define_and_emit_label(e_compiler* cc, u32 label_id);
@@ -93,7 +95,7 @@ static void                     value_free(struct val_t* lv);
 static RETURNS_ERRCODE e_vreg_t emit_lvalue_load(e_compiler* cc, struct val_t* lv);
 static RETURNS_ERRCODE e_vreg_t emit_lvalue_assign(e_compiler* cc, e_vreg_t value, struct val_t* lv);
 
-static inline RETURNS_ERRCODE int convert_node_to_literal(const e_compiler* cc, int node, e_var* o);
+static inline RETURNS_ERRCODE int convert_node_to_literal(e_compiler* cc, int node, e_var* o);
 static inline bool                is_literal_value(const e_ast* ast, int node);
 
 /* Return register ID of result, -1 on error */
@@ -523,7 +525,7 @@ static inline void
 define_and_emit_label(e_compiler* cc, u32 label_id)
 {
   e_emit_ins(cc, (e_ins){ .label = { .opcode = EIR_OPCODE_LABEL, .id = label_id } });
-  u32 destination_offset = cc->ninstructions;
+  u32 destination_offset = cc->ninstructions - 1; /* interpreter loop increments ip, jump to instruction before our target */
 
   ecc_label_jumps_table* label = append_label_entry(cc->arena, label_id, cc->label_table);
 
@@ -796,8 +798,10 @@ emit_lvalue_load(e_compiler* cc, val_t* lv)
       e_vreg_t var_reg = scope_lookup_reg(cc, lv->val.var.id);
       if (var_reg < 0) return -1;
 
-      // e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = dst, .src = var_reg } });
-      return var_reg;
+      e_vreg_t dst = vreg_alloc(cc);
+      e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = dst, .src = var_reg } });
+      return dst;
+      // return var_reg;
     }
 
     case E_LVAL_GVAR: {
@@ -865,11 +869,29 @@ static inline bool
 is_literal_value(const e_ast* ast, int node)
 {
   e_ast_node_type type = E_GET_NODE(ast, node)->type;
+
+  if (type == E_AST_NODE_CALL) {
+    const char* function_name = E_GET_NODE(ast, node)->call.function_name;
+    const int*  args          = E_GET_NODE(ast, node)->call.args;
+    u32         nargs         = E_GET_NODE(ast, node)->call.nargs;
+
+    if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
+      bool constant_vector = true;
+      for (u32 i = 0; i < nargs; i++) {
+        if (!is_literal_value(ast, args[i])) {
+          constant_vector = false;
+          break;
+        }
+      }
+
+      return constant_vector;
+    }
+  }
   return type == E_AST_NODE_INT || type == E_AST_NODE_CHAR || type == E_AST_NODE_BOOL || type == E_AST_NODE_STRING || type == E_AST_NODE_FLOAT;
 }
 
 static inline RETURNS_ERRCODE int
-convert_node_to_literal(const e_compiler* cc, int node, e_var* o)
+convert_node_to_literal(e_compiler* cc, int node, e_var* o)
 {
   e_ast* p = cc->ast;
   switch (E_GET_NODE(p, node)->type) {
@@ -878,6 +900,16 @@ convert_node_to_literal(const e_compiler* cc, int node, e_var* o)
     case E_AST_NODE_CHAR: *o = (e_var){ .type = E_VARTYPE_CHAR, .val.c = E_GET_NODE(p, node)->c.c }; return 0;
     case E_AST_NODE_BOOL: *o = (e_var){ .type = E_VARTYPE_BOOL, .val.b = E_GET_NODE(p, node)->b.b }; return 0;
     case E_AST_NODE_STRING: return make_string_variable(e_arnstrdup(cc->arena, E_GET_NODE(p, node)->s.s), o);
+
+    case E_AST_NODE_CALL: {
+      const char* function_name = E_GET_NODE(cc->ast, node)->call.function_name;
+      const int*  args          = E_GET_NODE(cc->ast, node)->call.args;
+      u32         nargs         = E_GET_NODE(cc->ast, node)->call.nargs;
+
+      if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
+        return fold_vector(cc, args, nargs);
+      }
+    }
 
     case E_AST_NODE_LIST:
     case E_AST_NODE_MAP: /* TODO: Implement */ abort(); break;
@@ -1845,7 +1877,8 @@ static e_vreg_t
 compile_for_statement(e_compiler* cc, int node)
 {
   int      initializers = -1;
-  e_vreg_t cond_reg     = -1;
+  e_vreg_t cond_reg     = -1; /* condition */
+  e_vreg_t init_reg     = -1; /* initializers */
 
   /**
    * The for statement is compiled as:
@@ -1885,9 +1918,13 @@ compile_for_statement(e_compiler* cc, int node)
 
   // INITIALIZERS
   initializers = E_GET_NODE(cc->ast, node)->for_stmt.initializers;
-  if (initializers >= 0 && compile(cc, initializers) < 0) {
-    cerror(E_GET_NODE(cc->ast, initializers)->common.span, "Failed to compile initializers [for statement]\n");
-    goto ERR;
+
+  if (initializers >= 0) {
+    init_reg = compile(cc, initializers);
+    if (init_reg < 0) {
+      cerror(E_GET_NODE(cc->ast, initializers)->common.span, "Failed to compile initializers [for statement]\n");
+      goto ERR;
+    }
   }
 
   // TOP_LABEL
@@ -1905,8 +1942,6 @@ compile_for_statement(e_compiler* cc, int node)
   e = emit_and_record_jmp(cc, EIR_OPCODE_JZ, cond_reg, end_label);
   if (e < 0) goto ERR;
 
-  // JZ pops condition variable
-
   e = defer_push_scope(cc);
   if (e < 0) goto ERR;
 
@@ -1914,8 +1949,8 @@ compile_for_statement(e_compiler* cc, int node)
   if (cc->loop) cc->loop->defer_depth = defer_get_current_depth(cc);
 
   // BODY
-  u32  nstmts = E_GET_NODE(cc->ast, node)->for_stmt.nstmts;
-  int* stmts  = E_GET_NODE(cc->ast, node)->for_stmt.stmts;
+  u32        nstmts = E_GET_NODE(cc->ast, node)->for_stmt.nstmts;
+  const int* stmts  = E_GET_NODE(cc->ast, node)->for_stmt.stmts;
   for (u32 i = 0; i < nstmts; i++) {
     if (compile(cc, stmts[i]) < 0) {
       cerror(E_GET_NODE(cc->ast, stmts[i])->common.span, "Failed to compile statement in body [for statement]\n");
@@ -1939,8 +1974,8 @@ compile_for_statement(e_compiler* cc, int node)
   define_and_emit_label(cc, iterator_label);
 
   // ITERATORS
-  u32  niterators = E_GET_NODE(cc->ast, node)->for_stmt.niterators;
-  int* iterators  = E_GET_NODE(cc->ast, node)->for_stmt.iterators;
+  u32        niterators = E_GET_NODE(cc->ast, node)->for_stmt.niterators;
+  const int* iterators  = E_GET_NODE(cc->ast, node)->for_stmt.iterators;
   for (u32 i = 0; i < niterators; i++) {
     if (compile(cc, iterators[i]) < 0) {
       cerror(E_GET_NODE(cc->ast, iterators[i])->common.span, "Failed to compile iterators [for statement]");
