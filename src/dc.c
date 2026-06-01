@@ -58,118 +58,179 @@ get_register_name(u32 reg_id, char buff[32])
 }
 
 static inline void
-e_print_instruction(e_ins i, const e_compilation_result* r)
+e_print_instruction(e_ins i, const e_compilation_result* r, FILE* f)
 {
   char buf0[32];
   char buf1[32];
   char buf2[32];
   switch (i.opcode) {
     case EIR_OPCODE_LOADK: {
-      printf("loadk dst=%s, id=%u\n", get_register_name(i.loadk.dst, buf0), i.loadk.id);
+      fprintf(f, "loadk dst=%s, id=%u\n", get_register_name(i.loadk.dst, buf0), i.loadk.id);
       break;
     }
     case EIR_OPCODE_MOV: {
-      printf("mov dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1));
+      fprintf(f, "mov dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1));
       break;
     }
 
     case EIR_OPCODE_MOVI: {
-      printf("movi dst=%s, value=%i\n", get_register_name(i.movi.dst, buf0), i.movi.value);
+      fprintf(f, "movi dst=%s, value=%i\n", get_register_name(i.movi.dst, buf0), i.movi.value);
       break;
     }
     case EIR_OPCODE_MOVF: {
-      printf("movf dst=%s, value=%f\n", get_register_name(i.movf.dst, buf0), i.movf.value);
+      fprintf(f, "movf dst=%s, value=%f\n", get_register_name(i.movf.dst, buf0), i.movf.value);
       break;
     }
 
     case EIR_OPCODE_ADD:
-      printf(
-          "add dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "add dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_SUB:
-      printf(
-          "sub dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "sub dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_MUL:
-      printf(
-          "mul dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "mul dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_DIV:
-      printf(
-          "div dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "div dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_MOD:
-      printf(
-          "mod dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "mod dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_EXP:
-      printf(
-          "exp dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "exp dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_AND:
-      printf(
-          "and dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "and dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_OR:
-      printf("or dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f, "or dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_BAND:
-      printf(
-          "band dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "band dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_BOR:
-      printf(
-          "bor dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "bor dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_XOR:
-      printf(
-          "xor dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "xor dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_EQL:
-      printf(
-          "eql dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "eql dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_NEQ:
-      printf(
-          "neq dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "neq dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_LT:
-      printf("lt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f, "lt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_LTE:
-      printf(
-          "lte dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "lte dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_GT:
-      printf("gt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f, "gt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
       break;
     case EIR_OPCODE_GTE:
-      printf(
-          "gte dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
+      fprintf(
+          f,
+          "gte dst=%s, a=%s, b=%s\n",
+          get_register_name(i.binop.dst, buf0),
+          get_register_name(i.binop.a, buf1),
+          get_register_name(i.binop.b, buf2));
       break;
 
-    case EIR_OPCODE_INC: printf("inc dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_DEC: printf("dec dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_BNOT: printf("bnot dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_NEG: printf("neg dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_NOT: printf("not dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_INC: fprintf(f, "inc dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_DEC: fprintf(f, "dec dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_BNOT: fprintf(f, "bnot dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_NEG: fprintf(f, "neg dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case EIR_OPCODE_NOT: fprintf(f, "not dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
 
     case EIR_OPCODE_RET: {
-      printf("ret val=%s\n", get_register_name(i.ret.return_value, buf0));
+      fprintf(f, "ret val=%s\n", get_register_name(i.ret.return_value, buf0));
       break;
     }
-    case EIR_OPCODE_NOP: printf("nop\n"); break;
-    case EIR_OPCODE_MK_LIST: printf("mk_list dst=%s, nelems=%u\n", get_register_name(i.mk_list.dst, buf0), i.mk_list.nelems); break;
-    case EIR_OPCODE_MK_MAP: printf("mk_map dst=%s, npairs=%u\n", get_register_name(i.mk_map.dst, buf0), i.mk_map.npairs); break;
+    case EIR_OPCODE_NOP: fprintf(f, "nop\n"); break;
+    case EIR_OPCODE_MK_LIST: fprintf(f, "mk_list dst=%s, nelems=%u\n", get_register_name(i.mk_list.dst, buf0), i.mk_list.nelems); break;
+    case EIR_OPCODE_MK_MAP: fprintf(f, "mk_map dst=%s, npairs=%u\n", get_register_name(i.mk_map.dst, buf0), i.mk_map.npairs); break;
     case EIR_OPCODE_INDEX:
-      printf(
+      fprintf(
+          f,
           "index dst=%s, base=%s, index=%s\n",
           get_register_name(i.index.dst, buf0),
           get_register_name(i.index.base, buf1),
           get_register_name(i.index.index, buf2));
       break;
     case EIR_OPCODE_CALL:
-      printf(
+      fprintf(
+          f,
           "call dst=%s, id=%u|name=%s, nargs=%u\n",
           get_register_name(i.call.dst, buf0),
           i.call.function_id,
@@ -177,50 +238,69 @@ e_print_instruction(e_ins i, const e_compilation_result* r)
           i.call.nargs);
       break;
     case EIR_OPCODE_INDEX_ASSIGN:
-      printf(
+      fprintf(
+          f,
           "index_assign value=%s, base=%s, index=%s\n",
           get_register_name(i.index_assign.value, buf0),
           get_register_name(i.index_assign.base, buf1),
           get_register_name(i.index_assign.index, buf2));
       break;
 
-    case EIR_OPCODE_LABEL: printf("label id=%u\n", i.label.id); break;
-    case EIR_OPCODE_JMP: printf("jmp target=%u\n", i.jmp.target); break;
-    case EIR_OPCODE_JZ: printf("jz target=%u, condition=%s\n", i.jz.target, get_register_name(i.jz.condition, buf0)); break;
-    case EIR_OPCODE_JNZ: printf("jnz target=%u, condition=%s\n", i.jnz.target, get_register_name(i.jnz.condition, buf0)); break;
+    case EIR_OPCODE_LABEL: fprintf(f, "label id=%u\n", i.label.id); break;
+    case EIR_OPCODE_JMP: fprintf(f, "jmp target=%u\n", i.jmp.target); break;
+    case EIR_OPCODE_JZ: fprintf(f, "jz target=%u, condition=%s\n", i.jz.target, get_register_name(i.jz.condition, buf0)); break;
+    case EIR_OPCODE_JNZ: fprintf(f, "jnz target=%u, condition=%s\n", i.jnz.target, get_register_name(i.jnz.condition, buf0)); break;
     case EIR_OPCODE_MEMBER_ACCESS:
-      printf(
+      fprintf(
+          f,
           "member_access dst=%s, base=%s, member_id=%u\n",
           get_register_name(i.member_access.dst, buf0),
           get_register_name(i.member_access.base, buf1),
           i.member_access.member_id);
       break;
     case EIR_OPCODE_MEMBER_ASSIGN:
-      printf(
+      fprintf(
+          f,
           "member_assign value=%s, base=%s, member_id=%u\n",
           get_register_name(i.member_assign.value, buf0),
           get_register_name(i.member_assign.base, buf1),
           i.member_assign.member_id);
       break;
-    case EIR_OPCODE_MK_STRUCT: printf("mk_struct dst=%s, id=%u\n", get_register_name(i.mk_struct.dst, buf0), i.mk_struct.struct_id); break;
-    case EIR_OPCODE_GETG: printf("getg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
-    case EIR_OPCODE_SETG: printf("setg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
-    case EIR_OPCODE_MOVG: printf("movg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
-    case EIR_OPCODE_PUSH: printf("push %s\n", get_register_name(i.push.reg, buf0)); break;
-    case EIR_OPCODE_POP: printf("pop %s\n", get_register_name(i.pop.reg, buf0)); break;
+    case EIR_OPCODE_MK_STRUCT: fprintf(f, "mk_struct dst=%s, id=%u\n", get_register_name(i.mk_struct.dst, buf0), i.mk_struct.struct_id); break;
+    case EIR_OPCODE_GETG: fprintf(f, "getg dst=%s, src=gv%u\n", get_register_name(i.mov.dst, buf0), i.mov.src); break;
+    case EIR_OPCODE_SETG: fprintf(f, "setg dst=gv%u, src=%s\n", i.mov.dst, get_register_name(i.mov.src, buf1)); break;
+    case EIR_OPCODE_MOVG: fprintf(f, "movg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
+    case EIR_OPCODE_PUSH: fprintf(f, "push %s\n", get_register_name(i.push.reg, buf0)); break;
+    case EIR_OPCODE_POP: fprintf(f, "pop %s\n", get_register_name(i.pop.reg, buf0)); break;
   }
 }
 
+// for (u32 i = 0; i < cfg.nblocks; i++) {
+//   codeblock* blk = &cfg.blocks[i];
+
+//   fprintf(stderr, "Block %i:\n", i);
+//   for (u32 j = blk->start; j <= blk->end; j++) {
+//     fprintf(stderr, "%i: ", j);
+//     e_print_instruction(fork.instructions[j], stderr);
+//   }
+
+//   fprintf(stderr, "\nBlock points to: [");
+//   for (u32 j = 0; j < blk->nsuccessors; j++) { fprintf(stderr, "%u, ", blk->successors[j]); }
+//   fprintf(stderr, "]\n");
+
+//   fprintf(stderr, "Block %i end\n\n", i);
+// }
+
 static inline void
-e_print_instruction_stream(const e_compilation_result* r, const e_ins* ins, u32 nins, int indent)
+e_print_instruction_stream(const e_compilation_result* r, const e_ins* ins, u32 nins, int indent, FILE* f)
 {
   for (u32 ip = 0; ip < nins; ip++) {
     u32 instruction_offset = ip;
 
     for (int j = 0; j < indent; j++) fputc(' ', stdout);
 
-    printf("%-4u: ", instruction_offset); // Print offset of instruction
-    e_print_instruction(ins[ip], r);
+    fprintf(f, "%-4u: ", instruction_offset); // Print offset of instruction
+    e_print_instruction(ins[ip], r, f);
   }
 }
 
@@ -254,28 +334,28 @@ main(int argc, char** argv)
     return -1;
   }
 
-  e_print_instruction_stream(&r, r.instructions, r.instructions_count, 0);
+  e_print_instruction_stream(&r, r.instructions, r.instructions_count, 0, stdout);
   for (u32 i = 0; i < r.functions_count; i++) {
     const ecc_function* func = &r.functions[i];
-    printf("[%s|%u](%u):\n", lookup(&r, func->name_hash), func->name_hash, func->nargs);
-    e_print_instruction_stream(&r, func->code, func->code_count, 4);
+    fprintf(stdout, "[%s|%u](%u):\n", lookup(&r, func->name_hash), func->name_hash, func->nargs);
+    e_print_instruction_stream(&r, func->code, func->code_count, 4, stdout);
   }
 
-  printf("\nstructures:\n");
+  fprintf(stdout, "\nstructures:\n");
   for (u32 i = 0; i < r.structs_count; i++) {
     const ecc_struct_information* info = &r.structs[i];
-    printf("[%s] = {", info->name);
+    fprintf(stdout, "[%s] = {", info->name);
     for (u32 j = 0; j < info->fields_count; j++) {
-      printf("%s/%u", info->field_names[j], info->field_hashes[j]);
-      if (j != info->fields_count - 1) { printf(", "); }
+      fprintf(stdout, "%s/%u", info->field_names[j], info->field_hashes[j]);
+      if (j != info->fields_count - 1) { fprintf(stdout, ", "); }
     }
-    printf("},\n");
+    fprintf(stdout, "},\n");
   }
-  printf("\n");
+  fprintf(stdout, "\n");
 
-  printf("literals:\n");
+  fprintf(stdout, "literals:\n");
   for (u32 i = 0; i < r.literals_count; i++) {
-    printf("[%u | %u] = ", i, e_var_hash(&r.literals[i]));
+    fprintf(stdout, "[%u | %u] = ", i, e_var_hash(&r.literals[i]));
     e_var_print(&r.literals[i], stdout);
     fputc('\n', stdout);
   }

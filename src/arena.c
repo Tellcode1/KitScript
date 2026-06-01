@@ -200,3 +200,9 @@ e_arnrealloc(e_arena* a, void* top, size_t old_size, size_t new_size)
 
   return p;
 }
+
+void
+e_arnfree(e_arena* a, void* ptr)
+{
+  if (ptr == a->top) { a->current->head -= a->top_size; }
+}

@@ -57,7 +57,7 @@ typedef enum e_file_read_error {
   E_FILE_READ_ERR_INVALID_FILE           = -3,
 } e_file_read_error;
 
-void  e_emit_ins(const char* file, size_t line, e_compiler* cc, e_ins ins);
+void  e_emit_ins(e_compiler* cc, e_ins ins);
 e_ins e_read_ins(const u8** ip);
 
 e_file_read_error e_file_load(e_compilation_result* r, void** root_allocation, FILE* f);

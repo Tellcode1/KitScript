@@ -2,6 +2,7 @@
 #define E_REGISTERS_H
 
 #define E_REG_ARG_COUNT 16
+#define E_REG_COUNT 128
 
 typedef enum e_regs {
   E_REG_ARG0  = 0,

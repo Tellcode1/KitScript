@@ -136,6 +136,8 @@ int e_arena_add_free_page(e_arena* a, size_t size) ATTR_NODISCARD;
  */
 void* e_arnalloc(e_arena* a, size_t size) ATTR_NODISCARD;
 
+void e_arnfree(e_arena* a, void* ptr);
+
 /**
  * @brief Allocate an aligned block of memory from the arena.
  * @param size The size of memory to allocate, need not be aligned up.

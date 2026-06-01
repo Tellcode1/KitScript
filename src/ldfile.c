@@ -664,7 +664,7 @@ e_file_bytes_required(const e_compilation_result* r)
 }
 
 void
-e_emit_ins(const char* file, size_t line, e_compiler* cc, e_ins ins)
+e_emit_ins(e_compiler* cc, e_ins ins)
 {
   if (cc->ninstructions >= cc->cinstructions) ecc_stream_resize(cc, cc->cinstructions * 2U);
   memcpy(&cc->instructions[cc->ninstructions++], &ins, sizeof(e_ins));

@@ -196,8 +196,8 @@ e_exec(const e_exec_info* info, e_var* ret)
   /* error code */
   e_ecode e = E_OK;
 
-  e_var* regs = malloc(sizeof(e_var) * 2048);
-  for (u32 i = 0; i < 2048; i++) regs[i] = E_NULLVAR;
+  e_var regs[E_REG_COUNT];
+  for (u32 i = 0; i < E_REG_COUNT; i++) regs[i] = E_NULLVAR;
 
   size_t stack_capacity = 256;
   e_var* stack          = e_xalloc(stack_capacity, sizeof(e_var));
@@ -705,9 +705,8 @@ e_exec(const e_exec_info* info, e_var* ret)
   }
 
 RET:
-  for (u32 i = 0; i < 2048; i++) { e_var_release(&regs[i]); }
+  for (u32 i = 0; i < E_REG_COUNT; i++) { e_var_release(&regs[i]); }
   for (i32 i = 0; i < sp->val.i; i++) { e_var_release(&stack[i]); }
-  free(regs);
   free(stack);
   return e;
 }

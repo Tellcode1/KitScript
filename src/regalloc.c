@@ -147,8 +147,6 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
       case EIR_OPCODE_NOP:
       case EIR_OPCODE_LABEL:
       case EIR_OPCODE_JMP: {
-        /* clobber all registers for no reason at all */
-        for (u32 i = 0; i < E_REG_GENERAL_END; i++) { READS_FROM(i); }
         break;
       }
     }
@@ -380,7 +378,7 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
 }
 
 int
-era_register_allocation_pass(struct e_compiler* cc)
+era_simple_register_allocation_pass(struct e_compiler* cc)
 {
   era_state state;
 

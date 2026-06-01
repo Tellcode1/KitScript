@@ -2,9 +2,10 @@
 #define E_REGISTER_ALLOCATION_H
 
 #include "cc.h"
+#include "reg.h"
 #include "stdafx.h"
 
-#define ERA_NUM_PHYS 256
+#define ERA_NUM_PHYS E_REG_COUNT
 #define ERA_SPILL_FLAG 0x80000000u
 
 typedef struct era_range {
@@ -22,6 +23,6 @@ typedef struct era_state {
 } era_state;
 
 /* rewrite cc's instruction stream to use physical register indices instead of vregisters. */
-int era_register_allocation_pass(struct e_compiler* cc);
+int era_simple_register_allocation_pass(struct e_compiler* cc);
 
 #endif // E_REGISTER_ALLOCATION_H

@@ -49,8 +49,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define e_emit_ins(cc, ...) e_emit_ins(__FILE__, __LINE__, cc, __VA_ARGS__)
-
 struct val_t;
 
 static const u32 init_code_capacity        = 1024;
@@ -63,7 +61,34 @@ static const u32 init_fields_capacity      = 32;
 static const u32 init_defer_entry_capacity = 32;
 static const u32 init_jumps_capacity       = 64;
 
+typedef struct codeblock {
+  u32 start; /* first instruction (inclusive) */
+  u32 end;   /* last instruction (inclusive) */
+  /* Block can really only have 2 successors max (JZ and JNZ, namely the condition failed branch and the condition pass branch) */
+  u32 successors[2];
+  u32 nsuccessors;
+
+  bool defines[E_REG_COUNT];
+  bool uses[E_REG_COUNT];
+
+  bool live_in[E_REG_COUNT];
+  bool live_out[E_REG_COUNT];
+} codeblock;
+
+/* our CFG */
+typedef struct codegraph {
+  codeblock* blocks; /* arena allocated  */
+  u32        nblocks;
+} codegraph;
+
 static ATTR_NODISCARD char* qualify_name(const e_compiler* cc, const char* name);
+
+static ATTR_NODISCARD int codegraph_init(e_compiler* cc, codegraph* dst);
+static void               codegraph_dead_store_elimination(e_compiler* cc, const codegraph* cfg);
+static int                codegraph_redundant_move_elimination(e_compiler* cc, const codegraph* cfg);
+static void               codegraph_free(e_compiler* cc, codegraph* graph);
+static int                remove_jmp_where_it_would_fallthrough(e_compiler* cc);
+static int                patch_out_labels(e_compiler* cc);
 
 static inline RETURNS_ERRCODE int defer_push_scope(e_compiler* cc);
 static inline void                defer_pop_scope(e_compiler* cc);
@@ -211,6 +236,23 @@ scope_pop(e_compiler* cc)
 {
   assert(cc->scope && cc->scope->parent);
   cc->scope = cc->scope->parent;
+}
+
+/* the lesser the bias, the more likely it is to inline a function */
+static int
+get_cost_for_inlining_function(const e_compiler* cc, int bias, const ecc_function* fn)
+{
+  int cost = bias;
+  if (cc->info->opt_level == 0) {
+    cost = INT32_MAX; /* never inline with optimizations disabled */
+  } else if (cc->info->opt_level == 3) {
+    cost -= 1000; /* make it much more likely to be inlined */
+  }
+
+  cost += (int)(fn->code_count > INT32_MAX ? INT32_MAX : fn->code_count) / 30;
+  cost += (int)fn->nargs * 10; /* each further argument increases register pressure in loops */
+
+  return cost;
 }
 
 /**
@@ -1247,7 +1289,20 @@ compile_function_definition(e_compiler* cc, int node)
   compiler_join_fork(&fork, cc);
 
   /* perform register allocation. rewrites our instruction stream */
-  era_register_allocation_pass(&fork);
+  era_simple_register_allocation_pass(&fork);
+
+  if (cc->info->opt_level >= 2) {
+    codegraph cfg = { 0 };
+    e             = codegraph_init(&fork, &cfg);
+    if (e < 0) goto ERR;
+
+    codegraph_redundant_move_elimination(&fork, &cfg);
+    codegraph_dead_store_elimination(&fork, &cfg);
+    remove_jmp_where_it_would_fallthrough(&fork);
+    patch_out_labels(&fork);
+
+    codegraph_free(&fork, &cfg);
+  }
 
   /* write our info to the table */
   ecc_function f = {
@@ -2383,7 +2438,7 @@ compile_root(e_compiler* cc, int node)
   e_vreg_t nilvar = compile_and_push_literal_variable(cc, &v);
   e_emit_ins(cc, (e_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
 
-  era_register_allocation_pass(cc);
+  era_simple_register_allocation_pass(cc);
 
   return 0; // Done!
 }
@@ -2637,6 +2692,616 @@ compile(e_compiler* cc, int node)
   }
 }
 
+static u32
+get_destination_reg(const e_ins* i)
+{
+  switch (i->opcode) {
+      /* getg, setg and movg  */
+    case EIR_OPCODE_MOV: return i->mov.dst; break;
+
+    case EIR_OPCODE_MOVI: return i->movi.dst; break; /* values are not registers */
+    case EIR_OPCODE_MOVF: return i->movf.dst; break; /* values are not registers */
+
+    case EIR_OPCODE_GETG: return i->mov.dst; break;
+
+    case EIR_OPCODE_SETG:
+    case EIR_OPCODE_MOVG: {
+      break;
+    }
+    case EIR_OPCODE_LOADK:
+      return i->loadk.dst;
+      break; /* id is not a register */
+
+    // case EIR_OPCODE_LOADK: break;
+    case EIR_OPCODE_ADD:
+    case EIR_OPCODE_SUB:
+    case EIR_OPCODE_MUL:
+    case EIR_OPCODE_DIV:
+    case EIR_OPCODE_MOD:
+    case EIR_OPCODE_EXP:
+    case EIR_OPCODE_AND:
+    case EIR_OPCODE_OR:
+    case EIR_OPCODE_BAND:
+    case EIR_OPCODE_BOR:
+    case EIR_OPCODE_XOR:
+    case EIR_OPCODE_EQL:
+    case EIR_OPCODE_NEQ:
+    case EIR_OPCODE_LT:
+    case EIR_OPCODE_LTE:
+    case EIR_OPCODE_GT:
+    case EIR_OPCODE_GTE: return i->binop.dst; break;
+    case EIR_OPCODE_NOT:
+    case EIR_OPCODE_NEG:
+    case EIR_OPCODE_BNOT:
+    case EIR_OPCODE_DEC:
+    case EIR_OPCODE_INC: return i->unop.dst; break;
+    case EIR_OPCODE_CALL: return i->call.dst; break;
+    case EIR_OPCODE_INDEX: return i->index.dst; break;
+    case EIR_OPCODE_INDEX_ASSIGN: break;
+    case EIR_OPCODE_MK_LIST: return i->mk_list.dst; break;
+    case EIR_OPCODE_MK_MAP: return i->mk_map.dst; break;
+    case EIR_OPCODE_MK_STRUCT: return i->mk_struct.dst; break;
+    case EIR_OPCODE_MEMBER_ACCESS: return i->member_access.dst; break;
+    case EIR_OPCODE_MEMBER_ASSIGN: break;
+    case EIR_OPCODE_RET:
+    case EIR_OPCODE_JZ:
+    case EIR_OPCODE_JNZ:
+    case EIR_OPCODE_PUSH: {
+      break;
+    }
+    case EIR_OPCODE_POP: {
+      return i->pop.reg;
+    }
+
+      // default: break;
+    case EIR_OPCODE_NOP:
+    case EIR_OPCODE_LABEL:
+    case EIR_OPCODE_JMP: {
+      break;
+    }
+  }
+
+  return UINT32_MAX;
+}
+
+static u32
+get_source_registers(const e_ins* i, u32 sources[32])
+{
+  u32 n = 0;
+  switch (i->opcode) {
+      /* getg, setg and movg  */
+    case EIR_OPCODE_MOV: sources[n++] = i->mov.src; break;
+
+    case EIR_OPCODE_MOVI:
+    case EIR_OPCODE_MOVF: /* values are not registers */
+    case EIR_OPCODE_GETG: break;
+
+    case EIR_OPCODE_SETG: sources[n++] = i->mov.src; break;
+
+    case EIR_OPCODE_MOVG:
+    case EIR_OPCODE_LOADK: /* id is not a register */ break;
+
+    case EIR_OPCODE_ADD:
+    case EIR_OPCODE_SUB:
+    case EIR_OPCODE_MUL:
+    case EIR_OPCODE_DIV:
+    case EIR_OPCODE_MOD:
+    case EIR_OPCODE_EXP:
+    case EIR_OPCODE_AND:
+    case EIR_OPCODE_OR:
+    case EIR_OPCODE_BAND:
+    case EIR_OPCODE_BOR:
+    case EIR_OPCODE_XOR:
+    case EIR_OPCODE_EQL:
+    case EIR_OPCODE_NEQ:
+    case EIR_OPCODE_LT:
+    case EIR_OPCODE_LTE:
+    case EIR_OPCODE_GT:
+    case EIR_OPCODE_GTE:
+      sources[n++] = i->binop.a;
+      sources[n++] = i->binop.b;
+      break;
+
+    case EIR_OPCODE_NOT:
+    case EIR_OPCODE_NEG:
+    case EIR_OPCODE_BNOT:
+    case EIR_OPCODE_DEC:
+    case EIR_OPCODE_INC: sources[n++] = i->unop.a; break;
+
+    case EIR_OPCODE_MK_LIST:
+      for (u32 j = E_REG_ARG0; j < MIN(E_REG_ARG_COUNT, i->mk_list.nelems); j++) { sources[n++] = (e_vreg_t)(E_REG_ARG0 + j); }
+      break;
+
+    case EIR_OPCODE_MK_MAP:
+      for (u32 j = E_REG_ARG0; j < MIN(E_REG_ARG_COUNT, i->mk_map.npairs * 2); j++) { sources[n++] = (e_vreg_t)(E_REG_ARG0 + j); }
+      break;
+
+    case EIR_OPCODE_MK_STRUCT:
+      /* finding out which argument registers to clear will take some time. just kill the entire vector. */
+      for (u32 j = E_REG_ARG0; j < E_REG_ARG_COUNT; j++) { sources[n++] = (e_vreg_t)(E_REG_ARG0 + j); }
+      break;
+    case EIR_OPCODE_CALL:
+      /* record only the argument registers that were used */
+      for (u32 j = E_REG_ARG0; j < MIN(E_REG_ARG_COUNT, i->call.nargs); j++) { sources[n++] = (e_vreg_t)(E_REG_ARG0 + j); }
+      break;
+
+    case EIR_OPCODE_INDEX:
+      sources[n++] = i->index.base;
+      sources[n++] = i->index.index;
+      break;
+    case EIR_OPCODE_INDEX_ASSIGN:
+      sources[n++] = i->index_assign.value;
+      sources[n++] = i->index_assign.index;
+      sources[n++] = i->index_assign.base;
+      break;
+
+    case EIR_OPCODE_MEMBER_ACCESS: sources[n++] = i->member_access.base; break;
+    case EIR_OPCODE_MEMBER_ASSIGN:
+      sources[n++] = i->member_assign.value;
+      sources[n++] = i->member_assign.base;
+      break;
+    case EIR_OPCODE_RET: sources[n++] = i->ret.return_value; break;
+    case EIR_OPCODE_JZ:
+    case EIR_OPCODE_JNZ: sources[n++] = i->cj.condition; break;
+    case EIR_OPCODE_PUSH: {
+      sources[n++] = i->push.reg;
+      break;
+    }
+    // default: break;
+    case EIR_OPCODE_POP:
+    case EIR_OPCODE_NOP:
+    case EIR_OPCODE_LABEL:
+    case EIR_OPCODE_JMP: {
+      break;
+    }
+  }
+
+  return n;
+}
+
+static ATTR_NODISCARD int
+codegraph_init(e_compiler* cc, codegraph* dst)
+{
+  const e_ins* code      = cc->instructions;
+  u32          code_size = cc->ninstructions;
+
+  /* Find all registers used for returning values */
+  bool return_live[E_REG_COUNT] = { 0 };
+  for (u32 i = 0; i < code_size; i++) {
+    if (code[i].opcode == EIR_OPCODE_RET) return_live[code[i].ret.return_value] = true;
+  }
+
+  /* Find all block headers */
+  bool* blk_header = e_arnalloc(cc->arena, code_size * sizeof(bool));
+  memset(blk_header, 0, code_size * sizeof(bool));
+
+  /* first instruction */
+  blk_header[0] = true;
+
+  for (u32 i = 0; i < code_size; i++) {
+    const e_ins* ins = &code[i];
+
+    if (ins->opcode == EIR_OPCODE_JMP) {
+      u32 target = ins->jmp.target;
+      if (target < cc->ninstructions) { blk_header[target] = true; }
+    } else if (ins->opcode == EIR_OPCODE_JZ || ins->opcode == EIR_OPCODE_JNZ) {
+      u32 target = ins->cj.target;
+      if (target < code_size) blk_header[target] = true;
+      if (i + 1 < code_size) blk_header[i + 1] = true; // fallthrough
+    }
+  }
+
+  /* Divide the code into blocks using our block headers */
+  codeblock* blocks  = e_arnalloc(cc->arena, sizeof(codeblock) * code_size);
+  size_t     nblocks = 0;
+
+  u32 block_start = 0;
+  for (u32 i = 0; i < code_size; i++) {
+    if (blk_header[i] && i != 0) {
+      blocks[nblocks].start = block_start;
+      blocks[nblocks].end   = i - 1;
+      nblocks++;
+      block_start = i;
+    }
+  }
+
+  // last block
+  blocks[nblocks].start = block_start;
+  blocks[nblocks].end   = code_size - 1;
+  nblocks++;
+
+  u32* ip_to_block = e_arnalloc(cc->arena, code_size * sizeof(u32));
+  for (u32 b = 0; b < nblocks; b++) {
+    for (u32 ip = blocks[b].start; ip <= blocks[b].end; ip++) { ip_to_block[ip] = b; }
+  }
+
+  /* find successors */
+  for (u32 i = 0; i < nblocks; i++) {
+    codeblock* blk   = &blocks[i];
+    blk->nsuccessors = 0;
+
+    u32          last_ins_ip = blk->end;
+    const e_ins* last_ins    = &code[last_ins_ip];
+
+    /* jump to another code block */
+    if (last_ins->opcode == EIR_OPCODE_JMP) {
+      u32 target_ip = last_ins->jmp.target;
+      if (target_ip < code_size) {
+        u32 target_block                    = ip_to_block[target_ip];
+        blk->successors[blk->nsuccessors++] = target_block;
+      }
+    }
+
+    else if (last_ins->opcode == EIR_OPCODE_JZ || last_ins->opcode == EIR_OPCODE_JNZ) {
+      // fallthrough
+      if (i + 1 < nblocks) blk->successors[blk->nsuccessors++] = i + 1;
+
+      // the branch taken (if condition were to be true)
+      u32 target_ip = last_ins->cj.target;
+      if (target_ip < code_size) {
+        u32 target_block                    = ip_to_block[target_ip];
+        blk->successors[blk->nsuccessors++] = target_block;
+      }
+    }
+
+    else if (last_ins->opcode == EIR_OPCODE_RET) {
+      // no successors ever.
+    }
+
+    /* normal instruction. fallthrough only. */
+    else if ((i + 1) < nblocks) {
+      blk->successors[blk->nsuccessors++] = i + 1;
+    }
+  }
+
+  for (u32 i = 0; i < nblocks; i++) {
+    codeblock* blk = &blocks[i];
+
+    memset(blk->defines, 0, sizeof(blk->defines));
+    memset(blk->uses, 0, sizeof(blk->uses));
+
+    bool defined_so_far[E_REG_COUNT] = { 0 };
+
+    for (u32 ip = blk->start; ip <= blk->end; ip++) {
+      e_ins ins = cc->instructions[ip];
+
+      u32 dst = get_destination_reg(&ins);
+
+      u32 srcs[32] = { 0 };
+      u32 nsrcs    = get_source_registers(&ins, srcs);
+
+      for (u32 i = 0; i < nsrcs; i++) {
+        u32 r = srcs[i];
+        if (r < E_REG_COUNT && !defined_so_far[r]) blk->uses[r] = true;
+      }
+
+      if (dst != UINT32_MAX && dst < E_REG_COUNT) {
+        blk->defines[dst]   = true;
+        defined_so_far[dst] = true;
+      }
+    }
+  }
+
+  /* initialize live_out sets for exit blocks */
+  for (u32 i = 0; i < nblocks; i++) {
+    codeblock* blk = &blocks[i];
+    if (blk->nsuccessors != 0) continue;
+    for (u32 r = 0; r < E_REG_COUNT; r++) {
+      if (return_live[r]) { blk->live_out[r] = true; }
+    }
+  }
+
+  /* start out as true so while loop starts */
+  bool changed = true;
+  while (changed) {
+    changed = false; /* assume we didn't change */
+
+    for (i64 i = (i64)nblocks - 1; i >= 0; i--) {
+      codeblock* blk = &blocks[i];
+
+      bool new_live_out[E_REG_COUNT] = { 0 };
+      bool new_live_in[E_REG_COUNT]  = { 0 };
+
+      /* new_live_out = U live_in[successor] */
+      for (u32 s = 0; s < blk->nsuccessors; s++) {
+        codeblock* successor = &blocks[blk->successors[s]];
+        for (u32 reg = 0; reg < E_REG_COUNT; reg++) {
+          if (successor->live_in[reg]) { new_live_out[reg] = true; }
+        }
+      }
+
+      /* new_live_in = uses U (new_live_out - definitions) */
+      for (u32 reg = 0; reg < E_REG_COUNT; reg++) {
+        if ((blk->uses[reg]) || (new_live_out[reg] && !blk->defines[reg])) { new_live_in[reg] = true; }
+      }
+
+      if (memcmp(new_live_in, blk->live_in, sizeof(blk->live_in)) != 0) { /* changed? */
+        changed = true;
+      }
+      if (memcmp(new_live_out, blk->live_out, sizeof(blk->live_out)) != 0) { /* changed? */
+        changed = true;
+      }
+
+      memcpy(blk->live_in, new_live_in, sizeof(blk->live_in));
+      memcpy(blk->live_out, new_live_out, sizeof(blk->live_out));
+    }
+  }
+
+  dst->blocks  = blocks;
+  dst->nblocks = nblocks;
+
+  return 0;
+}
+
+static int
+dead_move_elim(e_compiler* cc)
+{
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (u32 i = 0; i < cc->ninstructions; i++) {
+      e_ins* ins = &cc->instructions[i];
+      if (ins->opcode == EIR_OPCODE_NOP) continue;
+
+      e_ins* next = (i + 1 < cc->ninstructions) ? &cc->instructions[i + 1] : NULL;
+      if (!next || next->opcode == EIR_OPCODE_NOP) continue;
+
+      if (ins->opcode == EIR_OPCODE_MOV && next->opcode == EIR_OPCODE_MOV && ins->mov.dst == next->mov.src && next->mov.dst == ins->mov.src) {
+        ins->opcode  = EIR_OPCODE_NOP;
+        next->opcode = EIR_OPCODE_NOP;
+        changed      = true;
+        continue;
+      }
+
+      if (ins->opcode == EIR_OPCODE_MOV && next->opcode == EIR_OPCODE_MOV && ins->mov.dst == next->mov.src) {
+        next->mov.src = ins->mov.src;
+        ins->opcode   = EIR_OPCODE_NOP;
+        changed       = true;
+        continue;
+      }
+
+      if (ins->opcode == EIR_OPCODE_LOADK && next->opcode == EIR_OPCODE_MOV && ins->loadk.dst == next->mov.src) {
+        next->opcode    = EIR_OPCODE_LOADK;
+        next->loadk.dst = next->mov.dst;
+        next->loadk.id  = ins->loadk.id;
+        ins->opcode     = EIR_OPCODE_NOP;
+        changed         = true;
+        continue;
+      }
+    }
+  }
+  return 0;
+}
+
+static bool
+is_instruction_impure(eir_opcode op)
+{
+  switch (op) {
+    case EIR_OPCODE_CALL:
+    case EIR_OPCODE_PUSH:
+    case EIR_OPCODE_POP:
+    case EIR_OPCODE_RET:
+    case EIR_OPCODE_JMP:
+    case EIR_OPCODE_JZ:
+    case EIR_OPCODE_JNZ:
+    case EIR_OPCODE_LABEL: // keep labels for control flow
+    case EIR_OPCODE_SETG:  // writes global state
+    case EIR_OPCODE_MOVG:
+    case EIR_OPCODE_INDEX_ASSIGN:
+    case EIR_OPCODE_MEMBER_ASSIGN:
+    case EIR_OPCODE_MK_LIST:
+    case EIR_OPCODE_MK_MAP:
+    case EIR_OPCODE_MK_STRUCT: return true;
+    default: return false;
+  }
+}
+
+static void
+codegraph_dead_store_elimination(e_compiler* cc, const codegraph* cfg)
+{
+  for (u32 i = 0; i < cfg->nblocks; i++) {
+    codeblock* blk = &cfg->blocks[i];
+
+    bool live[E_REG_COUNT] = { 0 };
+    memcpy(live, blk->live_out, sizeof(blk->live_out));
+
+    for (i64 ip = blk->end; ip >= blk->start; ip--) {
+      e_ins* ins = &cc->instructions[ip];
+
+      u32 dst     = UINT32_MAX;
+      u32 src[32] = { 0 };
+      u32 nsrc    = 0;
+
+      dst  = get_destination_reg(ins);
+      nsrc = get_source_registers(ins, src);
+
+      if (!is_instruction_impure(ins->opcode) && (dst != UINT32_MAX && !live[dst])) {
+        /* dead store */
+        ins->opcode = EIR_OPCODE_NOP;
+        continue;
+      }
+
+      /* mark all sources as live */
+      for (u32 s = 0; s < nsrc; s++) { live[src[s]] = true; }
+      if (dst != UINT32_MAX) live[dst] = false;
+    }
+  }
+}
+
+static inline bool
+is_instruction_noop(eir_opcode opcode)
+{
+  switch (opcode) {
+    case EIR_OPCODE_NOP:
+    case EIR_OPCODE_LABEL: return true;
+    default: return false;
+  }
+}
+
+static int
+codegraph_redundant_move_elimination(e_compiler* cc, const codegraph* cfg)
+{
+  /**
+   * Find the pattern:
+   * mov a, x
+   * mov b, a
+   *
+   * or loadk a
+   * mov b, a
+   *
+   * Then determine whether any register relies on a
+   * (and can we switch a to b?). If no one does,
+   * replace the pattern with a single mov b, x
+   */
+
+  bool changed = true; /* to start the loop */
+
+  while (changed) {
+    changed = false;
+
+    for (u32 i = 0; i < cc->ninstructions; i++) {
+      if (i + 1 >= cc->ninstructions) break;
+
+      e_ins* a = &cc->instructions[i];
+      e_ins* b = &cc->instructions[i + 1];
+
+      if (b->opcode != EIR_OPCODE_MOV) continue;
+
+      u32 a_dst = get_destination_reg(a);
+
+      if (a_dst == UINT32_MAX) continue; /* no destination */
+      if (a_dst != b->mov.src) continue; /* isn't chained. */
+
+      /* check if the first operation to a is a read (bad) or a write (good). */
+      bool is_a_read_later = false;
+      for (u32 j = i + 2; j < cc->ninstructions; j++) {
+        e_ins* k   = &cc->instructions[j];
+        u32    dst = get_destination_reg(k);
+
+        u32 srcs[32] = { 0 };
+        u32 nsrcs    = get_source_registers(k, srcs);
+
+        /* a is read later. can't optimize :( */
+        for (u32 s = 0; s < nsrcs; s++) {
+          if (srcs[s] == a_dst) {
+            is_a_read_later = true;
+            break;
+          }
+        }
+
+        if (is_a_read_later) break;
+
+        /**
+         * First operation to the register is a write
+         * This means we can safely overwrite it.
+         */
+        if (dst == a_dst) break;
+      }
+
+      if (!is_a_read_later) {
+        switch (a->opcode) {
+          case EIR_OPCODE_MOV:
+            // mov a,x  ;  mov b,a  →  mov b,x
+            b->mov.src = a->mov.src;
+            a->opcode  = EIR_OPCODE_NOP;
+            changed    = true;
+            break;
+
+          case EIR_OPCODE_LOADK:
+            // loadk a,id  ;  mov b,a  →  loadk b,id
+            b->opcode    = EIR_OPCODE_LOADK;
+            b->loadk.dst = b->mov.dst; // reuse the dst slot
+            b->loadk.id  = a->loadk.id;
+            a->opcode    = EIR_OPCODE_NOP;
+            changed      = true;
+            break;
+
+          case EIR_OPCODE_MOVI:
+            // movi a,val ; mov b,a → movi b,val
+            b->opcode     = EIR_OPCODE_MOVI;
+            b->movi.dst   = b->mov.dst;
+            b->movi.value = a->movi.value;
+            a->opcode     = EIR_OPCODE_NOP;
+            changed       = true;
+            break;
+
+          case EIR_OPCODE_MOVF:
+            // movf a,val ; mov b,a → movf b,val
+            b->opcode     = EIR_OPCODE_MOVF;
+            b->movf.dst   = b->mov.dst;
+            b->movf.value = a->movf.value;
+            a->opcode     = EIR_OPCODE_NOP;
+            changed       = true;
+            break;
+
+          case EIR_OPCODE_GETG:
+            // getg a,gid ; mov b,a → getg b,gid
+            b->opcode   = EIR_OPCODE_GETG;
+            b->getg.dst = b->mov.dst;
+            b->getg.src = a->getg.src; // global id
+            a->opcode   = EIR_OPCODE_NOP;
+            changed     = true;
+            break;
+          default: break;
+        }
+      }
+
+      /* There pairs are often produced from this pass, clean them up right here. */
+      if (a->opcode == EIR_OPCODE_MOV && a->mov.src == a->mov.dst) { a->opcode = EIR_OPCODE_NOP; }
+    }
+  }
+
+  return 0;
+}
+
+static int
+remove_jmp_where_it_would_fallthrough(e_compiler* cc)
+{
+  /* find a jump instruction */
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins* ins = &cc->instructions[i];
+
+    if (ins->opcode != EIR_OPCODE_JMP) continue;
+
+    u32 target = ins->jmp.target;
+    if (i > target) continue; /* skip backward jumps */
+
+    /* check if there is nothing but noops in between the jump and the target */
+    bool useless = true;
+    for (u32 j = i + 1; j < target; j++) {
+      e_ins* k = &cc->instructions[j];
+
+      // fprintf(stderr, "%i\n", k->opcode);
+
+      if (!is_instruction_noop(k->opcode)) {
+        useless = false;
+        break;
+      }
+    }
+
+    /* jmp is useless. noop it. */
+    if (useless) { ins->opcode = EIR_OPCODE_NOP; }
+  }
+
+  return 0;
+}
+
+static int
+patch_out_labels(e_compiler* cc)
+{
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins* ins = &cc->instructions[i];
+    if (ins->opcode == EIR_OPCODE_LABEL) ins->opcode = EIR_OPCODE_NOP;
+  }
+
+  return 0;
+}
+
+static void
+codegraph_free(e_compiler* cc, codegraph* graph)
+{
+}
+
 int
 e_compile(const ecc_info* info, e_compilation_result* result)
 {
@@ -2747,12 +3412,6 @@ e_compile(const ecc_info* info, e_compilation_result* result)
   for (u32 i = 0; i < init_code_capacity; i++) { cc.instructions[i] = (e_ins){ .opcode = EIR_OPCODE_NOP }; }
 
   scope_push(&cc);
-
-  /* First of all, call the optimization routines (if requested) */
-  // if (info->opt_level >= 2) {
-  //   e = fold(&cc, cc.ast->root);
-  //   if (e < 0) goto ERR;
-  // }
 
   e = defer_push_scope(&cc);
   if (e < 0) goto ERR;

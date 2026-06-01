@@ -5,7 +5,6 @@ fn progressbar(i, max) {
   let PROGRESS_CHAR = '#';
   let EMPTY_CHAR = 'x';
 
-  println(i, " << >> ", max);
   print(BAR_START);
   for (let j = 0; j < max; j++) {
     if (j < i) print(PROGRESS_CHAR);
