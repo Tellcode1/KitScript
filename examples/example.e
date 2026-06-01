@@ -89,15 +89,15 @@ fn maptest()
   };
   let index_table = [
     map[1], // Uses the key to get the value for the map.
-    map[2],
+    map[2], // = "Two!"
     map[3],
     map[4],
     map[5],
   ];
-  for (let i = 0; i < len(map); i++)
-  {
-    println("Look up of ", index_table[i], " : ", reverse[index_table[i]]);
-  }
+  // for (let i = 0; i < len(map); i++)
+  // {
+  //   println("Look up of ", index_table[i], " : ", reverse[index_table[i]]);
+  // }
 }
 
 // Shouldn't modify the actual value of lol

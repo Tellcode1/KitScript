@@ -211,60 +211,6 @@ typedef struct ecc_defer_scope {
   u32                     capacity;
 } ecc_defer_scope;
 
-/**
- * Data a label stores about all of its
- * jumps. Used in e_resolve_labels to quickly
- * Go through and patch up all labels
- * (without traversing the entire stream)!.
- */
-typedef struct ecc_label_jumps_table {
-  bool defined;
-
-  u32 label_id;
-
-  // The actual offset that all instructions
-  // will need to JMP to
-  // Filled in later if the jumps precede the label.
-  // Safely accessed only after compilation is finished.
-  u32 label_offset;
-
-  u32 jumps_count;
-  u32 jumps_capacity;
-
-  // Offsets in the instruction stream
-  u32* jumps_target_offsets;
-} ecc_label_jumps_table;
-
-/**
- * All labels in the stream, and their child jmps.
- *
- *                LABEL0
- *    --------------|-----------------
- *    |             |                |
- *    |             |                |
- *  JMP(Off=3)     JZ(Off=8)        JNZ(Off=16)
- *
- * e_resolve_labels will look at this structure,
- * open up the stream and then:
- *
- * Instructions[3].target = LABEL;
- *
- * Instructions[8].target = LABEL
- *
- * Instructions[16].target = LABEL
- *
- * Needless to say, reduces the work of e_resolve_labels
- * by a LOT! The old algorithm I used was O(n^2)
- * (Walked through the entire list, and for each label,
- *  walked through the list AGAIN, patching up all jumps
- *  one by one as it walks through).
- */
-typedef struct ecc_label_table {
-  u32                    labels_count;
-  u32                    labels_capacity; // Can NOT be 0
-  ecc_label_jumps_table* labels;
-} ecc_label_table;
-
 typedef struct ecc_var {
   e_filespan  span;
   const char* name;
@@ -289,7 +235,6 @@ typedef struct e_compiler {
   e_arena*      arena;
   struct e_ast* ast;
 
-  ecc_label_table*             label_table;
   ecc_literal_table*           lit_table;
   ecc_builtin_variables_table* builtin_var_table;
   ecc_function_table*          function_table;

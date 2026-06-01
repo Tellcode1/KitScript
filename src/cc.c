@@ -85,10 +85,14 @@ static ATTR_NODISCARD char* qualify_name(const e_compiler* cc, const char* name)
 
 static ATTR_NODISCARD int codegraph_init(e_compiler* cc, codegraph* dst);
 static void               codegraph_dead_store_elimination(e_compiler* cc, const codegraph* cfg);
+static void               codegraph_constant_folding(e_compiler* cc, const codegraph* cfg);
 static int                codegraph_redundant_move_elimination(e_compiler* cc, const codegraph* cfg);
 static void               codegraph_free(e_compiler* cc, codegraph* graph);
 static int                remove_jmp_where_it_would_fallthrough(e_compiler* cc);
 static int                patch_out_labels(e_compiler* cc);
+static int                strip_noops(e_compiler* cc);
+static int                strip_noops_and_remap_jumps(e_compiler* cc);
+static int                label_pass(e_compiler* cc);
 
 static inline RETURNS_ERRCODE int defer_push_scope(e_compiler* cc);
 static inline void                defer_pop_scope(e_compiler* cc);
@@ -99,21 +103,19 @@ static inline u32                 defer_get_current_depth(e_compiler* cc);
 
 static inline int fold_vector(e_compiler* cc, const int* elems, u32 nelems);
 
-static inline ATTR_NODISCARD u32  label_find(u32 label_id, const ecc_label_table* table);
 static inline RETURNS_ERRCODE int emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, e_vreg_t condition, u32 label_id);
 static inline void                define_and_emit_label(e_compiler* cc, u32 label_id);
 
-static RETURNS_ERRCODE int           append_defer_entry(e_compiler* cc, int* exprs, u32 nexprs);
-static RETURNS_ERRCODE int           append_function_entry(e_arena* a, ecc_function_table* funcs, const ecc_function* func);
-static RETURNS_ERRCODE int           append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* deposit);
-static RETURNS_ERRCODE int           append_literal_variable(ecc_literal_table* literals, const e_var* v);
-static inline ecc_label_jumps_table* append_label_entry(e_arena* a, u32 label_id, ecc_label_table* table);
+static RETURNS_ERRCODE int append_defer_entry(e_compiler* cc, int* exprs, u32 nexprs);
+static RETURNS_ERRCODE int append_function_entry(e_arena* a, ecc_function_table* funcs, const ecc_function* func);
+static RETURNS_ERRCODE int append_struct_decleration(e_arena* a, const char* name, ecc_struct_information* deposit);
+static RETURNS_ERRCODE int append_literal_variable(ecc_literal_table* literals, const e_var* v);
 
 static RETURNS_ERRCODE int collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_information* deposit);
 static RETURNS_ERRCODE int append_struct_info(e_compiler* cc, const ecc_struct_information* data);
 
 static inline RETURNS_ERRCODE int compiler_make_fork(const e_compiler* old_c, e_compiler* new_c);
-static inline void                compiler_join_fork(const e_compiler* copy, e_compiler* cc);
+static inline void                compiler_join_fork(e_compiler* copy, e_compiler* cc);
 
 static RETURNS_ERRCODE int      value_init(e_compiler* cc, int node, struct val_t* d);
 static void                     value_free(struct val_t* lv);
@@ -291,6 +293,45 @@ e_binary_operator_to_opcode(e_operator op)
   return -1;
 }
 
+static inline bool
+is_instruction_binary_operation(eir_opcode op)
+{
+  switch (op) {
+    case EIR_OPCODE_ADD:
+    case EIR_OPCODE_SUB:
+    case EIR_OPCODE_MUL:
+    case EIR_OPCODE_DIV:
+    case EIR_OPCODE_MOD:
+    case EIR_OPCODE_EXP:
+    case EIR_OPCODE_AND:
+    case EIR_OPCODE_OR:
+    case EIR_OPCODE_BAND:
+    case EIR_OPCODE_BOR:
+    case EIR_OPCODE_XOR:
+    case EIR_OPCODE_EQL:
+    case EIR_OPCODE_NEQ:
+    case EIR_OPCODE_LT:
+    case EIR_OPCODE_LTE:
+    case EIR_OPCODE_GT:
+    case EIR_OPCODE_GTE: return true;
+    default: return false;
+  }
+  return -1;
+}
+
+static inline bool
+is_instruction_unary_operation(eir_opcode op)
+{
+  switch (op) {
+    case EIR_OPCODE_NOT:
+    case EIR_OPCODE_BNOT:
+    case EIR_OPCODE_DEC:
+    case EIR_OPCODE_INC: return true;
+    default: return false;
+  }
+  return -1;
+}
+
 typedef enum e_lval_type {
   E_LVAL_VAR,
   E_LVAL_GVAR,    // global variable
@@ -457,46 +498,6 @@ defer_emit_to_depth(e_compiler* cc, u32 target_depth)
 }
 
 /**
- * Returns UINT32_MAX on no find.
- */
-static inline u32
-label_find(u32 label_id, const ecc_label_table* table)
-{
-  for (u32 i = 0; i < table->labels_count; i++) {
-    if (table->labels[i].label_id == label_id) { return i; }
-  }
-  return UINT32_MAX;
-}
-
-static inline ecc_label_jumps_table*
-append_label_entry(e_arena* a, u32 label_id, ecc_label_table* table)
-{
-  if (table->labels_count >= table->labels_capacity) {
-    u32                    new_c     = MAX(table->labels_capacity * 2, 4);
-    ecc_label_jumps_table* new_table = (ecc_label_jumps_table*)realloc(table->labels, new_c * sizeof(ecc_label_jumps_table));
-    if (!new_table) return NULL;
-
-    table->labels          = new_table;
-    table->labels_capacity = new_c;
-  }
-
-  u32 index = label_find(label_id, table);
-
-  ecc_label_jumps_table* end = NULL;
-  if (index == UINT32_MAX) {
-    // Add the entry at the end
-    end = &table->labels[table->labels_count];
-    memset(end, 0, sizeof(*end)); // zero it out for safe
-
-    table->labels_count++;
-  } else {
-    end = &table->labels[index];
-  }
-
-  return end;
-}
-
-/**
  * Add the jump to the label's stream.
  * opcode is needed because there are multiple
  * jump instructions (JMP,JE,JNE,JZ,JNZ,etc.)
@@ -504,60 +505,12 @@ append_label_entry(e_arena* a, u32 label_id, ecc_label_table* table)
 static inline int
 emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, e_vreg_t condition, u32 label_id)
 {
-  ecc_label_jumps_table* label = append_label_entry(cc->arena, label_id, cc->label_table);
+  switch (opcode) {
+    case EIR_OPCODE_JMP: e_emit_ins(cc, (e_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = label_id } }); break;
+    case EIR_OPCODE_JZ: e_emit_ins(cc, (e_ins){ .jz = { .opcode = EIR_OPCODE_JZ, .condition = condition, .target = label_id } }); break;
+    case EIR_OPCODE_JNZ: e_emit_ins(cc, (e_ins){ .jnz = { .opcode = EIR_OPCODE_JNZ, .condition = condition, .target = label_id } }); break;
 
-  if (!label->jumps_target_offsets) {
-    *label = (ecc_label_jumps_table){
-      .label_id             = label_id,
-      .defined              = false,
-      .label_offset         = 0,
-      .jumps_count          = 0,
-      .jumps_capacity       = init_jumps_capacity,
-      .jumps_target_offsets = e_xalloc(init_jumps_capacity, sizeof(u32)),
-    };
-  }
-
-  u32 patch_offset = cc->ninstructions;
-
-  if (label->defined) {
-    /**
-     * Label already defined. Just point out jump to
-     * the label.
-     */
-    switch (opcode) {
-      case EIR_OPCODE_JMP: e_emit_ins(cc, (e_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = label->label_offset } }); break;
-      case EIR_OPCODE_JZ: e_emit_ins(cc, (e_ins){ .jz = { .opcode = EIR_OPCODE_JZ, .condition = condition, .target = label->label_offset } }); break;
-      case EIR_OPCODE_JNZ:
-        e_emit_ins(cc, (e_ins){ .jnz = { .opcode = EIR_OPCODE_JNZ, .condition = condition, .target = label->label_offset } });
-        break;
-
-      default: return -1;
-    }
-
-  } else {
-    /**
-     * Label not defined. Add an entry that we'll patch in later.
-     */
-    if (label->jumps_count >= label->jumps_capacity) {
-      u32  new_jumps_capacity       = MAX(label->jumps_capacity * 2, 4);
-      u32* new_jumps_target_offsets = realloc(label->jumps_target_offsets, sizeof(u32) * new_jumps_capacity);
-      if (!new_jumps_target_offsets) return -1;
-
-      label->jumps_target_offsets = new_jumps_target_offsets;
-      label->jumps_capacity       = new_jumps_capacity;
-    }
-
-    label->jumps_target_offsets[label->jumps_count++] = patch_offset;
-
-    const u32 will_patch_later = 0xDEADBEEF;
-    switch (opcode) {
-      case EIR_OPCODE_JMP: e_emit_ins(cc, (e_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = will_patch_later } }); break;
-      case EIR_OPCODE_JZ: e_emit_ins(cc, (e_ins){ .jz = { .opcode = EIR_OPCODE_JZ, .condition = condition, .target = will_patch_later } }); break;
-      case EIR_OPCODE_JNZ: e_emit_ins(cc, (e_ins){ .jnz = { .opcode = EIR_OPCODE_JNZ, .condition = condition, .target = will_patch_later } }); break;
-
-      default: return -1;
-    }
-    // e_emit_u32(cc, will_patch_later);
+    default: return -1;
   }
 
   return 0;
@@ -565,41 +518,7 @@ emit_and_record_jmp(e_compiler* cc, eir_opcode opcode, e_vreg_t condition, u32 l
 
 static inline void
 define_and_emit_label(e_compiler* cc, u32 label_id)
-{
-  e_emit_ins(cc, (e_ins){ .label = { .opcode = EIR_OPCODE_LABEL, .id = label_id } });
-  u32 destination_offset = cc->ninstructions - 1; /* interpreter loop increments ip, jump to instruction before our target */
-
-  ecc_label_jumps_table* label = append_label_entry(cc->arena, label_id, cc->label_table);
-
-  if (!label->jumps_target_offsets) {
-    *label = (ecc_label_jumps_table){
-      .label_id             = label_id,
-      .defined              = true,
-      .label_offset         = destination_offset,
-      .jumps_count          = 0,
-      .jumps_capacity       = init_jumps_capacity,
-      .jumps_target_offsets = e_xalloc(init_jumps_capacity, sizeof(u32)),
-    };
-    return;
-  }
-
-  label->defined      = true;
-  label->label_offset = destination_offset;
-
-  for (u32 i = 0; i < label->jumps_count; i++) {
-    u32    patch_offset = label->jumps_target_offsets[i];
-    e_ins* ins          = &cc->instructions[patch_offset];
-    switch (ins->opcode) {
-      case EIR_OPCODE_JMP: ins->jmp.target = destination_offset; break;
-      case EIR_OPCODE_JZ: ins->jz.target = destination_offset; break;
-      case EIR_OPCODE_JNZ: ins->jnz.target = destination_offset; break;
-      default: break;
-    }
-  }
-
-  // patched every jump up.
-  label->jumps_count = 0;
-}
+{ e_emit_ins(cc, (e_ins){ .label = { .opcode = EIR_OPCODE_LABEL, .id = label_id } }); }
 
 static inline RETURNS_ERRCODE int
 compiler_make_fork(const e_compiler* old_c, e_compiler* new_c)
@@ -615,7 +534,6 @@ compiler_make_fork(const e_compiler* old_c, e_compiler* new_c)
     .lit_table         = old_c->lit_table,
     .builtin_var_table = old_c->builtin_var_table,
     .function_table    = old_c->function_table,
-    .label_table       = old_c->label_table,
     .struct_table      = old_c->struct_table,
     .next_label        = old_c->next_label,
     .next_global       = old_c->next_global,
@@ -633,7 +551,7 @@ compiler_make_fork(const e_compiler* old_c, e_compiler* new_c)
 }
 
 static inline void
-compiler_join_fork(const e_compiler* copy, e_compiler* cc)
+compiler_join_fork(e_compiler* copy, e_compiler* cc)
 {
   /* The tables are stored on the main compile function stack. Their address SHOULD NOT change. */
   if (cc->lit_table != copy->lit_table || cc->builtin_var_table != copy->builtin_var_table || cc->function_table != copy->function_table
@@ -1286,23 +1204,39 @@ compile_function_definition(e_compiler* cc, int node)
 
   defer_pop_scope(&fork);
 
-  compiler_join_fork(&fork, cc);
-
   /* perform register allocation. rewrites our instruction stream */
   era_simple_register_allocation_pass(&fork);
 
   if (cc->info->opt_level >= 2) {
-    codegraph cfg = { 0 };
-    e             = codegraph_init(&fork, &cfg);
-    if (e < 0) goto ERR;
+    /* constant folding needs a clean instruction stream */
+    strip_noops(&fork);
 
-    codegraph_redundant_move_elimination(&fork, &cfg);
-    codegraph_dead_store_elimination(&fork, &cfg);
+    for (u32 pass = 0; pass < 3; pass++) {
+      codegraph cfg = { 0 };
+      e             = codegraph_init(&fork, &cfg);
+      if (e < 0) goto ERR;
+
+      codegraph_constant_folding(&fork, &cfg);
+      codegraph_redundant_move_elimination(&fork, &cfg);
+      codegraph_dead_store_elimination(&fork, &cfg);
+
+      codegraph_free(&fork, &cfg);
+    }
+    // patch_out_labels(&fork);
     remove_jmp_where_it_would_fallthrough(&fork);
-    patch_out_labels(&fork);
 
-    codegraph_free(&fork, &cfg);
+    strip_noops(&fork);
+
+    /* define all labels at the end so we have free reign over where instructions go. */
+    label_pass(&fork);
+
+    // patch_out_labels(&fork); // turns LABELs into NOPs
+    // strip_noops_and_remap_jumps(&fork);
+  } else {
+    label_pass(&fork);
   }
+
+  compiler_join_fork(&fork, cc);
 
   /* write our info to the table */
   ecc_function f = {
@@ -2865,6 +2799,15 @@ codegraph_init(e_compiler* cc, codegraph* dst)
   const e_ins* code      = cc->instructions;
   u32          code_size = cc->ninstructions;
 
+  /* label ID -> Label instruction index */
+  u32* label_map = e_arnalloc(cc->arena, cc->next_label * sizeof(u32));
+  memset(label_map, 0xFF, cc->next_label * sizeof(u32));
+
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins* ins = &cc->instructions[i];
+    if (ins->opcode == EIR_OPCODE_LABEL) label_map[ins->label.id] = i;
+  }
+
   /* Find all registers used for returning values */
   bool return_live[E_REG_COUNT] = { 0 };
   for (u32 i = 0; i < code_size; i++) {
@@ -2882,10 +2825,11 @@ codegraph_init(e_compiler* cc, codegraph* dst)
     const e_ins* ins = &code[i];
 
     if (ins->opcode == EIR_OPCODE_JMP) {
-      u32 target = ins->jmp.target;
+      u32 target = label_map[ins->jmp.target];
       if (target < cc->ninstructions) { blk_header[target] = true; }
     } else if (ins->opcode == EIR_OPCODE_JZ || ins->opcode == EIR_OPCODE_JNZ) {
-      u32 target = ins->cj.target;
+      u32 target = label_map[ins->cj.target];
+
       if (target < code_size) blk_header[target] = true;
       if (i + 1 < code_size) blk_header[i + 1] = true; // fallthrough
     }
@@ -2925,7 +2869,7 @@ codegraph_init(e_compiler* cc, codegraph* dst)
 
     /* jump to another code block */
     if (last_ins->opcode == EIR_OPCODE_JMP) {
-      u32 target_ip = last_ins->jmp.target;
+      u32 target_ip = label_map[last_ins->jmp.target];
       if (target_ip < code_size) {
         u32 target_block                    = ip_to_block[target_ip];
         blk->successors[blk->nsuccessors++] = target_block;
@@ -2937,7 +2881,7 @@ codegraph_init(e_compiler* cc, codegraph* dst)
       if (i + 1 < nblocks) blk->successors[blk->nsuccessors++] = i + 1;
 
       // the branch taken (if condition were to be true)
-      u32 target_ip = last_ins->cj.target;
+      u32 target_ip = label_map[last_ins->cj.target];
       if (target_ip < code_size) {
         u32 target_block                    = ip_to_block[target_ip];
         blk->successors[blk->nsuccessors++] = target_block;
@@ -3099,31 +3043,36 @@ is_instruction_impure(eir_opcode op)
 static void
 codegraph_dead_store_elimination(e_compiler* cc, const codegraph* cfg)
 {
-  for (u32 i = 0; i < cfg->nblocks; i++) {
-    codeblock* blk = &cfg->blocks[i];
+  bool changed = true;
+  while (changed) {
+    changed = false;
 
-    bool live[E_REG_COUNT] = { 0 };
-    memcpy(live, blk->live_out, sizeof(blk->live_out));
+    for (u32 i = 0; i < cfg->nblocks; i++) {
+      codeblock* blk = &cfg->blocks[i];
 
-    for (i64 ip = blk->end; ip >= blk->start; ip--) {
-      e_ins* ins = &cc->instructions[ip];
+      bool live[E_REG_COUNT] = { 0 };
+      memcpy(live, blk->live_out, sizeof(blk->live_out));
 
-      u32 dst     = UINT32_MAX;
-      u32 src[32] = { 0 };
-      u32 nsrc    = 0;
+      for (i64 ip = blk->end; ip >= blk->start; ip--) {
+        e_ins* ins = &cc->instructions[ip];
 
-      dst  = get_destination_reg(ins);
-      nsrc = get_source_registers(ins, src);
+        u32 dst     = UINT32_MAX;
+        u32 src[32] = { 0 };
+        u32 nsrc    = 0;
 
-      if (!is_instruction_impure(ins->opcode) && (dst != UINT32_MAX && !live[dst])) {
-        /* dead store */
-        ins->opcode = EIR_OPCODE_NOP;
-        continue;
+        dst  = get_destination_reg(ins);
+        nsrc = get_source_registers(ins, src);
+
+        if (!is_instruction_impure(ins->opcode) && (dst != UINT32_MAX && !live[dst])) {
+          /* dead store */
+          ins->opcode = EIR_OPCODE_NOP;
+          continue;
+        }
+
+        /* mark all sources as live */
+        for (u32 s = 0; s < nsrc; s++) { live[src[s]] = true; }
+        if (dst != UINT32_MAX) live[dst] = false;
       }
-
-      /* mark all sources as live */
-      for (u32 s = 0; s < nsrc; s++) { live[src[s]] = true; }
-      if (dst != UINT32_MAX) live[dst] = false;
     }
   }
 }
@@ -3257,13 +3206,21 @@ codegraph_redundant_move_elimination(e_compiler* cc, const codegraph* cfg)
 static int
 remove_jmp_where_it_would_fallthrough(e_compiler* cc)
 {
+  u32* label_map = e_arnalloc(cc->arena, cc->next_label * sizeof(u32));
+  memset(label_map, 0xFF, cc->next_label * sizeof(u32)); // UINT32_MAX = not found
+
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins* ins = &cc->instructions[i];
+    if (ins->opcode == EIR_OPCODE_LABEL) label_map[ins->label.id] = i;
+  }
+
   /* find a jump instruction */
   for (u32 i = 0; i < cc->ninstructions; i++) {
     e_ins* ins = &cc->instructions[i];
 
     if (ins->opcode != EIR_OPCODE_JMP) continue;
 
-    u32 target = ins->jmp.target;
+    u32 target = label_map[ins->jmp.target];
     if (i > target) continue; /* skip backward jumps */
 
     /* check if there is nothing but noops in between the jump and the target */
@@ -3282,6 +3239,8 @@ remove_jmp_where_it_would_fallthrough(e_compiler* cc)
     /* jmp is useless. noop it. */
     if (useless) { ins->opcode = EIR_OPCODE_NOP; }
   }
+
+  e_arnfree(cc->arena, label_map);
 
   return 0;
 }
@@ -3302,6 +3261,289 @@ codegraph_free(e_compiler* cc, codegraph* graph)
 {
 }
 
+static inline bool
+instruction_produces_constant_value(eir_opcode op)
+{
+  switch (op) {
+    case EIR_OPCODE_MOVI:
+    case EIR_OPCODE_MOVF:
+    case EIR_OPCODE_LOADK: return true;
+    default: return false;
+  }
+}
+
+static inline int
+get_instruction_constant_result(const e_compiler* cc, const e_ins* i, e_var* result)
+{
+  switch (i->opcode) {
+    case EIR_OPCODE_MOVI: {
+      *result = e_var_from_int(i->movi.value);
+      return 0;
+    }
+    case EIR_OPCODE_MOVF: {
+      *result = e_var_from_float(i->movf.value);
+      return 0;
+    }
+    case EIR_OPCODE_LOADK: {
+      u32 id = i->loadk.id;
+      for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
+        e_var* lit = &cc->lit_table->literals[j];
+        if (cc->lit_table->literal_hashes[j] != id) continue;
+
+        e_var_shallow_cpy(lit, result);
+        e_var_acquire(result);
+
+        return 0;
+      }
+      return -1;
+    }
+    default: break;
+  }
+  return -1;
+}
+
+static inline e_ins*
+next_non_noop_instruction(e_compiler* cc, u32* i)
+{
+  e_ins* ins = &cc->instructions[(*i)++];
+  while (ins->opcode == EIR_OPCODE_NOP || ins->opcode == EIR_OPCODE_LABEL) {
+    ins = &cc->instructions[(*i)++];
+    if (*i > cc->ninstructions) return NULL;
+  }
+
+  return ins;
+}
+
+static void
+codegraph_constant_folding(e_compiler* cc, const codegraph* cfg)
+{
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    /**
+     * Read in 3 instructions at a time to find the following pattern:
+     * movi a, 20
+     * movf b, 30.0
+     * neq dst=r0 a=a b=b
+     *
+     * and replace them with a single
+     * loadk [true]
+     *
+     * We first do binary operations and then unary operations (slightly faster and cleaner).
+     */
+    for (u32 i = 0; i < cc->ninstructions; i++) {
+      if (i + 2 >= cc->ninstructions) break;
+
+      e_ins* one   = &cc->instructions[i];
+      e_ins* two   = &cc->instructions[i + 1];
+      e_ins* three = &cc->instructions[i + 2];
+
+      if (!instruction_produces_constant_value(one->opcode) || !instruction_produces_constant_value(two->opcode)) continue;
+      // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
+      if (!is_instruction_binary_operation(three->opcode)) continue;
+
+      /* check if three depends on one and (or two) */
+      u32 three_sources[32];
+      get_source_registers(three, three_sources);
+
+      u32 one_dst = get_destination_reg(one);
+      u32 two_dst = get_destination_reg(two);
+
+      bool found_one = three_sources[0] == one_dst;
+      bool found_two = three_sources[1] == two_dst;
+
+      /* if in reverse order, for some reason, swap one and two */
+      if (three_sources[1] == one_dst && three_sources[0] == two_dst) {
+        e_ins* tmp = one;
+        one        = two;
+        two        = tmp;
+
+        u32 tmp_dst = one_dst;
+        one_dst     = two_dst;
+        two_dst     = tmp_dst;
+
+        found_one = true;
+        found_two = true;
+      }
+
+      if (!found_one || !found_two) continue;
+
+      e_var one_result = E_NULLVAR;
+      e_var two_result = E_NULLVAR;
+
+      if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+      if (get_instruction_constant_result(cc, two, &two_result) < 0) continue;
+
+      e_var result = operate(one_result, two_result, three->opcode);
+
+      /* replace the three instructions with a single loadk */
+
+      if (add_literal_to_track(cc, &result) < 0) continue;
+
+      one->opcode = EIR_OPCODE_NOP;
+      two->opcode = EIR_OPCODE_NOP;
+
+      u32 three_dst = get_destination_reg(three);
+
+      three->opcode    = EIR_OPCODE_LOADK;
+      three->loadk.id  = e_var_hash(&result);
+      three->loadk.dst = three_dst;
+
+      changed = true;
+    }
+
+    /* now do unary operations */
+    for (u32 i = 0; i < cc->ninstructions; i++) {
+      if (i + 2 >= cc->ninstructions) break;
+
+      e_ins* one = &cc->instructions[i];
+      e_ins* two = &cc->instructions[i + 1];
+
+      if (!instruction_produces_constant_value(one->opcode)) continue;
+
+      u32 one_dst = get_destination_reg(one);
+
+      /* special case, conditional jumps */
+      if ((two->opcode == EIR_OPCODE_JZ || two->opcode == EIR_OPCODE_JNZ) && two->cj.condition == one_dst) {
+        /* load the constant */
+        e_var one_result = E_NULLVAR;
+        if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+
+        bool b = e_cast_to_bool(&one_result);
+
+        if (two->opcode == EIR_OPCODE_JZ) {
+          if (b) { /* condition always false, fallthrough */
+            two->opcode = EIR_OPCODE_NOP;
+          } else { /* condition always true, just jump to it */
+            two->opcode     = EIR_OPCODE_JMP;
+            two->jmp.target = two->cj.target;
+          }
+        }
+        if (two->opcode == EIR_OPCODE_JNZ) {
+          if (!b) { /* condition always false, fallthrough */
+            two->opcode = EIR_OPCODE_NOP;
+          } else { /* condition always true, just jump to it */
+            two->opcode     = EIR_OPCODE_JMP;
+            two->jmp.target = two->cj.target;
+          }
+        }
+        continue;
+      }
+
+      // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
+      if (!is_instruction_unary_operation(two->opcode)) continue;
+
+      /* check if two depends on one */
+      u32 two_sources[32];
+      get_source_registers(two, two_sources);
+
+      bool found_one = two_sources[0] == one_dst;
+
+      if (!found_one) continue;
+
+      e_var one_result = E_NULLVAR;
+      if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+
+      e_var result = operate(E_NULLVAR, one_result, two->opcode);
+
+      /* replace the three instructions with a single loadk */
+
+      if (add_literal_to_track(cc, &result) < 0) continue;
+
+      one->opcode = EIR_OPCODE_NOP;
+
+      u32 two_dst = get_destination_reg(two);
+
+      two->opcode    = EIR_OPCODE_LOADK;
+      two->loadk.id  = e_var_hash(&result);
+      two->loadk.dst = two_dst;
+
+      changed = true;
+    }
+  }
+}
+
+static int
+strip_noops(e_compiler* cc)
+{
+  /* just remove them. label pass will handle the indices later. */
+  e_ins* copy = e_arnalloc(cc->arena, sizeof(e_ins) * cc->ninstructions);
+  memcpy(copy, cc->instructions, sizeof(e_ins) * cc->ninstructions);
+
+  u32 ctr = 0;
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    if (copy[i].opcode == EIR_OPCODE_NOP) continue;
+
+    cc->instructions[ctr++] = copy[i];
+  }
+
+  cc->ninstructions = ctr;
+
+  return 0;
+}
+
+static int
+strip_noops_and_remap_jumps(e_compiler* cc)
+{
+  u32* remap = e_arnalloc(cc->arena, cc->ninstructions * sizeof(u32));
+  memset(remap, 0xFF, cc->ninstructions * sizeof(u32));
+
+  /* Patch all jump targets through the remap table */
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins* ins = &cc->instructions[i];
+    switch (ins->opcode) {
+      case EIR_OPCODE_JMP:
+        if (ins->jmp.target != UINT32_MAX) ins->jmp.target = remap[ins->jmp.target];
+        break;
+      case EIR_OPCODE_JZ:
+      case EIR_OPCODE_JNZ:
+        if (ins->cj.target != UINT32_MAX) ins->cj.target = remap[ins->cj.target];
+        break;
+      default: break;
+    }
+  }
+
+  return 0;
+}
+
+static int
+label_pass(e_compiler* cc)
+{
+  u32* label_map = e_arnalloc(cc->arena, cc->next_label * sizeof(u32));
+  memset(label_map, 0xFF, cc->next_label * sizeof(u32)); // UINT32_MAX = not found
+
+  e_ins* copy = e_arnalloc(cc->arena, sizeof(e_ins) * cc->ninstructions);
+  memcpy(copy, cc->instructions, sizeof(e_ins) * cc->ninstructions);
+
+  u32 ctr = 0;
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins* ins = &cc->instructions[i];
+
+    if (copy[i].opcode == EIR_OPCODE_NOP) continue;
+    if (ins->opcode == EIR_OPCODE_LABEL) {
+      label_map[ins->label.id] = ctr - 1;
+      continue;
+    }
+
+    cc->instructions[ctr++] = copy[i];
+  }
+
+  cc->ninstructions = ctr;
+
+  /* patch jumps */
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    e_ins* ins = &cc->instructions[i];
+    switch (ins->opcode) {
+      case EIR_OPCODE_JMP: ins->jmp.target = label_map[ins->jmp.target]; break;
+      case EIR_OPCODE_JZ:
+      case EIR_OPCODE_JNZ: ins->cj.target = label_map[ins->cj.target]; break;
+      default: break;
+    }
+  }
+
+  return 0;
+}
+
 int
 e_compile(const ecc_info* info, e_compilation_result* result)
 {
@@ -3311,7 +3553,6 @@ e_compile(const ecc_info* info, e_compilation_result* result)
   ecc_literal_table           lit_table         = { 0 };
   ecc_builtin_variables_table builtin_var_table = { 0 };
   ecc_function_table          func_table        = { 0 };
-  ecc_label_table             label_table       = { 0 };
   ecc_struct_table            struct_table      = { 0 };
   e_compiler                  cc                = { 0 };
 
@@ -3375,16 +3616,6 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     goto ERR;
   }
 
-  label_table = (ecc_label_table){
-    .labels_count    = 0,
-    .labels_capacity = init_label_jump_capacity,
-    .labels          = e_xalloc(init_label_jump_capacity, sizeof(ecc_label_jumps_table)),
-  };
-  if (!label_table.labels) {
-    e = -1;
-    goto ERR;
-  }
-
   struct_table = (ecc_struct_table){
     .structs_count    = 0,
     .structs_capacity = init_structs_capacity,
@@ -3400,7 +3631,6 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     .lit_table         = &lit_table,
     .builtin_var_table = &builtin_var_table,
     .function_table    = &func_table,
-    .label_table       = &label_table,
     .struct_table      = &struct_table,
     .next_vreg         = E_REG_GENERAL_BEGIN,
     .next_global       = 0,
@@ -3456,8 +3686,6 @@ e_compile(const ecc_info* info, e_compilation_result* result)
     }
   }
 
-  for (u32 i = 0; i < label_table.labels_count; i++) { free(label_table.labels[i].jumps_target_offsets); }
-  e_xfree((void**)&label_table.labels);
   e_xfree((void**)&namespace_stack.namespaces);
   // scope_pop(&cc);
 
@@ -3478,8 +3706,6 @@ ERR: /* Seperate from successful return path. We free everything here, indiscrim
     free(func_table.functions[i].code);
   }
   free(func_table.functions);
-  for (u32 i = 0; i < label_table.labels_count; i++) free(label_table.labels[i].jumps_target_offsets);
-  free(label_table.labels);
   free(cc.instructions);
   return e ? e : -1;
 }
