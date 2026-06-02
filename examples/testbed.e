@@ -45,14 +45,14 @@ fn main() {
    let vector = vec2(1.0, 0.0);
    vector[0] = 2.0;
    if (vector[0] != 2.0 || vector[1] != 0.0) {
-      io::println(io::STDERR, "Vector indexing failed. Expected <x=2.0, y=1.0>, but got: ", vector);
+      io::println(io::STDERR, "Vector indexing failed. Expected <x=2.0, y=0.0>, but got: ", vector);
       error = true;
    }
 
    vector.x = 10.0;
    vector.y += 10.0;
    if (vector != vec2(10.0, 10.0)) {
-      io::println(io::STDERR, "Vector indexing & member access failed");
+      io::println(io::STDERR, "Vector indexing & member access failed. Expected <10, 10> but got: ", vector);
       error = true;
    }
 

@@ -487,21 +487,21 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_JMP: {
         u32 target = ins.jmp.target;
 
-        ip->val.i = (int)(target);
+        ip->val.i = (int)(target - 1);
         break;
       }
       case EIR_OPCODE_JZ: {
         u32 target = ins.cj.target;
         u32 cond   = ins.cj.condition;
 
-        if (!e_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target); }
+        if (!e_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); }
         break;
       }
       case EIR_OPCODE_JNZ: {
         u32 target = ins.cj.target;
         u32 cond   = ins.cj.condition;
 
-        if (e_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target); }
+        if (e_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); }
         break;
       }
 

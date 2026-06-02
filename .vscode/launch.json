@@ -15,7 +15,7 @@
       "program": "${workspaceRoot}/build/ec",
       "args": [
         "-O3",
-        "examples/example.e",
+        "examples/optimizer_test.e",
         "-o",
         "build/test"
       ],

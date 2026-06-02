@@ -31,4 +31,5 @@ fn main() {
    a = 40;
    a = 40;
    if (a != 40) println("wtf");
+   if (40 != a) println("wtf");
 }

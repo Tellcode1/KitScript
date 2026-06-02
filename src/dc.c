@@ -247,9 +247,9 @@ e_print_instruction(e_ins i, const e_compilation_result* r, FILE* f)
       break;
 
     case EIR_OPCODE_LABEL: fprintf(f, "label id=%u\n", i.label.id); break;
-    case EIR_OPCODE_JMP: fprintf(f, "jmp target=%u\n", i.jmp.target + 1); break;
-    case EIR_OPCODE_JZ: fprintf(f, "jz target=%u, condition=%s\n", i.jz.target + 1, get_register_name(i.jz.condition, buf0)); break;
-    case EIR_OPCODE_JNZ: fprintf(f, "jnz target=%u, condition=%s\n", i.jnz.target + 1, get_register_name(i.jnz.condition, buf0)); break;
+    case EIR_OPCODE_JMP: fprintf(f, "jmp target=%u\n", i.jmp.target); break;
+    case EIR_OPCODE_JZ: fprintf(f, "jz target=%u, condition=%s\n", i.jz.target, get_register_name(i.jz.condition, buf0)); break;
+    case EIR_OPCODE_JNZ: fprintf(f, "jnz target=%u, condition=%s\n", i.jnz.target, get_register_name(i.jnz.condition, buf0)); break;
     case EIR_OPCODE_MEMBER_ACCESS:
       fprintf(
           f,
