@@ -19,7 +19,7 @@ add_free_page(size_t size, e_arena* arena)
   // Round to page size
   size = ((size + E_PAGE_SIZE - 1) / E_PAGE_SIZE) * E_PAGE_SIZE;
 
-  e_arena_page* page = (e_arena_page*)e_xalloc(1, size);
+  e_arena_page* page = (e_arena_page*)e_aligned_malloc(size, 32);
   if (page == NULL) return -1;
 
   page->size = size - sizeof(e_arena_page); // size - metadata_size
@@ -79,7 +79,7 @@ e_arnalloc(e_arena* a, size_t size)
 
   /* can't fit in regular page. */
   if (total > (E_PAGE_SIZE - sizeof(e_arena_page))) {
-    e_arena_page* page = (e_arena_page*)e_xalloc(1, sizeof(e_arena_page) + total);
+    e_arena_page* page = (e_arena_page*)e_aligned_malloc(sizeof(e_arena_page) + total, 32);
     if (!page) return NULL;
 
     page->size = total;
@@ -154,13 +154,13 @@ e_arena_free(e_arena* arena)
   e_arena_page* next = arena->current;
   while (next != NULL) {
     e_arena_page* new_next = next->next;
-    free(next);
+    e_aligned_free(next);
     next = new_next;
   }
   next = arena->free_pages;
   while (next != NULL) {
     e_arena_page* new_next = next->next;
-    free(next);
+    e_aligned_free(next);
     next = new_next;
   }
   memset(arena, 0, sizeof *arena);
