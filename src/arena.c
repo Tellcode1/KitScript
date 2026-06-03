@@ -19,7 +19,7 @@ add_free_page(size_t size, e_arena* arena)
   // Round to page size
   size = ((size + E_PAGE_SIZE - 1) / E_PAGE_SIZE) * E_PAGE_SIZE;
 
-  e_arena_page* page = (e_arena_page*)e_aligned_malloc(size, 32);
+  e_arena_page* page = (e_arena_page*)e_xalloc(1, size);
   if (page == NULL) return -1;
 
   page->size = size - sizeof(e_arena_page); // size - metadata_size
@@ -79,7 +79,7 @@ e_arnalloc(e_arena* a, size_t size)
 
   /* can't fit in regular page. */
   if (total > (E_PAGE_SIZE - sizeof(e_arena_page))) {
-    e_arena_page* page = (e_arena_page*)e_aligned_malloc(sizeof(e_arena_page) + total, 32);
+    e_arena_page* page = (e_arena_page*)e_xalloc(1, sizeof(e_arena_page) + total);
     if (!page) return NULL;
 
     page->size = total;
@@ -99,9 +99,9 @@ e_arnalloc(e_arena* a, size_t size)
   e_arena_page* fits = a->current;
 
   // If current pages doesn't meet our requirements,
-  // Create an link a new one
+  // Create and link a new one
 
-  if (fits == NULL || (fits->size - fits->head) < total) {
+  if (fits == NULL || (fits->size - fits->head) < total + (E_ARENA_MINIMUM_ALIGNMENT - 1)) {
     fits = get_and_unmark_free_page(a, total);
     if (!fits) return NULL; // FAILURE!
   }
@@ -132,6 +132,8 @@ e_arnalloc(e_arena* a, size_t size)
     (void)e;
   }
 
+  memset(ptr, 0, size);
+
   return ptr;
 }
 
@@ -154,13 +156,13 @@ e_arena_free(e_arena* arena)
   e_arena_page* next = arena->current;
   while (next != NULL) {
     e_arena_page* new_next = next->next;
-    e_aligned_free(next);
+    free(next);
     next = new_next;
   }
   next = arena->free_pages;
   while (next != NULL) {
     e_arena_page* new_next = next->next;
-    e_aligned_free(next);
+    free(next);
     next = new_next;
   }
   memset(arena, 0, sizeof *arena);
@@ -204,5 +206,8 @@ e_arnrealloc(e_arena* a, void* top, size_t old_size, size_t new_size)
 void
 e_arnfree(e_arena* a, void* ptr)
 {
-  if (ptr == a->top) { a->current->head -= a->top_size; }
+  if (ptr == a->top) {
+    if (a->top_size > a->current->head) a->current->head = 0;
+    else a->current->head -= a->top_size;
+  }
 }

@@ -91,9 +91,10 @@ static void               codegraph_free(e_compiler* cc, codegraph* graph);
 static void codegraph_dead_store_elimination(e_compiler* cc, codegraph* cfg);
 static void codegraph_constant_folding(e_compiler* cc, const codegraph* cfg);
 static int  codegraph_preliminary_dead_store_elimination(e_compiler* cc, const codegraph* cfg);
-static int  codegraph_redundant_move_elimination(e_compiler* cc, const codegraph* cfg);
-static void codegraph_eliminate_unreachable_code(e_compiler* cc, const codegraph* cfg);
-static void codegraph_constant_propogation(e_compiler* cc, const codegraph* cfg);
+static int  codegraph_redundant_move_elimination(e_compiler* cc, codegraph* cfg);
+static void codegraph_eliminate_unreachable_code(e_compiler* cc, codegraph* cfg);
+static void codegraph_constant_propagation(e_compiler* cc, codegraph* cfg);
+static void codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg);
 
 static void opt_inline_function_calls(e_compiler* cc);
 
@@ -775,9 +776,7 @@ emit_lvalue_load(e_compiler* cc, val_t* lv)
       e_vreg_t var_reg = scope_lookup_reg(cc, lv->val.var.id);
       if (var_reg < 0) return -1;
 
-      e_vreg_t dst = vreg_alloc(cc);
-      e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = dst, .src = var_reg } });
-      return dst;
+      return var_reg;
     }
 
     case E_LVAL_GVAR: {
@@ -1014,6 +1013,8 @@ compile_and_push_literal_variable(e_compiler* cc, const e_var* v)
     return dst;
   }
 
+  if (cc->info->opt_level >= 1 && v->type == E_VARTYPE_NULL) { return E_REG_NIL; }
+
   /* Search for the literal in our table. */
   u32 hash = e_var_hash(v);
 
@@ -1066,8 +1067,8 @@ compile_list(e_compiler* cc, int node)
 
   /* remove spilled elements from the stack */
   for (u32 i = 16; i < nelems; i++) {
-    /* pop repeatedly into tmp1 */
-    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP1 } });
+    /* pop repeatedly into tmp */
+    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP } });
   }
 
   return dst;
@@ -1116,8 +1117,8 @@ compile_map(e_compiler* cc, int node)
 
   /* Cleanup the stack. */
   for (u32 i = (E_REG_ARG_COUNT / 2); i < npairs; i++) {
-    /* pop repeatedly into tmp1 */
-    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP1 } });
+    /* pop repeatedly into tmp */
+    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP } });
   }
 
   return dst;
@@ -1227,26 +1228,12 @@ compile_function_definition(e_compiler* cc, int node)
       e             = codegraph_init(&fork, &cfg);
       if (e < 0) goto ERR;
 
-      codegraph_build_successor_list(&fork, &cfg);
-      codegraph_liveliness_analysis(&fork, &cfg);
-
       // codegraph_preliminary_dead_store_elimination(&fork, &cfg);
+      codegraph_local_copy_propagation(&fork, &cfg);
       codegraph_dead_store_elimination(&fork, &cfg);
-
-      codegraph_build_successor_list(&fork, &cfg);
-      codegraph_liveliness_analysis(&fork, &cfg);
-
-      // codegraph_constant_propogation(&fork, &cfg);
+      codegraph_constant_propagation(&fork, &cfg);
       codegraph_constant_folding(&fork, &cfg);
-
-      codegraph_build_successor_list(&fork, &cfg);
-      codegraph_liveliness_analysis(&fork, &cfg);
-
       codegraph_redundant_move_elimination(&fork, &cfg);
-
-      codegraph_build_successor_list(&fork, &cfg);
-      codegraph_liveliness_analysis(&fork, &cfg);
-
       codegraph_eliminate_unreachable_code(&fork, &cfg);
 
       codegraph_free(&fork, &cfg);
@@ -1755,8 +1742,8 @@ compile_function_call(e_compiler* cc, int node)
 
   /* Cleanup the stack. */
   for (u32 i = E_REG_ARG_COUNT; i < nargs; i++) {
-    /* pop repeatedly into tmp1 */
-    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP1 } });
+    /* pop repeatedly into tmp */
+    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP } });
   }
 
   return dst;
@@ -3005,10 +2992,10 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
     if (blk->defines) e_arnfree(cc->arena, blk->defines);
     if (blk->uses) e_arnfree(cc->arena, blk->uses);
 
-    blk->uses     = e_arnalloc(cc->arena, nvregs);
-    blk->defines  = e_arnalloc(cc->arena, nvregs);
-    blk->live_in  = e_arnalloc(cc->arena, nvregs);
-    blk->live_out = e_arnalloc(cc->arena, nvregs);
+    blk->uses     = e_arnalloc(cc->arena, nvregs * sizeof(bool));
+    blk->defines  = e_arnalloc(cc->arena, nvregs * sizeof(bool));
+    blk->live_in  = e_arnalloc(cc->arena, nvregs * sizeof(bool));
+    blk->live_out = e_arnalloc(cc->arena, nvregs * sizeof(bool));
 
     memset(blk->defines, 0, nvregs);
     memset(blk->uses, 0, nvregs);
@@ -3019,25 +3006,25 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
   for (u32 i = 0; i < dst->nblocks; i++) {
     codeblock* blk = &dst->blocks[i];
 
-    bool* defined_so_far = e_arnalloc(cc->arena, nvregs);
-    memset(defined_so_far, 0, nvregs);
+    bool* defined_so_far = e_arnalloc(cc->arena, nvregs * sizeof(bool));
+    memset(defined_so_far, 0, nvregs * sizeof(bool));
 
     for (u32 ip = blk->start; ip <= blk->end; ip++) {
       e_ins ins = cc->instructions[ip];
 
-      u32 dst = get_destination_reg(&ins);
+      u32 dst_reg = get_destination_reg(&ins);
 
       u32 srcs[32] = { 0 };
       u32 nsrcs    = get_source_registers(&ins, srcs);
 
-      for (u32 i = 0; i < nsrcs; i++) {
-        u32 r = srcs[i];
+      for (u32 j = 0; j < nsrcs; j++) {
+        u32 r = srcs[j];
         if (r < nvregs && !defined_so_far[r]) blk->uses[r] = true;
       }
 
-      if (dst != UINT32_MAX && dst < nvregs) {
-        blk->defines[dst]   = true;
-        defined_so_far[dst] = true;
+      if (dst_reg != UINT32_MAX && dst_reg < nvregs) {
+        blk->defines[dst_reg]   = true;
+        defined_so_far[dst_reg] = true;
       }
     }
 
@@ -3045,7 +3032,7 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
   }
 
   /* Find all registers used for returning values */
-  bool* return_live = e_arnalloc(cc->arena, nvregs);
+  bool* return_live = e_arnalloc(cc->arena, nvregs * sizeof(bool));
   for (u32 i = 0; i < code_size; i++) {
     if (code[i].opcode == EIR_OPCODE_RET) return_live[code[i].ret.return_value] = true;
   }
@@ -3103,6 +3090,8 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
       e_arnfree(cc->arena, new_live_out);
     }
   }
+
+  e_arnfree(cc->arena, return_live);
 
   return 0;
 }
@@ -3197,6 +3186,9 @@ is_instruction_impure(eir_opcode op)
 static void
 codegraph_dead_store_elimination(e_compiler* cc, codegraph* cfg)
 {
+  codegraph_build_successor_list(cc, cfg);
+  codegraph_liveliness_analysis(cc, cfg);
+
   bool changed = true;
   while (changed) {
     changed = false;
@@ -3265,8 +3257,11 @@ replace_source_register(e_ins* ins, u32 old_reg, u32 new_reg)
 }
 
 static int
-codegraph_redundant_move_elimination(e_compiler* cc, const codegraph* cfg)
+codegraph_redundant_move_elimination(e_compiler* cc, codegraph* cfg)
 {
+  codegraph_build_successor_list(cc, cfg);
+  codegraph_liveliness_analysis(cc, cfg);
+
   /**
    * Find the pattern:
    * mov a, x
@@ -3624,75 +3619,75 @@ codegraph_constant_folding(e_compiler* cc, const codegraph* cfg)
 
       changed = true;
     }
+  }
 
-    /* now do unary operations */
-    for (u32 i = 0; i < cc->ninstructions; i++) {
-      if (i + 2 >= cc->ninstructions) break;
+  /* now do unary operations */
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    if (i + 2 >= cc->ninstructions) break;
 
-      e_ins* one = &cc->instructions[i];
-      e_ins* two = &cc->instructions[i + 1];
+    e_ins* one = &cc->instructions[i];
+    e_ins* two = &cc->instructions[i + 1];
 
-      if (!instruction_produces_constant_value(one->opcode)) continue;
+    if (!instruction_produces_constant_value(one->opcode)) continue;
 
-      u32 one_dst = get_destination_reg(one);
+    u32 one_dst = get_destination_reg(one);
 
-      /* special case, conditional jumps */
-      if ((two->opcode == EIR_OPCODE_JZ || two->opcode == EIR_OPCODE_JNZ) && two->cj.condition == one_dst) {
-        /* load the constant */
-        e_var one_result = E_NULLVAR;
-        if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
-
-        bool b = e_cast_to_bool(&one_result);
-
-        if (two->opcode == EIR_OPCODE_JZ) {
-          if (b) { /* condition always false, fallthrough */
-            two->opcode = EIR_OPCODE_NOP;
-          } else { /* condition always true, just jump to it */
-            two->opcode     = EIR_OPCODE_JMP;
-            two->jmp.target = two->cj.target;
-          }
-        }
-        if (two->opcode == EIR_OPCODE_JNZ) {
-          if (!b) { /* condition always false, fallthrough */
-            two->opcode = EIR_OPCODE_NOP;
-          } else { /* condition always true, just jump to it */
-            two->opcode     = EIR_OPCODE_JMP;
-            two->jmp.target = two->cj.target;
-          }
-        }
-        continue;
-      }
-
-      // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
-      if (!is_instruction_unary_operation(two->opcode)) continue;
-
-      /* check if two depends on one */
-      u32 two_sources[32];
-      get_source_registers(two, two_sources);
-
-      bool found_one = two_sources[0] == one_dst;
-
-      if (!found_one) continue;
-
+    /* special case, conditional jumps */
+    if ((two->opcode == EIR_OPCODE_JZ || two->opcode == EIR_OPCODE_JNZ) && two->cj.condition == one_dst) {
+      /* load the constant */
       e_var one_result = E_NULLVAR;
       if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
 
-      e_var result = operate(E_NULLVAR, one_result, two->opcode);
+      bool b = e_cast_to_bool(&one_result);
 
-      /* replace the three instructions with a single loadk */
-
-      if (add_literal_to_track(cc, &result) < 0) continue;
-
-      one->opcode = EIR_OPCODE_NOP;
-
-      u32 two_dst = get_destination_reg(two);
-
-      two->opcode    = EIR_OPCODE_LOADK;
-      two->loadk.id  = e_var_hash(&result);
-      two->loadk.dst = two_dst;
-
-      changed = true;
+      if (two->opcode == EIR_OPCODE_JZ) {
+        if (b) { /* condition always false, fallthrough */
+          two->opcode = EIR_OPCODE_NOP;
+        } else { /* condition always true, just jump to it */
+          two->opcode     = EIR_OPCODE_JMP;
+          two->jmp.target = two->cj.target;
+        }
+      }
+      if (two->opcode == EIR_OPCODE_JNZ) {
+        if (!b) { /* condition always false, fallthrough */
+          two->opcode = EIR_OPCODE_NOP;
+        } else { /* condition always true, just jump to it */
+          two->opcode     = EIR_OPCODE_JMP;
+          two->jmp.target = two->cj.target;
+        }
+      }
+      continue;
     }
+
+    // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
+    if (!is_instruction_unary_operation(two->opcode)) continue;
+
+    /* check if two depends on one */
+    u32 two_sources[32];
+    get_source_registers(two, two_sources);
+
+    bool found_one = two_sources[0] == one_dst;
+
+    if (!found_one) continue;
+
+    e_var one_result = E_NULLVAR;
+    if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+
+    e_var result = operate(E_NULLVAR, one_result, two->opcode);
+
+    /* replace the three instructions with a single loadk */
+
+    if (add_literal_to_track(cc, &result) < 0) continue;
+
+    one->opcode = EIR_OPCODE_NOP;
+
+    u32 two_dst = get_destination_reg(two);
+
+    two->opcode    = EIR_OPCODE_LOADK;
+    two->loadk.id  = e_var_hash(&result);
+    two->loadk.dst = two_dst;
+
+    changed = true;
   }
 }
 
@@ -3798,8 +3793,11 @@ is_constant_condition(e_compiler* cc, u32 start, e_vreg_t reg, bool* value)
 }
 
 static void
-codegraph_eliminate_unreachable_code(e_compiler* cc, const codegraph* cfg)
+codegraph_eliminate_unreachable_code(e_compiler* cc, codegraph* cfg)
 {
+  codegraph_build_successor_list(cc, cfg);
+  codegraph_liveliness_analysis(cc, cfg);
+
   bool* reachable = e_arnalloc(cc->arena, cfg->nblocks * sizeof(bool));
   memset(reachable, 0, cfg->nblocks * sizeof(bool));
   reachable[0] = true;
@@ -3856,8 +3854,11 @@ replace_move_with_constant_load(e_compiler* cc, const codegraph* cfg, e_ins* ins
 }
 
 static void
-codegraph_constant_propogation(e_compiler* cc, const codegraph* cfg)
+codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
 {
+  codegraph_build_successor_list(cc, cfg);
+  codegraph_liveliness_analysis(cc, cfg);
+
   e_var* regs         = e_arnalloc(cc->arena, cfg->nvregs * sizeof(e_var));
   bool*  values_known = e_arnalloc(cc->arena, cfg->nvregs * sizeof(bool));
 
@@ -3871,13 +3872,12 @@ codegraph_constant_propogation(e_compiler* cc, const codegraph* cfg)
     e_ins* ins = &cc->instructions[i];
 
     if (ins->opcode == EIR_OPCODE_CALL) {
-      /* we don't really know if the called function modified global state or not. be conservative. */
-      memset(values_known, 0, nvregs * sizeof(bool));
+      values_known[ins->call.dst] = false;
       continue;
     }
 
     /* impure instruction. flush state and move on. */
-    if (is_instruction_impure(ins->opcode)) {
+    if (ins->opcode != EIR_OPCODE_LABEL && is_instruction_impure(ins->opcode)) {
       /* this is the first optimization pass, assume jumps wreck all registers */
       memset(values_known, 0, nvregs * sizeof(bool));
       continue;
@@ -4016,6 +4016,118 @@ opt_inline_function_calls(e_compiler* cc)
 }
 
 static void
+codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg)
+{
+  codegraph_build_successor_list(cc, cfg);
+  codegraph_liveliness_analysis(cc, cfg);
+
+  u32* copy_map = e_arnalloc(cc->arena, cc->next_vreg * sizeof(u32));
+  for (u32 b = 0; b < cfg->nblocks; b++) {
+    codeblock* blk = &cfg->blocks[b];
+
+    for (u32 r = 0; r < cc->next_vreg; r++) copy_map[r] = r;
+
+    for (u32 ip = blk->start; ip <= blk->end; ip++) {
+      e_ins* ins = &cc->instructions[ip];
+      if (ins->opcode == EIR_OPCODE_NOP || ins->opcode == EIR_OPCODE_LABEL) continue;
+
+      switch (ins->opcode) {
+          /* getg, setg and movg  */
+        case EIR_OPCODE_MOV: ins->mov.src = copy_map[ins->mov.src]; break;
+
+        case EIR_OPCODE_MOVI:
+        case EIR_OPCODE_MOVF: /* values are not registers */
+        case EIR_OPCODE_GETG: break;
+
+        case EIR_OPCODE_SETG: ins->mov.src = copy_map[ins->mov.src]; break;
+
+        case EIR_OPCODE_MOVG:
+        case EIR_OPCODE_LOADK: /* id is not a register */ break;
+
+        case EIR_OPCODE_ADD:
+        case EIR_OPCODE_SUB:
+        case EIR_OPCODE_MUL:
+        case EIR_OPCODE_DIV:
+        case EIR_OPCODE_MOD:
+        case EIR_OPCODE_EXP:
+        case EIR_OPCODE_AND:
+        case EIR_OPCODE_OR:
+        case EIR_OPCODE_BAND:
+        case EIR_OPCODE_BOR:
+        case EIR_OPCODE_XOR:
+        case EIR_OPCODE_EQL:
+        case EIR_OPCODE_NEQ:
+        case EIR_OPCODE_LT:
+        case EIR_OPCODE_LTE:
+        case EIR_OPCODE_GT:
+        case EIR_OPCODE_GTE:
+          ins->binop.a = copy_map[ins->binop.a];
+          ins->binop.b = copy_map[ins->binop.b];
+          break;
+
+        case EIR_OPCODE_NOT:
+        case EIR_OPCODE_NEG:
+        case EIR_OPCODE_BNOT:
+        case EIR_OPCODE_DEC:
+        case EIR_OPCODE_INC: ins->unop.a = copy_map[ins->unop.a]; break;
+
+        /* can't rewrite argument vector */
+        case EIR_OPCODE_MK_LIST:
+        case EIR_OPCODE_MK_MAP:
+        case EIR_OPCODE_MK_STRUCT:
+        case EIR_OPCODE_CALL: break;
+
+        case EIR_OPCODE_INDEX:
+          ins->index.base  = copy_map[ins->index.base];
+          ins->index.index = copy_map[ins->index.index];
+          break;
+        case EIR_OPCODE_INDEX_ASSIGN:
+          ins->index_assign.value = copy_map[ins->index_assign.value];
+          ins->index_assign.index = copy_map[ins->index_assign.index];
+          ins->index_assign.base  = copy_map[ins->index_assign.base];
+          break;
+
+        case EIR_OPCODE_MEMBER_ACCESS: ins->member_access.base = copy_map[ins->member_access.base]; break;
+        case EIR_OPCODE_MEMBER_ASSIGN:
+          ins->member_assign.value = copy_map[ins->member_assign.value];
+          ins->member_assign.base  = copy_map[ins->member_assign.base];
+          break;
+        case EIR_OPCODE_RET: ins->ret.return_value = copy_map[ins->ret.return_value]; break;
+        case EIR_OPCODE_JZ:
+        case EIR_OPCODE_JNZ: ins->cj.condition = copy_map[ins->cj.condition]; break;
+        case EIR_OPCODE_PUSH: {
+          ins->push.reg = copy_map[ins->push.reg];
+          break;
+        }
+        // default: break;
+        case EIR_OPCODE_POP:
+        case EIR_OPCODE_NOP:
+        case EIR_OPCODE_LABEL:
+        case EIR_OPCODE_JMP: {
+          break;
+        }
+      }
+
+      u32 dst = get_destination_reg(ins);
+      if (dst != UINT32_MAX) {
+        if (ins->opcode == EIR_OPCODE_MOV) {
+          u32 src       = ins->mov.src;
+          copy_map[dst] = src;
+
+          /* commonly generated by the above */
+          if (dst == src) ins->opcode = EIR_OPCODE_NOP;
+        } else {
+          /* kill the old value */
+          copy_map[dst] = dst;
+        }
+      }
+    }
+  }
+
+  e_arnfree(cc->arena, copy_map);
+}
+
+static void
 forward_dead_moves(e_compiler* cc)
 {
   return;
@@ -4038,14 +4150,14 @@ forward_dead_moves(e_compiler* cc)
     }
     u32 limit = (redef_idx == UINT32_MAX) ? cc->ninstructions : redef_idx;
 
-    // Ensure src is not redefined in the range we will replace
     bool src_redefined = false;
     for (u32 j = i + 1; j < limit; j++) {
-      if (is_instruction_noop(cc->instructions[j].opcode)) continue;
+      const e_ins* look = &cc->instructions[j];
+      if (is_instruction_noop(look->opcode)) continue;
 
-      if (is_instruction_impure(cc->instructions[j].opcode)) break;
+      if (is_instruction_impure(look->opcode) && look->opcode != EIR_OPCODE_CALL) break;
 
-      u32 def = get_destination_reg(&cc->instructions[j]);
+      u32 def = get_destination_reg(look);
       if (def == src) {
         src_redefined = true;
         break;
@@ -4053,13 +4165,11 @@ forward_dead_moves(e_compiler* cc)
     }
     if (src_redefined) continue;
 
-    // Replace ALL occurrences of dst in the range [i+1, limit-1]
     bool any_replaced = false;
     for (u32 j = i + 1; j < limit; j++) {
       e_ins* ins = &cc->instructions[j];
       if (is_instruction_noop(ins->opcode)) continue;
 
-      // Check if this instruction reads dst
       u32  srcs[32];
       u32  nsrc     = get_source_registers(ins, srcs);
       bool uses_dst = false;
@@ -4069,9 +4179,11 @@ forward_dead_moves(e_compiler* cc)
           break;
         }
       }
+
+      /* doesn't use our destination, skip */
       if (!uses_dst) continue;
 
-      // Replace dst with src in the instruction's source operands
+      /* Replace dst with src in the instruction's source operands */
       switch (ins->opcode) {
         case EIR_OPCODE_MOV:
           if (ins->mov.src == dst) ins->mov.src = src;
@@ -4132,10 +4244,7 @@ forward_dead_moves(e_compiler* cc)
         case EIR_OPCODE_PUSH:
           if (ins->push.reg == dst) ins->push.reg = src;
           break;
-        default:
-          // Some instructions (CALL, MK_LIST, etc.) have no source registers
-          // that we can rewrite – skip them
-          break;
+        default: break;
       }
       any_replaced = true;
     }

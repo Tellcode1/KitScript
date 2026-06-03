@@ -204,6 +204,8 @@ e_exec(const e_exec_info* info, e_var* ret)
   e_var* sp             = &regs[E_REG_SP];
   e_var* ip             = &regs[E_REG_IP];
 
+  regs[E_REG_NIL] = E_NULLVAR;
+
   *sp = e_var_from_int(0);
   *ip = e_var_from_int(0);
 
@@ -224,6 +226,9 @@ e_exec(const e_exec_info* info, e_var* ret)
     e_ins ins = info->code[ip->val.i];
     // fprintf(stdout, "next instruction: ");
     // e_print_instruction(ins, info->names, info->names_hashes, info->nnames);
+
+    /* set nilreg to null before every instruction, just for safety */
+    regs[E_REG_NIL] = E_NULLVAR;
 
     switch (ins.opcode) {
       case EIR_OPCODE_LOADK: {

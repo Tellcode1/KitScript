@@ -22,10 +22,10 @@ typedef enum e_regs {
   E_REG_ARG14 = 14,
   E_REG_ARG15 = 15,
 
-  E_REG_SP   = 16, /* stack pointer */
-  E_REG_IP   = 17, /* instruction pointer (next instruction to be executed) */
-  E_REG_TMP1 = 18,
-  E_REG_TMP2 = 19,
+  E_REG_SP  = 16, /* stack pointer */
+  E_REG_IP  = 17, /* instruction pointer (next instruction to be executed) */
+  E_REG_NIL = 18, /* nil register, always holds null */
+  E_REG_TMP = 19,
 
   E_REG_GENERAL_BEGIN = 20,
   E_REG_GENERAL_END   = 255

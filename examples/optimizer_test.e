@@ -1,3 +1,7 @@
+fn opaque(arg) {
+   return arg;
+}
+
 fn main() {
    println(2+3);
 
@@ -32,4 +36,9 @@ fn main() {
    a = 40;
    if (a != 40) println("wtf");
    if (40 != a) println("wtf");
+
+   let x = null;
+   if (opaque(x)) {
+      println(x);
+   }
 }

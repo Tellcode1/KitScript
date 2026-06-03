@@ -51,6 +51,8 @@ get_register_name(u32 reg_id, char buff[32])
     snprintf(buff, 32, "rsp");
   } else if (reg_id == E_REG_IP) {
     snprintf(buff, 32, "rip");
+  } else if (reg_id == E_REG_NIL) {
+    snprintf(buff, 32, "rnil");
   } else {
     snprintf(buff, 32, "ru%i", reg_id);
   }
