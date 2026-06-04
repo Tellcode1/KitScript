@@ -37,6 +37,9 @@ e_var_shallow_cpy(const e_var* var, e_var* dst)
 {
   if (!dst || !var) return -1;
 
+  memmove(dst, var, sizeof(e_var));
+  return 0;
+
   dst->type = var->type;
 
   /**
@@ -148,8 +151,6 @@ e_var_acquire(e_var* v)
 void
 e_var_release(e_var* v)
 {
-  return;
-
   if (!v) return;
   int* refc = NULL;
   switch (v->type) {
@@ -163,12 +164,8 @@ e_var_release(e_var* v)
   if (refc == NULL) return;
 
   (*refc)--;
-  fprintf(stderr, "RELEASE %p -> %d\n", (void*)v->val.list, *refc);
 
-  if (*refc <= 0) {
-    fprintf(stderr, "FREE %p -> %d\n", (void*)v->val.list, *refc);
-    e_var_free(v);
-  }
+  if (*refc <= 0) { e_var_free(v); }
 }
 
 void

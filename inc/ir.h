@@ -143,6 +143,12 @@ typedef enum eir_opcode {
    * LOADK [dst] [which]
    */
   EIR_OPCODE_LOADK,
+
+  /**
+   * Assert that a condition is true, or return
+   * and error if it is not.
+   */
+  EIR_OPCODE_ASSERT,
 } eir_opcode;
 
 /**
@@ -248,6 +254,11 @@ typedef union e_ins {
     eir_opcode opcode;
     u32        reg;
   } push, pop;
+  struct eir_ins_assert {
+    eir_opcode opcode;
+    u32        cond;
+    u32        line_id; /* the constant ID of the line */
+  } assertion;
 } e_ins;
 
 #endif // ESL_IR_H

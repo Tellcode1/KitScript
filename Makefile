@@ -1,7 +1,7 @@
 CC = clang
 AR ?= ar
-CFLAGS ?= -std=c99 -g -Wall -Wpedantic -fsanitize=memory,undefined
-LDFLAGS ?= -g -lm -Wall -Wpedantic -fsanitize=memory,undefined
+CFLAGS ?= -std=c99 -g -Wall -Wpedantic -fsanitize=address,undefined
+LDFLAGS ?= -g -lm -Wall -Wpedantic -fsanitize=address,undefined
 PREFIX?=/usr/bin/
 
 SRC_DIR=src

@@ -78,7 +78,7 @@ e_arnalloc(e_arena* a, size_t size)
   total        = align_up(total, E_ARENA_MINIMUM_ALIGNMENT);
 
   /* can't fit in regular page. */
-  if (total > (E_PAGE_SIZE - sizeof(e_arena_page))) {
+  if (total + sizeof(e_arena_page) + (E_ARENA_MINIMUM_ALIGNMENT - 1) > E_PAGE_SIZE) {
     e_arena_page* page = (e_arena_page*)e_xalloc(1, sizeof(e_arena_page) + total);
     if (!page) return NULL;
 
@@ -89,7 +89,7 @@ e_arnalloc(e_arena* a, size_t size)
 
     uchar* data = (uchar*)page + sizeof(*page);
     void*  p    = e_align_ptr(data, E_ARENA_MINIMUM_ALIGNMENT);
-    if ((uintptr_t)p & (E_ARENA_MINIMUM_ALIGNMENT - 1)) abort();
+
     return p;
   }
 

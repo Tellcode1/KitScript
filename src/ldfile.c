@@ -53,6 +53,12 @@ read_ins(FILE* f)
       break;
     }
 
+    case EIR_OPCODE_ASSERT: {
+      i.assertion.cond    = read_u32(f);
+      i.assertion.line_id = read_u32(f);
+      break;
+    }
+
     case EIR_OPCODE_MOVI: {
       i.movi.dst   = read_u32(f);
       i.movi.value = (int)read_u32(f);
@@ -217,6 +223,12 @@ write_ins(e_ins i, FILE* f)
     case EIR_OPCODE_MOV: {
       write32(i.mov.dst, f);
       write32(i.mov.src, f);
+      break;
+    }
+
+    case EIR_OPCODE_ASSERT: {
+      write32(i.assertion.cond, f);
+      write32(i.assertion.line_id, f);
       break;
     }
 
@@ -694,6 +706,12 @@ e_read_ins(const u8** ip)
     case EIR_OPCODE_MOVI: {
       i.movi.dst   = e_read_u32(ip);
       i.movi.value = (int)e_read_u32(ip);
+      break;
+    }
+
+    case EIR_OPCODE_ASSERT: {
+      i.assertion.cond    = e_read_u32(ip);
+      i.assertion.line_id = e_read_u32(ip);
       break;
     }
 

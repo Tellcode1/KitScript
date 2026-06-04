@@ -51,7 +51,7 @@
 
 struct val_t;
 
-static const u32 init_code_capacity        = 8192;
+static const u32 init_code_capacity        = 128;
 static const u32 init_literal_capacity     = 64;
 static const u32 init_function_capacity    = 32;
 static const u32 init_namespaces_capacity  = 16;
@@ -2655,8 +2655,26 @@ compile(e_compiler* cc, int node)
       u32 target = cc->loop->continue_label;
       return emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, target);
     }
+    case E_AST_NODE_ASSERT: {
+      int   condition = E_GET_NODE(cc->ast, node)->assertion.stmt;
+      char* line      = E_GET_NODE(cc->ast, node)->assertion.assertion_line;
 
-    default: fprintf(stderr, "%i\n", E_GET_NODE(cc->ast, node)->type); assert(0);
+      e_vreg_t cond = compile(cc, condition);
+      if (cond < 0) {
+        e_filespan span = E_GET_NODE(cc->ast, node)->common.span;
+        cerror(span, "Failed to compile statement [assert]\n");
+        return -1;
+      }
+
+      e_var line_str = e_make_var_from_string(line);
+      if (add_literal_to_track(cc, &line_str) < 0) return -1;
+
+      e_emit_ins(cc, (e_ins){ .assertion = { .opcode = EIR_OPCODE_ASSERT, .cond = cond, .line_id = e_var_hash(&line_str) } });
+
+      return 0;
+    }
+
+    default: return -1;
   }
 }
 
@@ -2672,6 +2690,7 @@ get_destination_reg(const e_ins* i)
 
     case EIR_OPCODE_GETG: return i->mov.dst; break;
 
+    case EIR_OPCODE_ASSERT:
     case EIR_OPCODE_SETG:
     case EIR_OPCODE_MOVG: {
       break;
@@ -2739,6 +2758,8 @@ get_source_registers(const e_ins* i, u32 sources[32])
   switch (i->opcode) {
       /* getg, setg and movg  */
     case EIR_OPCODE_MOV: sources[n++] = i->mov.src; break;
+
+    case EIR_OPCODE_ASSERT: sources[n++] = i->assertion.cond; break;
 
     case EIR_OPCODE_MOVI:
     case EIR_OPCODE_MOVF: /* values are not registers */
@@ -3632,7 +3653,7 @@ label_pass(e_arena* arena, e_ins* instructions, u32 ninstructions, u32 label_cou
   u32* label_map = e_arnalloc(arena, label_count * sizeof(u32));
   memset(label_map, 0xFF, label_count * sizeof(u32)); // UINT32_MAX = not found
 
-  e_ins* copy = e_arnalloc(arena, sizeof(e_ins) * ninstructions);
+  e_ins* copy = calloc(ninstructions, sizeof(e_ins));
   memcpy(copy, instructions, sizeof(e_ins) * ninstructions);
 
   u32 ctr = 0;
@@ -3642,7 +3663,7 @@ label_pass(e_arena* arena, e_ins* instructions, u32 ninstructions, u32 label_cou
     if (copy[i].opcode == EIR_OPCODE_NOP) continue;
     if (ins->opcode == EIR_OPCODE_LABEL) {
       label_map[ins->label.id] = ctr;
-      // continue;
+      continue;
     }
 
     instructions[ctr++] = copy[i];
@@ -3660,6 +3681,8 @@ label_pass(e_arena* arena, e_ins* instructions, u32 ninstructions, u32 label_cou
       default: break;
     }
   }
+
+  free(copy);
 
   return ctr;
 }
@@ -3893,7 +3916,13 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
         break;
       }
 
-        // default: break;
+      case EIR_OPCODE_ASSERT: {
+        u32 cond = ins->assertion.cond;
+        if (values_known[cond] && e_var_to_bool(regs[cond])) { ins->opcode = EIR_OPCODE_NOP; }
+
+        break;
+      }
+
       default: break;
     }
   }
@@ -4158,6 +4187,8 @@ codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg)
           /* getg, setg and movg  */
         case EIR_OPCODE_MOV: ins->mov.src = copy_map[ins->mov.src]; break;
 
+        case EIR_OPCODE_ASSERT: ins->assertion.cond = copy_map[ins->assertion.cond]; break;
+
         case EIR_OPCODE_MOVI:
         case EIR_OPCODE_MOVF: /* values are not registers */
         case EIR_OPCODE_GETG: break;
@@ -4222,7 +4253,7 @@ codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg)
           ins->push.reg = copy_map[ins->push.reg];
           break;
         }
-        // default: break;
+
         case EIR_OPCODE_POP:
         case EIR_OPCODE_NOP:
         case EIR_OPCODE_LABEL:
@@ -4368,6 +4399,9 @@ forward_dead_moves(e_compiler* cc)
           break;
         case EIR_OPCODE_PUSH:
           if (ins->push.reg == dst) ins->push.reg = src;
+          break;
+        case EIR_OPCODE_ASSERT:
+          if (ins->assertion.cond == dst) ins->assertion.cond = src;
           break;
         default: break;
       }

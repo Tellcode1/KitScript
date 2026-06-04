@@ -57,6 +57,8 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
       case EIR_OPCODE_MOVI: WRITES_TO(ins.movi.dst); break; /* values are not registers */
       case EIR_OPCODE_MOVF: WRITES_TO(ins.movf.dst); break; /* values are not registers */
 
+      case EIR_OPCODE_ASSERT: READS_FROM(ins.assertion.cond); break; /* values are not registers */
+
       case EIR_OPCODE_GETG: WRITES_TO(ins.mov.dst); break;
       case EIR_OPCODE_SETG: READS_FROM(ins.mov.src); break;
       case EIR_OPCODE_MOVG: {
@@ -299,6 +301,12 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
         MAP(ins.push.reg);
         break;
       }
+
+      case EIR_OPCODE_ASSERT: {
+        MAP(ins.assertion.cond);
+        break;
+      }
+
       case EIR_OPCODE_LOADK: MAP(ins.loadk.dst); break;
       // case EIR_OPCODE_LOADK: break;
       case EIR_OPCODE_ADD:

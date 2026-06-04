@@ -35,6 +35,7 @@
 #include "../inc/script.h"
 #include "../inc/stdafx.h"
 #include "../inc/struct.h"
+#include "../inc/sysexpose.h"
 #include "../inc/var.h"
 
 #include <assert.h>
@@ -51,14 +52,11 @@
 #define TRY_V(expr) do {   int PASTE(__e__, __LINE__) = (expr);   if (PASTE(__e__, __LINE__)) { return -1; } } while (0)
 // clang-format on
 
-// static inline e_var*
-// stack_find_rev(const struct stack* s, u16 id)
-// {
-//   for (int i = 0; i < s->size; i++)
-//   {
-//     // if (id == s->stack[i].) {TRY_V( e_stack_push(info->stack, info->stack.stack[variables[i].offset]); )}
-//   }
-// }
+#define remove(var)                                                                                                                                  \
+  do {                                                                                                                                               \
+    e_var_release(var);                                                                                                                              \
+    *(var) = E_NULLVAR;                                                                                                                              \
+  } while (0)
 
 #define print_err(...)                                                                                                                               \
   do {                                                                                                                                               \
@@ -89,19 +87,10 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
 
   // printf("call %s\n", lookup(info->names, info->names_hashes, info->nnames, hash));
 
-  /**
-   * Copy argumenst into a temporary array and remove them from the stack.
-   */
-  e_var* args_copy = nargs > 0 ? e_xalloc(nargs, sizeof(e_var)) : NULL;
-  if (nargs > 0) memcpy(args_copy, args, nargs * sizeof(e_var));
-
-  /* temporarily acquire all arguments */
-  for (u32 i = 0; i < nargs; i++) e_var_acquire(&args_copy[i]);
-
   // builtins
   const e_builtin_func* builtin = get_builtin_func_hashed(hash);
   if (builtin != NULL) {
-    *ret = builtin->func(args_copy, nargs);
+    *ret = builtin->func(args, nargs);
     goto pop_and_ret;
   }
 
@@ -109,7 +98,7 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
   for (u32 i = 0; i < info->nextern_funcs; i++) {
     const char* name = info->extern_funcs[i].name;
     if (e_hash(name, strlen(name)) != hash) continue;
-    if (info->extern_funcs[i].func) { *ret = info->extern_funcs[i].func(args_copy, nargs); }
+    if (info->extern_funcs[i].func) { *ret = info->extern_funcs[i].func(args, nargs); }
     goto pop_and_ret;
   }
 
@@ -120,7 +109,7 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
     e_exec_info fi = {
       .gvars           = info->gvars,
       .code            = info->funcs[f].code,
-      .args            = args_copy,
+      .args            = args,
       .literals        = info->literals,
       .literals_hashes = info->literals_hashes,
       .funcs           = info->funcs,
@@ -153,19 +142,13 @@ pop_and_ret:
   // eb_println(&return_value, 1);
   // #endif
 
-  /* release all temporary acquires. */
-  if (args_copy) {
-    for (u32 i = 0; i < nargs; i++) e_var_release(&args_copy[i]);
-    free(args_copy);
-  }
-
   return e;
 }
 
 e_var*
 read_args_vector(e_var* regs, e_var* stack, u32 sp, u32 nelems)
 {
-  e_var* tmp = e_xalloc(nelems, sizeof(e_var));
+  e_var* tmp = e_aligned_malloc(nelems * sizeof(e_var), 32);
   if (!tmp) return NULL;
 
   u32 i = 0;
@@ -173,11 +156,16 @@ read_args_vector(e_var* regs, e_var* stack, u32 sp, u32 nelems)
   /* copy first 16 arguments from registers */
   for (; i < MIN(nelems, E_REG_ARG_COUNT); i++) {
     memcpy(&tmp[i], &regs[E_REG_ARG0 + i], sizeof(e_var));
-    regs[E_REG_ARG0 + i] = E_NULLVAR; /* remove. */
+    e_var_acquire(&tmp[i]);
+
+    // regs[E_REG_ARG0 + i] = E_NULLVAR;
   }
 
   /* copy rest of the arguments from the stack */
-  for (; i < nelems; i++) { memcpy(&tmp[i], &stack[sp - nelems + i], sizeof(e_var)); }
+  for (; i < nelems; i++) {
+    memcpy(&tmp[i], &stack[sp - nelems + i], sizeof(e_var));
+    e_var_acquire(&tmp[i]);
+  }
 
   return tmp;
 }
@@ -252,7 +240,7 @@ e_exec(const e_exec_info* info, e_var* ret)
           goto RET;
         }
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var_deep_cpy(&v, &regs[dst]);
         break;
       }
@@ -268,12 +256,34 @@ e_exec(const e_exec_info* info, e_var* ret)
         goto RET;
       }
 
+      case EIR_OPCODE_ASSERT: {
+        u32 cond    = ins.assertion.cond;
+        u32 line_id = ins.assertion.line_id;
+
+        if (e_cast_to_bool(&regs[cond]) == false) {
+          char* line = NULL;
+          for (u32 i = 0; i < info->nliterals; i++) {
+            if (info->literals_hashes[i] == line_id) {
+              line = E_VAR_AS_STRING(&info->literals[i])->s;
+              break;
+            }
+          }
+
+          fprintf(e_log_file == NULL ? stderr : e_log_file, "[eexec::vm] ASSERTION FAILED: %s\n", line ? line : "[line debug symbol not found]");
+
+          e = E_EASSERT;
+          goto RET;
+        }
+
+        break;
+      }
+
       case EIR_OPCODE_MOV: {
         u32 src = ins.mov.src;
         u32 dst = ins.mov.dst;
         if (src == dst) break;
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var_shallow_cpy(&regs[src], &regs[dst]);
         e_var_acquire(&regs[dst]);
         break;
@@ -285,9 +295,9 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e_var src = e_var_from_int(value);
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var_shallow_cpy(&src, &regs[dst]);
-        e_var_acquire(&regs[dst]);
+        // e_var_acquire(&regs[dst]);
         break;
       }
 
@@ -297,9 +307,9 @@ e_exec(const e_exec_info* info, e_var* ret)
 
         e_var src = e_var_from_float(value);
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var_shallow_cpy(&src, &regs[dst]);
-        e_var_acquire(&regs[dst]);
+        // e_var_acquire(&regs[dst]);
         break;
       }
 
@@ -327,14 +337,14 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var l = regs[a];
         e_var r = regs[b];
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var result = operate(l, r, ins.opcode);
-        e_var_acquire(&result);
+        // e_var_acquire(&result);
 
         /* removing elements from the stack, free them */
         if (dst == E_REG_SP && (result.val.i < sp->val.i)) {
           while (sp->val.i > result.val.i) { /* while old value is greater than new value */
-            e_var_release(&stack[--sp->val.i]);
+            remove(&stack[--sp->val.i]);
           }
         }
 
@@ -350,7 +360,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var l = E_NULLVAR;
         e_var r = regs[a];
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         regs[dst] = operate(l, r, ins.opcode);
         e_var_acquire(&regs[dst]);
         break;
@@ -360,10 +370,12 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32 dst = ins.unop.dst;
         u32 rhs = ins.unop.a;
 
+        if (dst != rhs) { print_err("operand != dst for inc/dec? Possibly corrupted bytecode stream. Continuing.\n"); }
+
         e_var* r = &regs[rhs];
         e_var* d = &regs[dst];
 
-        e_var_release(d);
+        remove(d);
         d->type = r->type;
         if (r->type == E_VARTYPE_INT || r->type == E_VARTYPE_CHAR || r->type == E_VARTYPE_BOOL) {
           d->val.i = e_cast_to_int(r) + (ins.opcode == EIR_OPCODE_INC ? 1 : -1);
@@ -382,7 +394,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var* tmp = read_args_vector(regs, stack, sp->val.i, npairs * 2);
 
         e_var* dstp = &regs[dst];
-        e_var_release(dstp); // overwriting it
+        remove(dstp); // overwriting it
 
         dstp->type    = E_VARTYPE_MAP;
         dstp->val.map = e_refdobj_pool_acquire(&ge_pool);
@@ -390,11 +402,14 @@ e_exec(const e_exec_info* info, e_var* ret)
         /* Constructing it directly in our register. No need for refcounting here. */
         if (e_map_init(tmp, npairs, E_VAR_AS_MAP(dstp)) != 0) {
           e = E_EMALLOC;
-          free(tmp);
+
+          for (u32 i = 0; i < npairs * 2; i++) { remove(&tmp[i]); }
+          e_aligned_free(tmp);
           goto RET;
         }
 
-        free(tmp);
+        for (u32 i = 0; i < npairs * 2; i++) { remove(&tmp[i]); }
+        e_aligned_free(tmp);
         break;
       }
         // default: printf("%i\n", ins.opcode); assert(0);
@@ -409,19 +424,23 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var* tmp = read_args_vector(regs, stack, sp->val.i, nelems);
 
         e_var* dstp = &regs[dst];
-        e_var_release(dstp); // overwriting it
+        remove(dstp); // overwriting it
 
         dstp->type     = E_VARTYPE_LIST;
         dstp->val.list = e_refdobj_pool_acquire(&ge_pool);
 
         /* Constructing it directly in our register. No need for refcounting here. */
         if (e_list_init(tmp, nelems, E_VAR_AS_LIST(dstp)) != 0) {
+          for (u32 i = 0; i < nelems; i++) { remove(&tmp[i]); }
+          e_aligned_free(tmp);
+
           e = E_EMALLOC;
-          free(tmp);
           goto RET;
         }
 
-        free(tmp);
+        for (u32 i = 0; i < nelems; i++) { remove(&tmp[i]); }
+        e_aligned_free(tmp);
+
         break;
       }
       case EIR_OPCODE_INDEX: {
@@ -436,7 +455,7 @@ e_exec(const e_exec_info* info, e_var* ret)
           break;
         }
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var_shallow_cpy(&tmp, &regs[dst]);
         e_var_acquire(&regs[dst]);
         break;
@@ -473,13 +492,13 @@ e_exec(const e_exec_info* info, e_var* ret)
         }
 
         /* overwriting it */
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
 
         e = call(info, function_id, args, nargs, &regs[dst]);
         /* No need to acquire regs[dst], it's deep copied / preacquired. */
-        e_var_acquire(&regs[dst]);
 
-        free(args);
+        for (u32 i = 0; i < nargs; i++) { remove(&args[i]); }
+        e_aligned_free(args);
 
         if (e) {
           print_err("e_var_index_assign: error\n");
@@ -539,14 +558,14 @@ e_exec(const e_exec_info* info, e_var* ret)
             goto RET;
           }
 
-          e_var_release(&regs[dst]);
+          remove(&regs[dst]);
           regs[dst] = e_var_from_float(component);
-          e_var_acquire(&regs[dst]); // useless
+          // e_var_acquire(&regs[dst]); // useless, vectors are not reference based
           break;
         }
 
         if (regs[base].type != E_VARTYPE_STRUCT) {
-          print_err("Can not access a member within non struct type: %s\n", e_var_type_to_string(regs[base].type));
+          print_err("Can not access a member within non struct/vector type: %s\n", e_var_type_to_string(regs[base].type));
           e = E_EMALFORM;
           goto RET;
         }
@@ -557,13 +576,13 @@ e_exec(const e_exec_info* info, e_var* ret)
         for (u32 i = 0; i < st->member_count; i++) {
           if (st->member_hashes[i] == member_id) {
             e_var_shallow_cpy(&st->members[i], &push);
-            e_var_acquire(&push);
             break;
           }
         }
 
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var_shallow_cpy(&push, &regs[dst]);
+        e_var_acquire(&regs[dst]);
         break;
       }
       /* MEMBER_ASSIGN [value] [base] [member ID : u32] */
@@ -601,9 +620,9 @@ e_exec(const e_exec_info* info, e_var* ret)
         for (u32 i = 0; i < st->member_count; i++) {
           if (st->member_hashes[i] == member_id) {
             e_var* member = &st->members[i];
-            e_var_release(member);
+            remove(member);
             e_var_shallow_cpy(&regs[value], member);
-            e_var_acquire(member);
+            // e_var_acquire(member);
             break;
           }
         }
@@ -631,7 +650,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         }
 
         e_var* dstp = &regs[dst];
-        e_var_release(dstp);
+        remove(dstp);
 
         dstp->type      = E_VARTYPE_STRUCT;
         dstp->val.struc = e_refdobj_pool_acquire(&ge_pool);
@@ -644,17 +663,19 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var* args = read_args_vector(regs, stack, sp->val.i, st->fields_count);
         for (u32 i = 0; i < st->fields_count; i++) {
           e_var* member = &E_VAR_AS_STRUCT(dstp)->members[i];
-          e_var_release(member);
+          remove(member);
           e_var_shallow_cpy(&args[i], member);
           e_var_acquire(member);
+
+          remove(&args[i]);
         }
-        free(args);
+        e_aligned_free(args);
         break;
       }
       case EIR_OPCODE_GETG: {
         u32 dst = ins.getg.dst;
         u32 src = ins.getg.src;
-        e_var_release(&regs[dst]);
+        remove(&regs[dst]);
         e_var_shallow_cpy(&info->gvars[src], &regs[dst]);
         break;
       }
@@ -662,7 +683,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_SETG: {
         u32 dst = ins.setg.dst;
         u32 src = ins.setg.src;
-        e_var_release(&info->gvars[dst]);
+        remove(&info->gvars[dst]);
         e_var_shallow_cpy(&regs[src], &info->gvars[dst]);
         break;
       }
@@ -670,7 +691,7 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_MOVG: {
         u32 dst = ins.movg.dst;
         u32 src = ins.movg.src;
-        e_var_release(&info->gvars[dst]);
+        remove(&info->gvars[dst]);
         e_var_shallow_cpy(&info->gvars[src], &info->gvars[dst]);
         break;
       }
@@ -690,7 +711,7 @@ e_exec(const e_exec_info* info, e_var* ret)
           stack_capacity = new_capacity;
         }
 
-        e_var_release(&stack[sp->val.i]); /* overwriting it. */
+        remove(&stack[sp->val.i]); /* overwriting it. */
         stack[sp->val.i] = regs[reg];
         e_var_acquire(&stack[sp->val.i]); /* temporary hold */
 
@@ -699,19 +720,19 @@ e_exec(const e_exec_info* info, e_var* ret)
       }
       case EIR_OPCODE_POP: {
         u32 reg = ins.push.reg;
-        e_var_release(&regs[reg]); /* overwriting it. */
+        remove(&regs[reg]); /* overwriting it. */
 
         sp->val.i--;
         regs[reg] = stack[sp->val.i];
-        e_var_release(&stack[sp->val.i]); /* release temporary hold */
+        remove(&stack[sp->val.i]); /* release temporary hold */
         break;
       }
     }
   }
 
 RET:
-  for (u32 i = 0; i < E_REG_COUNT; i++) { e_var_release(&regs[i]); }
-  for (i32 i = 0; i < sp->val.i; i++) { e_var_release(&stack[i]); }
+  for (u32 i = 0; i < E_REG_COUNT; i++) { remove(&regs[i]); }
+  for (i32 i = 0; i < sp->val.i; i++) { remove(&stack[i]); }
   free(stack);
   return e;
 }

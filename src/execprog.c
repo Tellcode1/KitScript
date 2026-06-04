@@ -223,8 +223,8 @@ main(int argc, char* argv[])
   }
 
 RET:
-  e_var_release(&time_as_str);
-  e_var_release(&time_now);
+  e_var_free(&time_as_str);
+  e_var_free(&time_now);
 
   if (!run_from_stdin && f) fclose(f);
   e_var_release(&v);

@@ -11,6 +11,7 @@ fn sum(l) {
 }
 
 fn main() {
+   assert(2 > 5);
    println(2+3);
 
    let a = 10;

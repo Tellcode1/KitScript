@@ -45,7 +45,7 @@ e_struct_init(const char* name, u32 nmembers, const char** member_names, e_struc
   s->members = (e_var*)e_xalloc(nmembers, sizeof(e_var));
   if (!s->members) {
     free((void*)s->member_names);
-    free((void*)s->members);
+    free((void*)s->member_hashes);
     return -1;
   }
 
