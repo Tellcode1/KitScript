@@ -102,17 +102,18 @@ read_file_arena_better(FILE* f)
 int
 main(int argc, char* argv[])
 {
-  bool                 verbose            = false;
-  bool                 tokenizer_only     = false;
-  bool                 ast_only           = false;
-  bool                 print_memory_usage = false;
-  e_ast                ast                = { 0, .root = -1 };
-  e_compilation_result compiled           = { 0 };
-  FILE*                f                  = NULL;
-  e_str_interner       interner           = { 0 };
-  e_arena              arena              = { 0 };
-  int                  e                  = 0;
-  int                  opt_level          = 0;
+  bool                 verbose             = false;
+  bool                 tokenizer_only      = false;
+  bool                 ast_only            = false;
+  bool                 print_memory_usage  = false;
+  e_ast                ast                 = { 0, .root = -1 };
+  e_compilation_result compiled            = { 0 };
+  FILE*                f                   = NULL;
+  e_str_interner       interner            = { 0 };
+  e_arena              arena               = { 0 };
+  int                  e                   = 0;
+  int                  opt_level           = 0;
+  ecc_feature_set      compiler_option_set = { 0 };
 
   e = e_arena_init(1, &arena);
   if (e) {
@@ -127,6 +128,9 @@ main(int argc, char* argv[])
 
   char** files  = (char**)e_arnalloc(&arena, argc * sizeof(char*));
   u32    nfiles = 0;
+
+  /* set every option disable to false */
+  memset(&compiler_option_set, 0, sizeof(compiler_option_set));
 
   const char* out = NULL;
   for (int i = 1; i < argc; i++) {
@@ -162,7 +166,32 @@ main(int argc, char* argv[])
       ast_only = true;
     } else if (strcmp(opt, "mem") == 0) {
       print_memory_usage = true;
-    } else {
+    }
+
+    /* compiler option flags */
+    else if (strcmp(opt, "no-noop-strip") == 0) {
+      compiler_option_set.disable_noop_stripping = true;
+    } else if (strcmp(opt, "no-dead-branch-elimination") == 0 || strcmp(opt, "no-DBE") == 0) {
+      compiler_option_set.disable_dead_branch_elimination = true;
+    } else if (strcmp(opt, "no-constant-propagation") == 0) {
+      compiler_option_set.disable_constant_propagation = true;
+    } else if (strcmp(opt, "no-constant-folding") == 0) {
+      compiler_option_set.disable_constant_folding = true;
+    } else if (strcmp(opt, "no-local-copy-propagation") == 0) {
+      compiler_option_set.disable_local_copy_propagation = true;
+    } else if (strcmp(opt, "no-redundant-move-elimination") == 0) {
+      compiler_option_set.disable_redundant_move_elimination = true;
+    } else if (strcmp(opt, "no-inline") == 0) {
+      compiler_option_set.disable_function_inlining = true;
+    } else if (strcmp(opt, "no-dead-move-forwarding") == 0) {
+      compiler_option_set.disable_dead_move_forwarding = true;
+    } else if (strcmp(opt, "no-dead-store-elimination") == 0 || strcmp(opt, "no-DSE") == 0) {
+      compiler_option_set.disable_dead_store_elimination = true;
+    } else if (strcmp(opt, "no-redundant-jump-elimination") == 0) {
+      compiler_option_set.disable_redundant_jump_elimination = true;
+    }
+
+    else {
       files[nfiles++] = e_arnstrdup(&arena, argv[i]);
     }
   }
@@ -276,6 +305,7 @@ main(int argc, char* argv[])
     .root_node          = ast.root,
     .custom_entry_point = NULL,
     .opt_level          = opt_level,
+    .feature_set        = compiler_option_set,
   };
 
   if (verbose) fprintf(stderr, "Compiling AST: ");

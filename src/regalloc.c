@@ -97,7 +97,7 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
         READS_FROM(ins.unop.a);
         break;
       case EIR_OPCODE_CALL:
-        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        for (u32 j = E_REG_ARG0; j < E_REG_ARG_COUNT; j++) { READS_FROM(j); }
         WRITES_TO(ins.call.dst);
         break;
       case EIR_OPCODE_INDEX:
@@ -111,16 +111,16 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
         READS_FROM(ins.index_assign.base);
         break;
       case EIR_OPCODE_MK_LIST:
-        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        for (u32 j = E_REG_ARG0; j < E_REG_ARG_COUNT; j++) { READS_FROM(j); }
         WRITES_TO(ins.mk_list.dst);
         break;
       case EIR_OPCODE_MK_MAP:
-        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        for (u32 j = E_REG_ARG0; j < E_REG_ARG_COUNT; j++) { READS_FROM(j); }
         WRITES_TO(ins.mk_map.dst);
         break;
       case EIR_OPCODE_MK_STRUCT:
         /* we don't know how many members this instruction will initialize. clobber the entire argument vector. */
-        for (u32 i = E_REG_ARG0; i < E_REG_ARG_COUNT; i++) { READS_FROM(i); }
+        for (u32 j = E_REG_ARG0; j < E_REG_ARG_COUNT; j++) { READS_FROM(j); }
         WRITES_TO(ins.mk_struct.dst);
         break;
       case EIR_OPCODE_MEMBER_ACCESS:

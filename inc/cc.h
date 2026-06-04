@@ -41,6 +41,19 @@
 
 struct e_ast;
 
+typedef struct ecc_feature_set {
+  bool disable_noop_stripping;
+  bool disable_dead_branch_elimination;
+  bool disable_constant_propagation;
+  bool disable_constant_folding;
+  bool disable_local_copy_propagation;
+  bool disable_redundant_move_elimination;
+  bool disable_function_inlining;
+  bool disable_dead_move_forwarding;
+  bool disable_dead_store_elimination;
+  bool disable_redundant_jump_elimination;
+} ecc_feature_set;
+
 typedef struct ecc_info {
   e_arena* arena; // Must not be NULL
 
@@ -72,7 +85,8 @@ typedef struct ecc_info {
   const e_builtin_var* hook_vars;
   u32                  nhooked_vars;
 
-  int opt_level; // 0 or 1/2/3
+  int             opt_level; // 0 or 1/2/3
+  ecc_feature_set feature_set;
 } ecc_info;
 
 /**
@@ -177,6 +191,8 @@ typedef struct ecc_function {
   u32    name_hash;
   u32    nargs;
   u32    code_count;
+  u32    vregs_used;
+  u32    labels_used;
   e_ins* code;
 } ecc_function;
 

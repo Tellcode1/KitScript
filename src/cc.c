@@ -51,7 +51,7 @@
 
 struct val_t;
 
-static const u32 init_code_capacity        = 1024;
+static const u32 init_code_capacity        = 8192;
 static const u32 init_literal_capacity     = 64;
 static const u32 init_function_capacity    = 32;
 static const u32 init_namespaces_capacity  = 16;
@@ -101,7 +101,7 @@ static void opt_inline_function_calls(e_compiler* cc);
 static void forward_dead_moves(e_compiler* cc);
 static int  remove_jmp_where_it_would_fallthrough(e_compiler* cc);
 static int  strip_noops(e_compiler* cc);
-static int  label_pass(e_compiler* cc);
+static u32  label_pass(e_arena* arena, e_ins* instructions, u32 ninstructions, u32 label_count);
 
 static inline RETURNS_ERRCODE int defer_push_scope(e_compiler* cc);
 static inline void                defer_pop_scope(e_compiler* cc);
@@ -1223,45 +1223,44 @@ compile_function_definition(e_compiler* cc, int node)
 
   if (cc->info->opt_level >= 2) {
     /* constant folding needs a clean instruction stream */
+    // if (!fork.info->feature_set.disable_function_inlining) { opt_inline_function_calls(&fork); }
+
     for (u32 pass = 0; pass < 16; pass++) {
       codegraph cfg = { 0 };
       e             = codegraph_init(&fork, &cfg);
       if (e < 0) goto ERR;
 
       // codegraph_preliminary_dead_store_elimination(&fork, &cfg);
-      codegraph_local_copy_propagation(&fork, &cfg);
-      codegraph_dead_store_elimination(&fork, &cfg);
-      codegraph_constant_propagation(&fork, &cfg);
-      codegraph_constant_folding(&fork, &cfg);
-      codegraph_redundant_move_elimination(&fork, &cfg);
-      codegraph_eliminate_unreachable_code(&fork, &cfg);
+      if (!fork.info->feature_set.disable_local_copy_propagation) { codegraph_local_copy_propagation(&fork, &cfg); }
+      if (!fork.info->feature_set.disable_dead_store_elimination) { codegraph_dead_store_elimination(&fork, &cfg); }
+      if (!fork.info->feature_set.disable_constant_propagation) { codegraph_constant_propagation(&fork, &cfg); }
+      if (!fork.info->feature_set.disable_constant_folding) { codegraph_constant_folding(&fork, &cfg); }
+      if (!fork.info->feature_set.disable_redundant_move_elimination) { codegraph_redundant_move_elimination(&fork, &cfg); }
+      if (!fork.info->feature_set.disable_dead_branch_elimination) { codegraph_eliminate_unreachable_code(&fork, &cfg); }
 
       codegraph_free(&fork, &cfg);
 
-      remove_jmp_where_it_would_fallthrough(&fork);
-      strip_noops(&fork);
-      forward_dead_moves(&fork);
+      if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
+      if (!fork.info->feature_set.disable_noop_stripping) { strip_noops(&fork); }
+      if (!fork.info->feature_set.disable_dead_move_forwarding) { forward_dead_moves(&fork); }
     }
 
-    /* define all labels at the end so we have free reign over where instructions go. */
-    era_simple_register_allocation_pass(&fork);
-
-    label_pass(&fork);
-  } else {
-    /* perform register allocation. rewrites our instruction stream */
-    era_simple_register_allocation_pass(&fork);
-
-    label_pass(&fork);
+    /* do not perform register allocation or the label pass here, we'll do it at the end */
   }
+
+  era_simple_register_allocation_pass(&fork);
+  fork.ninstructions = label_pass(fork.arena, fork.instructions, fork.ninstructions, fork.next_label);
 
   compiler_join_fork(&fork, cc);
 
   /* write our info to the table */
   ecc_function f = {
-    .code       = fork.instructions,
-    .code_count = fork.ninstructions,
-    .name_hash  = hash,
-    .nargs      = nargs,
+    .code        = fork.instructions,
+    .code_count  = fork.ninstructions,
+    .name_hash   = hash,
+    .nargs       = nargs,
+    .vregs_used  = fork.next_vreg,
+    .labels_used = fork.next_label,
   };
 
   e = append_function_entry(cc->arena, cc->function_table, &f);
@@ -1547,11 +1546,19 @@ fold_vector(e_compiler* cc, const int* elems, u32 nelems)
   };
   switch (nelems) {
     default:
-    case 2: v.type = E_VARTYPE_VEC2; break;
-    case 3: v.type = E_VARTYPE_VEC3; break;
-    case 4: v.type = E_VARTYPE_VEC4; break;
+    case 2:
+      v.type = E_VARTYPE_VEC2;
+      memcpy(v.val.vec2, vector, sizeof(e_vec2));
+      break;
+    case 3:
+      v.type = E_VARTYPE_VEC3;
+      memcpy(v.val.vec3, vector, sizeof(e_vec3));
+      break;
+    case 4:
+      v.type = E_VARTYPE_VEC4;
+      memcpy(v.val.vec4, vector, sizeof(e_vec4));
+      break;
   }
-  memcpy(v.val.vec4, vector, sizeof(vector));
 
   /* Compile this vector into a literal */
   e_vreg_t compiled = compile_and_push_literal_variable(cc, &v);
@@ -1559,89 +1566,6 @@ fold_vector(e_compiler* cc, const int* elems, u32 nelems)
 
   return compiled;
 }
-
-// static e_vreg_t
-// inline_function_call(e_compiler* cc, int node)
-// {
-//   u32  nargs = E_GET_NODE(cc->ast, node)->call.nargs;
-//   int* args  = E_GET_NODE(cc->ast, node)->call.args;
-
-//   const char* function_name = E_GET_NODE(cc->ast, node)->call.function_name;
-
-//   char* full = qualify_name(cc, function_name);
-//   u32   hash = e_hash(full, strlen(full));
-
-//   ecc_function*       func       = NULL;
-//   ecc_function_table* func_table = cc->function_table;
-//   for (u32 i = 0; i < func_table->functions_count; i++) {
-//     if (func_table->functions[i].name_hash == hash) {
-//       func = &func_table->functions[i];
-//       break;
-//     }
-//   }
-
-//   if (!func) return -1;
-
-//   /* push all registers to the stack */
-//   for (u32 i = 0; i < cc->next_vreg; i++) { e_emit_ins(cc, (e_ins){ .push = { .opcode = EIR_OPCODE_PUSH, .reg = i } }); }
-
-//   /* compile all our arguments into the argument vector, as usual */
-//   e_vreg_t* arg_registers = (e_vreg_t*)e_arnalloc(cc->arena, sizeof(e_vreg_t) * nargs);
-//   for (u32 i = 0; i < nargs; i++) {
-//     arg_registers[i] = compile(cc, args[i]); // Pushes stack top
-//     if (arg_registers[i] < 0) {
-//       cerror(E_GET_NODE(cc->ast, args[i])->common.span, "Failed to compile argument #%i [function call]\n", i);
-//       return -1;
-//     }
-//   }
-
-//   /* compiled all of them. now move them to our registers. */
-//   for (u32 i = 0; i < nargs; i++) {
-//     /* move to our arguments register */
-//     if (i < E_REG_ARG_COUNT) {
-//       e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = E_REG_ARG0 + i, .src = arg_registers[i] } });
-//     } else {
-//       /* Spill the rest of the arguments on the stack */
-//       e_emit_ins(cc, (e_ins){ .push = { .opcode = EIR_OPCODE_PUSH, .reg = arg_registers[i] } });
-//     }
-//   }
-
-//   e_vreg_t return_value_reg = vreg_alloc(cc);
-//   u32      exit_label       = make_label_id(cc); /* where ret instructions go */
-
-//   /* emit all the instructions, keeping track of where they start, we need to patch all return instructions */
-//   // u32 function_emission_start = cc->ninstructions;
-//   for (u32 i = 0; i < func->code_count; i++) {
-//     e_ins* ins = &func->code[i];
-
-//     /* push any label's id in the functions code ahead */
-//     if (ins->opcode == EIR_OPCODE_LABEL) { ins->label.id += cc->next_label; }
-//     if (ins->opcode == EIR_OPCODE_JMP) { ins->jmp.target += cc->next_label; }
-//     if (ins->opcode == EIR_OPCODE_JZ || ins->opcode == EIR_OPCODE_JNZ) { ins->cj.target += cc->next_label; }
-
-//     if (ins->opcode == EIR_OPCODE_RET) {
-//       u32 ret_reg  = ins->ret.return_value; /* where the return value is, need to move this to our register */
-//       ins->opcode  = EIR_OPCODE_MOV;
-//       ins->mov.dst = return_value_reg; /* our return register */
-//       ins->mov.src = ret_reg;          /* the ret instruction's return value */
-//       e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = return_value_reg, .src = ret_reg } });
-
-//       /* jump to the exit label */
-//       if (emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, exit_label) < 0) return -1;
-
-//       /* dont break!! function may have multiple return statements */
-//     } else {
-//       e_emit_ins(cc, *ins);
-//     }
-//   }
-
-//   define_and_emit_label(cc, exit_label);
-
-//   /* pop all registers from the stack */
-//   for (i64 i = cc->next_vreg - 1; i >= 0; i--) { e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = i } }); }
-
-//   return return_value_reg; /* return the register that holds the return value */
-// }
 
 static e_vreg_t
 compile_function_call(e_compiler* cc, int node)
@@ -1692,7 +1616,6 @@ compile_function_call(e_compiler* cc, int node)
           func->nargs,
           nargs);
       return -1;
-      assert(func->nargs < 16);
     }
   }
 
@@ -2329,10 +2252,12 @@ compile_struct_constructor(e_compiler* fork, e_filespan span, const ecc_struct_i
   /* No need to clean up the stack, the CALL handler is responsible for that */
 
   ecc_function f = {
-    .code       = fork->instructions,
-    .code_count = fork->ninstructions,
-    .name_hash  = struct_id,
-    .nargs      = struc->fields_count,
+    .code        = fork->instructions,
+    .code_count  = fork->ninstructions,
+    .name_hash   = struct_id,
+    .nargs       = struc->fields_count,
+    .vregs_used  = fork->next_vreg,
+    .labels_used = fork->next_label,
   };
 
   int e = append_function_entry(fork->arena, fork->function_table, &f);
@@ -2482,8 +2407,6 @@ compile_root(e_compiler* cc, int node)
   e_var    v      = E_NULLVAR;
   e_vreg_t nilvar = compile_and_push_literal_variable(cc, &v);
   e_emit_ins(cc, (e_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
-
-  era_simple_register_allocation_pass(cc);
 
   return 0; // Done!
 }
@@ -3187,7 +3110,6 @@ static void
 codegraph_dead_store_elimination(e_compiler* cc, codegraph* cfg)
 {
   codegraph_build_successor_list(cc, cfg);
-  codegraph_liveliness_analysis(cc, cfg);
 
   bool changed = true;
   while (changed) {
@@ -3238,21 +3160,6 @@ is_instruction_noop(eir_opcode opcode)
     case EIR_OPCODE_NOP:
     case EIR_OPCODE_LABEL: return true;
     default: return false;
-  }
-}
-
-static void
-replace_source_register(e_ins* ins, u32 old_reg, u32 new_reg)
-{
-  u32 srcs[32];
-  u32 n = get_source_registers(ins, srcs);
-  for (u32 i = 0; i < n; i++) {
-    if (srcs[i] == old_reg) {
-      if (is_instruction_binary_operation(ins->opcode)) {
-        if (ins->binop.a == old_reg) ins->binop.a = new_reg;
-        if (ins->binop.b == old_reg) ins->binop.b = new_reg;
-      }
-    }
   }
 }
 
@@ -3389,6 +3296,8 @@ codegraph_redundant_move_elimination(e_compiler* cc, codegraph* cfg)
           case EIR_OPCODE_GT:
           case EIR_OPCODE_GTE: {
             u32 dst = b->mov.dst;
+
+            if (dst == a->binop.a || dst == a->binop.b) { continue; }
 
             b->opcode    = a->opcode;
             b->binop.a   = a->binop.a;
@@ -3610,6 +3519,10 @@ codegraph_constant_folding(e_compiler* cc, const codegraph* cfg)
         three->opcode     = EIR_OPCODE_MOVF;
         three->movf.dst   = three_dst;
         three->movf.value = result.val.f;
+      } else if (result.type == E_VARTYPE_NULL) {
+        three->opcode  = EIR_OPCODE_MOV;
+        three->mov.dst = three_dst;
+        three->mov.src = E_REG_NIL;
       } else {
         if (add_literal_to_track(cc, &result) < 0) continue;
         three->opcode    = EIR_OPCODE_LOADK;
@@ -3712,33 +3625,34 @@ strip_noops(e_compiler* cc)
   return 0;
 }
 
-static int
-label_pass(e_compiler* cc)
+/* Returns the new instruction count, -1 on error */
+static u32
+label_pass(e_arena* arena, e_ins* instructions, u32 ninstructions, u32 label_count)
 {
-  u32* label_map = e_arnalloc(cc->arena, cc->next_label * sizeof(u32));
-  memset(label_map, 0xFF, cc->next_label * sizeof(u32)); // UINT32_MAX = not found
+  u32* label_map = e_arnalloc(arena, label_count * sizeof(u32));
+  memset(label_map, 0xFF, label_count * sizeof(u32)); // UINT32_MAX = not found
 
-  e_ins* copy = e_arnalloc(cc->arena, sizeof(e_ins) * cc->ninstructions);
-  memcpy(copy, cc->instructions, sizeof(e_ins) * cc->ninstructions);
+  e_ins* copy = e_arnalloc(arena, sizeof(e_ins) * ninstructions);
+  memcpy(copy, instructions, sizeof(e_ins) * ninstructions);
 
   u32 ctr = 0;
-  for (u32 i = 0; i < cc->ninstructions; i++) {
-    e_ins* ins = &cc->instructions[i];
+  for (u32 i = 0; i < ninstructions; i++) {
+    e_ins* ins = &instructions[i];
 
     if (copy[i].opcode == EIR_OPCODE_NOP) continue;
     if (ins->opcode == EIR_OPCODE_LABEL) {
       label_map[ins->label.id] = ctr;
-      continue;
+      // continue;
     }
 
-    cc->instructions[ctr++] = copy[i];
+    instructions[ctr++] = copy[i];
   }
 
-  cc->ninstructions = ctr;
+  ninstructions = ctr;
 
   /* patch jumps */
-  for (u32 i = 0; i < cc->ninstructions; i++) {
-    e_ins* ins = &cc->instructions[i];
+  for (u32 i = 0; i < ninstructions; i++) {
+    e_ins* ins = &instructions[i];
     switch (ins->opcode) {
       case EIR_OPCODE_JMP: ins->jmp.target = label_map[ins->jmp.target]; break;
       case EIR_OPCODE_JZ:
@@ -3747,49 +3661,7 @@ label_pass(e_compiler* cc)
     }
   }
 
-  return 0;
-}
-
-static bool
-is_constant_condition(e_compiler* cc, u32 start, e_vreg_t reg, bool* value)
-{
-  for (i64 i = (i64)start - 1; i >= 0; i--) {
-    e_ins* ins = &cc->instructions[i];
-
-    // Stop at a label or a new definition of the same register
-    if (ins->opcode == EIR_OPCODE_LABEL) return false;
-
-    u32 dst = get_destination_reg(ins);
-    if (dst == reg) {
-      /* Found the definition */
-
-      if (ins->opcode == EIR_OPCODE_MOVI) {
-        *value = ins->movi.value;
-        return true;
-      }
-
-      if (ins->opcode == EIR_OPCODE_MOVF) {
-        *value = (bool)ins->movf.value;
-        return true;
-      }
-
-      if (ins->opcode == EIR_OPCODE_LOADK) {
-        u32 id = ins->loadk.id;
-        for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
-          e_var* lit = &cc->lit_table->literals[j];
-          if (cc->lit_table->literal_hashes[j] != id) continue;
-
-          *value = e_cast_to_bool(lit);
-
-          return true;
-        }
-        return false;
-      }
-
-      return false; /* new definition */
-    }
-  }
-  return false;
+  return ctr;
 }
 
 static void
@@ -3872,12 +3744,14 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
     e_ins* ins = &cc->instructions[i];
 
     if (ins->opcode == EIR_OPCODE_CALL) {
+      memset(values_known, 0, nvregs * sizeof(bool));
       values_known[ins->call.dst] = false;
       continue;
     }
 
     /* impure instruction. flush state and move on. */
-    if (ins->opcode != EIR_OPCODE_LABEL && is_instruction_impure(ins->opcode)) {
+    if (ins->opcode != EIR_OPCODE_LABEL && ins->opcode != EIR_OPCODE_INDEX_ASSIGN && ins->opcode != EIR_OPCODE_MEMBER_ASSIGN
+        && is_instruction_impure(ins->opcode)) {
       /* this is the first optimization pass, assume jumps wreck all registers */
       memset(values_known, 0, nvregs * sizeof(bool));
       continue;
@@ -3890,6 +3764,7 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
         u32 dst = ins->mov.dst;
         u32 src = ins->mov.src;
 
+        /* If the value is already in dst, turn this instruction into a NOOP */
         if (values_known[dst] && values_known[src] && e_var_equal(&regs[dst], &regs[src])) {
           ins->opcode = EIR_OPCODE_NOP;
           continue;
@@ -3921,6 +3796,21 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
       case EIR_OPCODE_MOVG: break;
 
       case EIR_OPCODE_NEQ:
+      case EIR_OPCODE_EQL: {
+        /* special case, if both point to the same register */
+        u32 a   = ins->binop.a;
+        u32 b   = ins->binop.b;
+        u32 dst = ins->binop.dst;
+        if (a == b) {
+          values_known[dst] = true;
+          /* register self comparison will always result in true (for EQL)*/
+          regs[dst] = e_var_from_bool(ins->opcode == EIR_OPCODE_EQL ? true : false);
+
+          replace_move_with_constant_load(cc, cfg, ins, dst, &regs[dst]);
+          break;
+        }
+        /* fallthrough */
+      }
 
       case EIR_OPCODE_ADD:
       case EIR_OPCODE_SUB:
@@ -3933,7 +3823,6 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
       case EIR_OPCODE_BAND:
       case EIR_OPCODE_BOR:
       case EIR_OPCODE_XOR:
-      case EIR_OPCODE_EQL:
       case EIR_OPCODE_LT:
       case EIR_OPCODE_LTE:
       case EIR_OPCODE_GT:
@@ -4010,9 +3899,243 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
   }
 }
 
+static inline void
+update_reg(u32* ptr, u32 offset)
+{
+  if (*ptr >= E_REG_GENERAL_BEGIN) *ptr += offset;
+}
+
+/* add the offset to each register in ins and pass it to e_emit_ins */
+static inline void
+inline_function_instruction(e_compiler* cc, e_ins* ins, u32 register_offset, u32 label_offset, e_vreg_t return_register, u32 exit_label)
+{
+  switch (ins->opcode) {
+    case EIR_OPCODE_LABEL: {
+      ins->label.id += label_offset;
+      break;
+    }
+
+    case EIR_OPCODE_NOP: break;
+
+    case EIR_OPCODE_MOV: {
+      update_reg(&ins->mov.dst, register_offset);
+      update_reg(&ins->mov.src, register_offset);
+      break;
+    }
+    case EIR_OPCODE_MOVI: {
+      update_reg(&ins->movi.dst, register_offset);
+      break;
+    }
+    case EIR_OPCODE_MOVF: {
+      update_reg(&ins->movf.dst, register_offset);
+      break;
+    }
+    case EIR_OPCODE_GETG: {
+      update_reg(&ins->getg.dst, register_offset);
+      break;
+    }
+    case EIR_OPCODE_SETG: {
+      update_reg(&ins->setg.src, register_offset);
+      break;
+    }
+    case EIR_OPCODE_MOVG: {
+      break;
+    }
+    case EIR_OPCODE_ADD:
+    case EIR_OPCODE_SUB:
+    case EIR_OPCODE_MUL:
+    case EIR_OPCODE_DIV:
+    case EIR_OPCODE_MOD:
+    case EIR_OPCODE_EXP:
+    case EIR_OPCODE_AND:
+    case EIR_OPCODE_OR:
+    case EIR_OPCODE_BAND:
+    case EIR_OPCODE_BOR:
+    case EIR_OPCODE_XOR:
+    case EIR_OPCODE_EQL:
+    case EIR_OPCODE_NEQ:
+    case EIR_OPCODE_LT:
+    case EIR_OPCODE_LTE:
+    case EIR_OPCODE_GT:
+    case EIR_OPCODE_GTE: {
+      update_reg(&ins->binop.a, register_offset);
+      update_reg(&ins->binop.b, register_offset);
+      update_reg(&ins->binop.dst, register_offset);
+      break;
+    }
+
+    case EIR_OPCODE_BNOT:
+    case EIR_OPCODE_NEG:
+    case EIR_OPCODE_NOT:
+    case EIR_OPCODE_INC:
+    case EIR_OPCODE_DEC: {
+      update_reg(&ins->unop.a, register_offset);
+      update_reg(&ins->unop.dst, register_offset);
+      break;
+    }
+
+    case EIR_OPCODE_RET: {
+      update_reg(&ins->ret.return_value, register_offset);
+
+      /* move the return value to the common return register */
+      e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = return_register, .src = ins->ret.return_value } });
+
+      /* convert this ret into a jump to the exit label */
+      ins->jmp.opcode = EIR_OPCODE_JMP;
+      ins->jmp.target = exit_label;
+
+      /* gets emitted after the switch */
+      break;
+    }
+
+    case EIR_OPCODE_MK_LIST: {
+      update_reg(&ins->mk_list.dst, register_offset);
+      break;
+    }
+
+    case EIR_OPCODE_MK_MAP: {
+      update_reg(&ins->mk_map.dst, register_offset);
+      break;
+    }
+
+    case EIR_OPCODE_INDEX: {
+      update_reg(&ins->index.dst, register_offset);
+      update_reg(&ins->index.base, register_offset);
+      update_reg(&ins->index.index, register_offset);
+      break;
+    }
+    case EIR_OPCODE_INDEX_ASSIGN: {
+      update_reg(&ins->index_assign.value, register_offset);
+      update_reg(&ins->index_assign.base, register_offset);
+      update_reg(&ins->index_assign.index, register_offset);
+      break;
+    }
+    case EIR_OPCODE_MEMBER_ACCESS: {
+      update_reg(&ins->member_access.dst, register_offset);
+      update_reg(&ins->member_access.base, register_offset);
+      break;
+    }
+    case EIR_OPCODE_MEMBER_ASSIGN: {
+      update_reg(&ins->member_assign.value, register_offset);
+      update_reg(&ins->member_assign.base, register_offset);
+      break;
+    }
+    case EIR_OPCODE_MK_STRUCT: {
+      update_reg(&ins->mk_struct.dst, register_offset);
+      break;
+    }
+    case EIR_OPCODE_CALL: {
+      update_reg(&ins->call.dst, register_offset);
+      break;
+    }
+
+    case EIR_OPCODE_JZ:
+    case EIR_OPCODE_JNZ: {
+      ins->cj.target += label_offset;
+      update_reg(&ins->cj.condition, register_offset);
+      break;
+    }
+
+    case EIR_OPCODE_JMP: {
+      ins->jmp.target += label_offset;
+      break;
+    }
+
+    case EIR_OPCODE_PUSH:
+    case EIR_OPCODE_POP: {
+      update_reg(&ins->push.reg, register_offset);
+      break;
+    }
+
+    case EIR_OPCODE_LOADK: {
+      update_reg(&ins->loadk.dst, register_offset);
+      break;
+    }
+
+    default: break;
+  }
+}
+
 static void
 opt_inline_function_calls(e_compiler* cc)
 {
+  e_ins* old_instructions = e_arnalloc(cc->arena, sizeof(e_ins) * cc->ninstructions);
+  memcpy(old_instructions, cc->instructions, sizeof(e_ins) * cc->ninstructions);
+
+  const u32 old_instruction_count = cc->ninstructions;
+
+  cc->ninstructions = 0;
+  for (u32 i = 0; i < old_instruction_count; i++) {
+    e_ins* ins = &old_instructions[i];
+
+    if (ins->opcode != EIR_OPCODE_CALL) {
+      e_emit_ins(cc, *ins);
+      continue;
+    }
+
+    u32           hash   = ins->call.function_id;
+    ecc_function* lookup = NULL;
+
+    for (u32 j = 0; j < cc->function_table->functions_count; j++) {
+      ecc_function* func = &cc->function_table->functions[j];
+
+      if (func->name_hash == hash) {
+        lookup = func;
+        break;
+      }
+    }
+
+    /* builtin function or something */
+    if (!lookup || get_cost_for_inlining_function(cc, 0, lookup) > 100) {
+      /**
+       * Haha. I spent 2 hours (on and off) trying to find why the main function was empty.
+       * I disabled all optimizations, noticed it was only happening with function inlining.
+       * Oh no? Someone is removing the call println, presumably before inlining starts?
+       * I must tread through the optimizer code and find out what is causing it.
+       * I even went to claude with my problem, to no avail (kill me later).
+       *
+       * If you couldn't tell, any calls to println were being discarded by the absence of this line,
+       * and the optimizer correctly deleted all argument register moves and as it kept optimizing
+       * the function (16 passes btw), it eventually deleted the whole function (I think that's a bug).
+       */
+      e_emit_ins(cc, *ins);
+      continue;
+    }
+
+    e_vreg_t call_dst = (e_vreg_t)ins->call.dst;
+
+    u32 register_offset = cc->next_vreg; // All registers in the function get this added to them
+    u32 label_offset    = cc->next_label;
+
+    u32 exit_label = cc->next_label + lookup->labels_used;
+
+    /* start emitting the function code */
+    for (u32 j = 0; j < lookup->code_count; j++) {
+      e_ins sdf = lookup->code[j];
+
+      if (sdf.opcode == EIR_OPCODE_RET) {
+        /* move return value to our register */
+        e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = call_dst, .src = sdf.ret.return_value } });
+
+        /* convert this ret into a jump to the exit label */
+        e_emit_ins(cc, (e_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = exit_label } });
+        continue;
+      }
+
+      inline_function_instruction(cc, &sdf, register_offset, label_offset, call_dst, exit_label);
+
+      e_emit_ins(cc, sdf);
+    }
+
+    /* push the number of registers up  */
+    cc->next_vreg += (e_vreg_t)lookup->vregs_used;
+    cc->next_label += lookup->labels_used;
+
+    /* return instructions jump here */
+    define_and_emit_label(cc, exit_label);
+  }
+
+  e_arnfree(cc->arena, old_instructions);
 }
 
 static void
@@ -4111,11 +4234,13 @@ codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg)
       u32 dst = get_destination_reg(ins);
       if (dst != UINT32_MAX) {
         if (ins->opcode == EIR_OPCODE_MOV) {
-          u32 src       = ins->mov.src;
-          copy_map[dst] = src;
-
-          /* commonly generated by the above */
-          if (dst == src) ins->opcode = EIR_OPCODE_NOP;
+          u32 src = ins->mov.src;
+          if (src < E_REG_GENERAL_BEGIN) {
+            copy_map[dst] = dst; /* fixed registers always die in any circumstance */
+          } else {
+            copy_map[dst] = src;
+            if (dst == src) ins->opcode = EIR_OPCODE_NOP;
+          }
         } else {
           /* kill the old value */
           copy_map[dst] = dst;
@@ -4155,7 +4280,7 @@ forward_dead_moves(e_compiler* cc)
       const e_ins* look = &cc->instructions[j];
       if (is_instruction_noop(look->opcode)) continue;
 
-      if (is_instruction_impure(look->opcode) && look->opcode != EIR_OPCODE_CALL) break;
+      if (is_instruction_impure(look->opcode)) break;
 
       u32 def = get_destination_reg(look);
       if (def == src) {
