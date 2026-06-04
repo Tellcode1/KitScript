@@ -60,8 +60,8 @@
 
 #define print_err(...)                                                                                                                               \
   do {                                                                                                                                               \
-    fputs("[eexec::vm] ", stderr);                                                                                                                   \
-    fprintf(stderr, __VA_ARGS__);                                                                                                                    \
+    fputs("[eexec::vm] [error] ", e_log_file ? e_log_file : stderr);                                                                                 \
+    fprintf(e_log_file ? e_log_file : stderr, __VA_ARGS__);                                                                                          \
   } while (0)
 
 static inline const e_builtin_func*
@@ -84,8 +84,6 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
     print_err("---> PANIC <---\n");
     return E_EPANIC;
   }
-
-  // printf("call %s\n", lookup(info->names, info->names_hashes, info->nnames, hash));
 
   // builtins
   const e_builtin_func* builtin = get_builtin_func_hashed(hash);
@@ -137,11 +135,7 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
   return -1;
 
 pop_and_ret:
-  // #ifdef DEBUG_PRINT_STACK
-  // printf("Function %u returned: ", hash);
-  // eb_println(&return_value, 1);
-  // #endif
-
+  /* nothing to pop */
   return e;
 }
 
@@ -157,8 +151,6 @@ read_args_vector(e_var* regs, e_var* stack, u32 sp, u32 nelems)
   for (; i < MIN(nelems, E_REG_ARG_COUNT); i++) {
     memcpy(&tmp[i], &regs[E_REG_ARG0 + i], sizeof(e_var));
     e_var_acquire(&tmp[i]);
-
-    // regs[E_REG_ARG0 + i] = E_NULLVAR;
   }
 
   /* copy rest of the arguments from the stack */
@@ -212,8 +204,6 @@ e_exec(const e_exec_info* info, e_var* ret)
 
   for (ip->val.i = 0; ip->val.i < info->code_count; ip->val.i++) {
     e_ins ins = info->code[ip->val.i];
-    // fprintf(stdout, "next instruction: ");
-    // e_print_instruction(ins, info->names, info->names_hashes, info->nnames);
 
     /* set nilreg to null before every instruction, just for safety */
     regs[E_REG_NIL] = E_NULLVAR;
@@ -252,7 +242,7 @@ e_exec(const e_exec_info* info, e_var* ret)
         e_var_acquire(ret);
 
         /* return from this procedure */
-        e = 0;
+        e = E_OK;
         goto RET;
       }
 
@@ -269,7 +259,7 @@ e_exec(const e_exec_info* info, e_var* ret)
             }
           }
 
-          fprintf(e_log_file == NULL ? stderr : e_log_file, "[eexec::vm] ASSERTION FAILED: %s\n", line ? line : "[line debug symbol not found]");
+          print_err("[eexec::vm] ASSERTION FAILED: %s\n", line ? line : "[line debug symbol not found]");
 
           e = E_EASSERT;
           goto RET;

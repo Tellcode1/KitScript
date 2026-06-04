@@ -70,6 +70,10 @@ e_print_instruction(e_ins i, const e_compilation_result* r, FILE* f)
       fprintf(f, "loadk dst=%s, id=%u\n", get_register_name(i.loadk.dst, buf0), i.loadk.id);
       break;
     }
+    case EIR_OPCODE_ASSERT: {
+      fprintf(f, "assert condition=%s, line_id=%u\n", get_register_name(i.assertion.cond, buf0), i.assertion.line_id);
+      break;
+    }
     case EIR_OPCODE_MOV: {
       fprintf(f, "mov dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1));
       break;

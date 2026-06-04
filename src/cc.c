@@ -1233,8 +1233,8 @@ compile_function_definition(e_compiler* cc, int node)
       // codegraph_preliminary_dead_store_elimination(&fork, &cfg);
       if (!fork.info->feature_set.disable_local_copy_propagation) { codegraph_local_copy_propagation(&fork, &cfg); }
       if (!fork.info->feature_set.disable_dead_store_elimination) { codegraph_dead_store_elimination(&fork, &cfg); }
-      if (!fork.info->feature_set.disable_constant_propagation) { codegraph_constant_propagation(&fork, &cfg); }
-      if (!fork.info->feature_set.disable_constant_folding) { codegraph_constant_folding(&fork, &cfg); }
+      // if (!fork.info->feature_set.disable_constant_propagation) { codegraph_constant_propagation(&fork, &cfg); }
+      // if (!fork.info->feature_set.disable_constant_folding) { codegraph_constant_folding(&fork, &cfg); }
       if (!fork.info->feature_set.disable_redundant_move_elimination) { codegraph_redundant_move_elimination(&fork, &cfg); }
       if (!fork.info->feature_set.disable_dead_branch_elimination) { codegraph_eliminate_unreachable_code(&fork, &cfg); }
 
@@ -3650,7 +3650,7 @@ strip_noops(e_compiler* cc)
 static u32
 label_pass(e_arena* arena, e_ins* instructions, u32 ninstructions, u32 label_count)
 {
-  u32* label_map = e_arnalloc(arena, label_count * sizeof(u32));
+  u32* label_map = calloc(label_count, sizeof(u32));
   memset(label_map, 0xFF, label_count * sizeof(u32)); // UINT32_MAX = not found
 
   e_ins* copy = calloc(ninstructions, sizeof(e_ins));
@@ -3683,6 +3683,7 @@ label_pass(e_arena* arena, e_ins* instructions, u32 ninstructions, u32 label_cou
   }
 
   free(copy);
+  free(label_map);
 
   return ctr;
 }
