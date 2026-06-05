@@ -208,6 +208,8 @@ era_allocate(int opt_level, era_state* ra)
     for (u32 i = 0; i < E_REG_GENERAL_BEGIN; i++) { phys_free[i] = false; }
   }
 
+  phys_free[ERA_SPILL_SCRATCH] = false;
+
   era_range* active[ERA_NUM_PHYS] = { 0 };
   u32        nactive              = 0;
   u32        next_spill           = 0;
@@ -247,11 +249,13 @@ era_allocate(int opt_level, era_state* ra)
       era_range* spill = active[spill_idx];
 
       if (spill->end > r->end) {
-        r->phys           = spill->phys;
-        spill->phys       = ERA_SPILL_FLAG | next_spill++;
-        active[spill_idx] = r; // replace
+        r->phys             = spill->phys;
+        spill->spill_offset = next_spill * 8;
+        spill->phys         = ERA_SPILL_FLAG | next_spill++;
+        active[spill_idx]   = r; // replace
       } else {
         // r itself gets spilled
+        r->spill_offset           = next_spill * 8;
         r->phys                   = ERA_SPILL_FLAG | next_spill++;
         ra->vreg_to_phys[r->vreg] = r->phys;
         continue;

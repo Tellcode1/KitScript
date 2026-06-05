@@ -132,7 +132,7 @@ call(const e_exec_info* info, u32 hash, e_var* args, u32 nargs, e_var* ret)
   print_err("Function %u not defined\n", hash);
 
   *ret = E_NULLVAR;
-  return -1;
+  return E_ENONEXISTENT;
 
 pop_and_ret:
   /* nothing to pop */
@@ -294,6 +294,8 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_MOVF: {
         double value = ins.movf.value;
         u32    dst   = ins.movf.dst;
+
+        fprintf(stderr, "%u\n", dst);
 
         e_var src = e_var_from_float(value);
 

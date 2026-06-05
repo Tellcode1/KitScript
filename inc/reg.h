@@ -5,6 +5,7 @@
 #define E_REG_COUNT 128
 
 typedef enum e_regs {
+  /* argument vector, 16 arguments are passed thru registers, rest thru the stack. */
   E_REG_ARG0  = 0,
   E_REG_ARG1  = 1,
   E_REG_ARG2  = 2,
@@ -25,10 +26,9 @@ typedef enum e_regs {
   E_REG_SP  = 16, /* stack pointer */
   E_REG_IP  = 17, /* instruction pointer (next instruction to be executed) */
   E_REG_NIL = 18, /* nil register, always holds null */
-  E_REG_TMP = 19,
 
-  E_REG_GENERAL_BEGIN = 20,
-  E_REG_GENERAL_END   = 255
+  E_REG_GENERAL_BEGIN = 19,
+  E_REG_GENERAL_END   = E_REG_COUNT
 } e_regs;
 
 #endif

@@ -54,7 +54,7 @@ get_register_name(u32 reg_id, char buff[32])
   } else if (reg_id == E_REG_NIL) {
     snprintf(buff, 32, "rnil");
   } else {
-    snprintf(buff, 32, "ru%i", reg_id);
+    snprintf(buff, 32, "??%i", reg_id);
   }
   return buff;
 }

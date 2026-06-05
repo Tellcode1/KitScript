@@ -70,6 +70,12 @@
 #  define E_ARENA_ALLOCATION_AMORTIZATION_THRESHOLD_DENOMINATOR (10)
 #endif
 
+#ifndef E_ARENA_ATTR_MALLOC
+#  if defined(__has_attribute) && __has_attribute(malloc)
+#    define E_ARENA_ATTR_MALLOC(...) __attribute__((malloc, __VA_ARGS__))
+#  endif
+#endif
+
 /* Data is (uchar*)&page + sizeof(e_arena_page) */
 typedef struct e_arena_page {
   struct e_arena_page* next; /* Next page.*/
@@ -157,6 +163,12 @@ void* e_arnrealloc(e_arena* a, void* top, size_t old_size, size_t new_size) ATTR
  * @param s The string to duplicate, NULL terminated.
  */
 char* e_arnstrdup(e_arena* arena, const char* s) ATTR_NODISCARD;
+
+/**
+ * @brief Mark all pages as free.
+ * Any pointers to the inside of the arena are invalidated.
+ */
+int e_arena_reset(e_arena* arena) ATTR_NODISCARD;
 
 /**
  * @brief Free the arena.

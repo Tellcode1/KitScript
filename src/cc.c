@@ -64,8 +64,11 @@ typedef struct codeblock {
   u32 end;   /* last instruction (inclusive) */
 
   /* Block can really only have 2 successors max (JZ and JNZ, namely the condition failed branch and the condition pass branch) */
-  u32 successors[2];
   u32 nsuccessors;
+  u32 npredecessors;
+
+  u32  successors[2];
+  u32* predecessors;
 
   bool* defines;
   bool* uses;
@@ -76,6 +79,7 @@ typedef struct codeblock {
 
 /* our CFG */
 typedef struct codegraph {
+  e_arena*   arena;
   codeblock* blocks; /* arena allocated  */
   u32        nblocks;
   u32        nvregs;
@@ -83,7 +87,7 @@ typedef struct codegraph {
 
 static ATTR_NODISCARD char* qualify_name(const e_compiler* cc, const char* name);
 
-static ATTR_NODISCARD int codegraph_init(e_compiler* cc, codegraph* dst);
+static ATTR_NODISCARD int codegraph_init(e_arena* a, e_compiler* cc, codegraph* dst);
 static int                codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst);
 static int                codegraph_build_successor_list(e_compiler* cc, codegraph* dst);
 static void               codegraph_free(e_compiler* cc, codegraph* graph);
@@ -1066,9 +1070,10 @@ compile_list(e_compiler* cc, int node)
   e_emit_ins(cc, (e_ins){ .mk_list = { .opcode = EIR_OPCODE_MK_LIST, .dst = dst, .nelems = nelems } });
 
   /* remove spilled elements from the stack */
+  e_vreg_t tmp = vreg_alloc(cc);
   for (u32 i = 16; i < nelems; i++) {
     /* pop repeatedly into tmp */
-    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP } });
+    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
   }
 
   return dst;
@@ -1116,9 +1121,10 @@ compile_map(e_compiler* cc, int node)
   e_emit_ins(cc, (e_ins){ .mk_map = { .opcode = EIR_OPCODE_MK_MAP, .dst = dst, .npairs = npairs } });
 
   /* Cleanup the stack. */
+  e_vreg_t tmp = vreg_alloc(cc);
   for (u32 i = (E_REG_ARG_COUNT / 2); i < npairs; i++) {
     /* pop repeatedly into tmp */
-    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP } });
+    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
   }
 
   return dst;
@@ -1222,12 +1228,17 @@ compile_function_definition(e_compiler* cc, int node)
   defer_pop_scope(&fork);
 
   if (cc->info->opt_level >= 2) {
+    e_arena codegraph_arena = { 0 };
+    if (e_arena_init(1, &codegraph_arena) < 0) return -1;
+
     /* constant folding needs a clean instruction stream */
     // if (!fork.info->feature_set.disable_function_inlining) { opt_inline_function_calls(&fork); }
 
     for (u32 pass = 0; pass < 16; pass++) {
+      if (e_arena_reset(&codegraph_arena) < 0) return -1;
+
       codegraph cfg = { 0 };
-      e             = codegraph_init(&fork, &cfg);
+      e             = codegraph_init(&codegraph_arena, &fork, &cfg);
       if (e < 0) goto ERR;
 
       // codegraph_preliminary_dead_store_elimination(&fork, &cfg);
@@ -1245,6 +1256,8 @@ compile_function_definition(e_compiler* cc, int node)
       if (!fork.info->feature_set.disable_dead_move_forwarding) { forward_dead_moves(&fork); }
     }
 
+    /* OUT OF THE LOOP!!!  */
+    e_arena_free(&codegraph_arena);
     /* do not perform register allocation or the label pass here, we'll do it at the end */
   }
 
@@ -1664,9 +1677,10 @@ compile_function_call(e_compiler* cc, int node)
   e_emit_ins(cc, (e_ins){ .call = { .opcode = EIR_OPCODE_CALL, .dst = dst, .function_id = hash, .nargs = nargs } });
 
   /* Cleanup the stack. */
+  e_vreg_t tmp = vreg_alloc(cc);
   for (u32 i = E_REG_ARG_COUNT; i < nargs; i++) {
     /* pop repeatedly into tmp */
-    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = E_REG_TMP } });
+    e_emit_ins(cc, (e_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
   }
 
   return dst;
@@ -2848,11 +2862,23 @@ get_source_registers(const e_ins* i, u32 sources[32])
   return n;
 }
 
+static inline u32
+intersection(const u32* rpo_num, const u32* idom, u32 b1, u32 b2)
+{
+  u32 cursor1 = (b1);
+  u32 cursor2 = (b2);
+  while (cursor1 != cursor2) {
+    while (rpo_num[cursor1] < rpo_num[cursor2]) cursor1 = idom[cursor1];
+    while (rpo_num[cursor2] < rpo_num[cursor1]) cursor2 = idom[cursor2];
+  }
+  return cursor1;
+}
+
 static int
 codegraph_build_successor_list(e_compiler* cc, codegraph* dst)
 {
   /* label ID -> Label instruction index */
-  u32* label_map = e_arnalloc(cc->arena, cc->next_label * sizeof(u32));
+  u32* label_map = e_arnalloc(dst->arena, cc->next_label * sizeof(u32));
   memset(label_map, 0xFF, cc->next_label * sizeof(u32));
 
   for (u32 i = 0; i < cc->ninstructions; i++) {
@@ -2866,7 +2892,7 @@ codegraph_build_successor_list(e_compiler* cc, codegraph* dst)
   const e_ins* code      = cc->instructions;
   u32          code_size = cc->ninstructions;
 
-  u32* ip_to_block = e_arnalloc(cc->arena, code_size * sizeof(u32));
+  u32* ip_to_block = e_arnalloc(dst->arena, code_size * sizeof(u32));
   for (u32 b = 0; b < nblocks; b++) {
     for (u32 ip = blocks[b].start; ip <= blocks[b].end; ip++) { ip_to_block[ip] = b; }
   }
@@ -2914,8 +2940,123 @@ codegraph_build_successor_list(e_compiler* cc, codegraph* dst)
     }
   }
 
-  e_arnfree(cc->arena, ip_to_block);
-  e_arnfree(cc->arena, label_map);
+  // u32* pred_count = e_arnalloc(cc->arena, nblocks * sizeof(u32));
+  // memset(pred_count, 0, nblocks * sizeof(u32));
+
+  // for (u32 b = 0; b < nblocks; b++) {
+  //   for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
+  //     u32 succ = blocks[b].successors[s];
+  //     if (succ < nblocks) pred_count[succ]++;
+  //   }
+  // }
+
+  // for (u32 b = 0; b < nblocks; b++) {
+  //   blocks[b].npredecessors = pred_count[b];
+  //   if (pred_count[b] > 0) {
+  //     blocks[b].predecessors = e_arnalloc(cc->arena, pred_count[b] * sizeof(u32));
+  //   } else {
+  //     blocks[b].predecessors = NULL;
+  //   }
+  // }
+
+  // u32* fill_idx = e_arnalloc(cc->arena, nblocks * sizeof(u32));
+  // memset(fill_idx, 0, nblocks * sizeof(u32));
+
+  // /* fill predecessors */
+  // for (u32 b = 0; b < nblocks; b++) {
+  //   for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
+  //     u32 succ = blocks[b].successors[s];
+  //     if (succ < nblocks) { blocks[succ].predecessors[fill_idx[succ]++] = b; }
+  //   }
+  // }
+
+  // /* reverse post ordered */
+  // u32* rpo     = e_arnalloc(cc->arena, nblocks * sizeof(u32));
+  // u32* rpo_num = e_arnalloc(cc->arena, nblocks * sizeof(u32));
+  // u32  rpo_idx = 0;
+
+  // /* post ordered */
+  // u32* post     = e_arnalloc(cc->arena, nblocks * sizeof(u32));
+  // u32  post_idx = 0;
+
+  // bool* visited = e_arnalloc(cc->arena, nblocks * sizeof(bool));
+  // memset(visited, 0, nblocks * sizeof(bool));
+
+  // u32* stack = e_arnalloc(cc->arena, nblocks * sizeof(u32));
+  // u32  sp    = 0;
+
+  // /* dfs thru our codegraph */
+  // stack[0]   = 0;
+  // visited[0] = true;
+  // sp++;
+  // while (sp > 0) {
+  //   u32  b      = stack[sp - 1];
+  //   bool pushed = false;
+
+  //   for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
+  //     u32 succ = blocks[b].successors[s];
+  //     if (!visited[succ]) {
+  //       visited[succ] = true;
+  //       stack[sp++]   = succ;
+  //       pushed        = true;
+  //       break;
+  //     }
+  //   }
+
+  //   if (!pushed) {
+  //     post[post_idx++] = b;
+  //     sp--;
+  //   }
+  // }
+
+  // /* reverse the post list to get RPO */
+  // for (u32 i = 0; i < nblocks; i++) {
+  //   rpo[i]          = post[nblocks - 1 - i];
+  //   rpo_num[rpo[i]] = i;
+  // }
+
+  // u32* idom = e_arnalloc(cc->arena, nblocks * sizeof(u32));
+  // for (u32 i = 0; i < nblocks; i++) idom[i] = UINT32_MAX;
+  // idom[0] = 0; /* entry point */
+
+  // bool changed = true;
+  // while (changed) {
+  //   changed = false;
+
+  //   for (u32 i = 1; i < nblocks; i++) { /* skip entry point */
+  //     u32 b = rpo[i];
+
+  //     /* find first processed predecessor */
+  //     u32 new_idom = UINT32_MAX;
+  //     for (u32 p = 0; p < blocks[b].npredecessors; p++) {
+  //       u32 pred = blocks[b].predecessors[p];
+  //       if (idom[pred] != UINT32_MAX) {
+  //         new_idom = pred;
+  //         break;
+  //       }
+  //     }
+
+  //     /* interect with all other processed predecessors */
+  //     for (u32 p = 0; p < blocks[b].npredecessors; p++) {
+  //       u32 pred = blocks[b].predecessors[p];
+  //       if (pred != new_idom && idom[pred] != UINT32_MAX) new_idom = intersection(rpo_num, idom, pred, new_idom);
+  //     }
+
+  //     if (new_idom != idom[b]) {
+  //       idom[b] = new_idom;
+  //       changed = true;
+  //     }
+  //   }
+  // }
+
+  // e_arnfree(cc->arena, stack);
+  // e_arnfree(cc->arena, visited);
+  // e_arnfree(cc->arena, rpo_num);
+  // e_arnfree(cc->arena, rpo);
+  // e_arnfree(cc->arena, pred_count);
+  // e_arnfree(cc->arena, fill_idx);
+  // e_arnfree(dst->arena, ip_to_block);
+  // e_arnfree(dst->arena, label_map);
 
   return 0;
 }
@@ -2927,30 +3068,31 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
   u32          code_size = cc->ninstructions;
 
   const u32 nvregs = cc->next_vreg;
+  assert(nvregs != 0);
 
   for (u32 i = 0; i < dst->nblocks; i++) {
     codeblock* blk = &dst->blocks[i];
 
-    if (blk->live_out) e_arnfree(cc->arena, blk->live_out);
-    if (blk->live_in) e_arnfree(cc->arena, blk->live_in);
-    if (blk->defines) e_arnfree(cc->arena, blk->defines);
-    if (blk->uses) e_arnfree(cc->arena, blk->uses);
+    blk->uses     = e_arnalloc(dst->arena, nvregs * sizeof(bool));
+    blk->defines  = e_arnalloc(dst->arena, nvregs * sizeof(bool));
+    blk->live_in  = e_arnalloc(dst->arena, nvregs * sizeof(bool));
+    blk->live_out = e_arnalloc(dst->arena, nvregs * sizeof(bool));
+    assert(1 && blk->uses != NULL && blk->defines != NULL && blk->live_in != NULL && blk->live_out != NULL);
 
-    blk->uses     = e_arnalloc(cc->arena, nvregs * sizeof(bool));
-    blk->defines  = e_arnalloc(cc->arena, nvregs * sizeof(bool));
-    blk->live_in  = e_arnalloc(cc->arena, nvregs * sizeof(bool));
-    blk->live_out = e_arnalloc(cc->arena, nvregs * sizeof(bool));
+    memset(blk->defines, 0, nvregs * sizeof(bool));
+    assert(2 && blk->uses != NULL && blk->defines != NULL && blk->live_in != NULL && blk->live_out != NULL);
 
-    memset(blk->defines, 0, nvregs);
-    memset(blk->uses, 0, nvregs);
-    memset(blk->live_in, 0, nvregs);
-    memset(blk->live_out, 0, nvregs);
+    memset(blk->uses, 0, nvregs * sizeof(bool));
+    assert(3 && blk->uses != NULL && blk->defines != NULL && blk->live_in != NULL && blk->live_out != NULL);
+
+    memset(blk->live_in, 0, nvregs * sizeof(bool));
+    memset(blk->live_out, 0, nvregs * sizeof(bool));
   }
 
   for (u32 i = 0; i < dst->nblocks; i++) {
     codeblock* blk = &dst->blocks[i];
 
-    bool* defined_so_far = e_arnalloc(cc->arena, nvregs * sizeof(bool));
+    bool* defined_so_far = e_arnalloc(dst->arena, nvregs * sizeof(bool));
     memset(defined_so_far, 0, nvregs * sizeof(bool));
 
     for (u32 ip = blk->start; ip <= blk->end; ip++) {
@@ -2971,12 +3113,10 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
         defined_so_far[dst_reg] = true;
       }
     }
-
-    e_arnfree(cc->arena, defined_so_far);
   }
 
   /* Find all registers used for returning values */
-  bool* return_live = e_arnalloc(cc->arena, nvregs * sizeof(bool));
+  bool* return_live = e_arnalloc(dst->arena, nvregs * sizeof(bool));
   for (u32 i = 0; i < code_size; i++) {
     if (code[i].opcode == EIR_OPCODE_RET) return_live[code[i].ret.return_value] = true;
   }
@@ -2995,11 +3135,11 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
   while (changed) {
     changed = false; /* assume we didn't change */
 
+    bool* new_live_out = e_arnalloc(dst->arena, nvregs);
+    bool* new_live_in  = e_arnalloc(dst->arena, nvregs);
+
     for (i64 i = (i64)dst->nblocks - 1; i >= 0; i--) {
       codeblock* blk = &dst->blocks[i];
-
-      bool* new_live_out = e_arnalloc(cc->arena, nvregs);
-      bool* new_live_in  = e_arnalloc(cc->arena, nvregs);
 
       memset(new_live_out, 0, nvregs);
       memset(new_live_in, 0, nvregs);
@@ -3029,26 +3169,21 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
 
       memcpy(blk->live_in, new_live_in, nvregs);
       memcpy(blk->live_out, new_live_out, nvregs);
-
-      e_arnfree(cc->arena, new_live_in);
-      e_arnfree(cc->arena, new_live_out);
     }
   }
-
-  e_arnfree(cc->arena, return_live);
 
   return 0;
 }
 
 static ATTR_NODISCARD int
-codegraph_init(e_compiler* cc, codegraph* dst)
+codegraph_init(e_arena* a, e_compiler* cc, codegraph* dst)
 {
   const e_ins* code      = cc->instructions;
   u32          code_size = cc->ninstructions;
 
   const u32 nvregs = cc->next_vreg;
 
-  u32* label_map = e_arnalloc(cc->arena, cc->next_label * sizeof(u32));
+  u32* label_map = e_arnalloc(a, cc->next_label * sizeof(u32));
   memset(label_map, 0xFF, cc->next_label * sizeof(u32));
 
   for (u32 i = 0; i < cc->ninstructions; i++) {
@@ -3057,7 +3192,7 @@ codegraph_init(e_compiler* cc, codegraph* dst)
   }
 
   /* Find all block headers */
-  bool* blk_header = e_arnalloc(cc->arena, code_size * sizeof(bool));
+  bool* blk_header = e_arnalloc(a, code_size * sizeof(bool));
   memset(blk_header, 0, code_size * sizeof(bool));
 
   /* first instruction */
@@ -3078,8 +3213,10 @@ codegraph_init(e_compiler* cc, codegraph* dst)
     }
   }
 
+  // e_arnfree(a, label_map);
+
   /* Divide the code into blocks using our block headers */
-  codeblock* blocks  = e_arnalloc(cc->arena, sizeof(codeblock) * code_size);
+  codeblock* blocks  = e_arnalloc(a, sizeof(codeblock) * code_size);
   size_t     nblocks = 0;
 
   u32 block_start = 0;
@@ -3100,6 +3237,7 @@ codegraph_init(e_compiler* cc, codegraph* dst)
   dst->blocks  = blocks;
   dst->nblocks = nblocks;
   dst->nvregs  = nvregs;
+  dst->arena   = a;
 
   return 0;
 }
@@ -3142,7 +3280,7 @@ codegraph_dead_store_elimination(e_compiler* cc, codegraph* cfg)
     for (u32 i = 0; i < cfg->nblocks; i++) {
       codeblock* blk = &cfg->blocks[i];
 
-      bool* live = e_arnalloc(cc->arena, cfg->nvregs);
+      bool* live = e_arnalloc(cfg->arena, cfg->nvregs);
       memcpy(live, blk->live_out, cfg->nvregs);
 
       for (i64 ip = blk->end; ip >= blk->start; ip--) {
@@ -3169,7 +3307,7 @@ codegraph_dead_store_elimination(e_compiler* cc, codegraph* cfg)
         if (dst != UINT32_MAX) live[dst] = false;
       }
 
-      e_arnfree(cc->arena, live);
+      // e_arnfree(cfg->arena, live);
     }
   }
 }
@@ -3404,7 +3542,7 @@ remove_jmp_where_it_would_fallthrough(e_compiler* cc)
     if (useless) { ins->opcode = EIR_OPCODE_NOP; }
   }
 
-  e_arnfree(cc->arena, label_map);
+  // e_arnfree(cc->arena, label_map);
 
   return 0;
 }
@@ -3620,8 +3758,6 @@ codegraph_constant_folding(e_compiler* cc, const codegraph* cfg)
     two->opcode    = EIR_OPCODE_LOADK;
     two->loadk.id  = e_var_hash(&result);
     two->loadk.dst = two_dst;
-
-    changed = true;
   }
 }
 
@@ -3641,7 +3777,7 @@ strip_noops(e_compiler* cc)
 
   cc->ninstructions = ctr;
 
-  e_arnfree(cc->arena, copy);
+  // e_arnfree(cc->arena, copy);
 
   return 0;
 }
@@ -3694,12 +3830,12 @@ codegraph_eliminate_unreachable_code(e_compiler* cc, codegraph* cfg)
   codegraph_build_successor_list(cc, cfg);
   codegraph_liveliness_analysis(cc, cfg);
 
-  bool* reachable = e_arnalloc(cc->arena, cfg->nblocks * sizeof(bool));
+  bool* reachable = e_arnalloc(cfg->arena, cfg->nblocks * sizeof(bool));
   memset(reachable, 0, cfg->nblocks * sizeof(bool));
   reachable[0] = true;
 
   /* Do a DFS to find dead blocks. */
-  u32* stack  = e_arnalloc(cc->arena, cfg->nblocks * sizeof(u32));
+  u32* stack  = e_arnalloc(cfg->arena, cfg->nblocks * sizeof(u32));
   u32  sp     = 0;
   stack[sp++] = 0;
   while (sp > 0) {
@@ -3724,7 +3860,7 @@ codegraph_eliminate_unreachable_code(e_compiler* cc, codegraph* cfg)
     }
   }
 
-  e_arnfree(cc->arena, reachable);
+  // e_arnfree(cfg->arena, reachable);
 }
 
 static inline int
@@ -3755,8 +3891,8 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
   codegraph_build_successor_list(cc, cfg);
   codegraph_liveliness_analysis(cc, cfg);
 
-  e_var* regs         = e_arnalloc(cc->arena, cfg->nvregs * sizeof(e_var));
-  bool*  values_known = e_arnalloc(cc->arena, cfg->nvregs * sizeof(bool));
+  e_var* regs         = e_arnalloc(cfg->arena, cfg->nvregs * sizeof(e_var));
+  bool*  values_known = e_arnalloc(cfg->arena, cfg->nvregs * sizeof(bool));
 
   const u32 nvregs = cfg->nvregs;
   for (u32 i = 0; i < nvregs; i++) {
@@ -3900,8 +4036,9 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
           e_var* lit = &cc->lit_table->literals[j];
           if (cc->lit_table->literal_hashes[j] != id) continue;
 
+          e_var tmp = *lit;
           replace_move_with_constant_load(cc, cfg, ins, ins->loadk.dst, lit);
-          regs[dst]         = *lit;
+          regs[dst]         = tmp;
           values_known[dst] = true;
 
           break;
@@ -4165,7 +4302,7 @@ opt_inline_function_calls(e_compiler* cc)
     define_and_emit_label(cc, exit_label);
   }
 
-  e_arnfree(cc->arena, old_instructions);
+  // e_arnfree(cc->arena, old_instructions);
 }
 
 static void
@@ -4174,7 +4311,7 @@ codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg)
   codegraph_build_successor_list(cc, cfg);
   codegraph_liveliness_analysis(cc, cfg);
 
-  u32* copy_map = e_arnalloc(cc->arena, cc->next_vreg * sizeof(u32));
+  u32* copy_map = e_arnalloc(cfg->arena, cc->next_vreg * sizeof(u32));
   for (u32 b = 0; b < cfg->nblocks; b++) {
     codeblock* blk = &cfg->blocks[b];
 
@@ -4281,7 +4418,7 @@ codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg)
     }
   }
 
-  e_arnfree(cc->arena, copy_map);
+  // e_arnfree(cfg->arena, copy_map);
 }
 
 static void

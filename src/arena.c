@@ -19,7 +19,7 @@ add_free_page(size_t size, e_arena* arena)
   // Round to page size
   size = ((size + E_PAGE_SIZE - 1) / E_PAGE_SIZE) * E_PAGE_SIZE;
 
-  e_arena_page* page = (e_arena_page*)e_xalloc(1, size);
+  e_arena_page* page = (e_arena_page*)e_xalloc(1, sizeof(e_arena_page) + (E_ARENA_MINIMUM_ALIGNMENT - 1) + size);
   if (page == NULL) return -1;
 
   page->size = size - sizeof(e_arena_page); // size - metadata_size
@@ -79,7 +79,7 @@ e_arnalloc(e_arena* a, size_t size)
 
   /* can't fit in regular page. */
   if (total + sizeof(e_arena_page) + (E_ARENA_MINIMUM_ALIGNMENT - 1) > E_PAGE_SIZE) {
-    e_arena_page* page = (e_arena_page*)e_xalloc(1, sizeof(e_arena_page) + total);
+    e_arena_page* page = (e_arena_page*)e_xalloc(1, sizeof(e_arena_page) + (E_ARENA_MINIMUM_ALIGNMENT - 1) + total);
     if (!page) return NULL;
 
     page->size = total;
@@ -148,6 +148,27 @@ e_arnstrdup(e_arena* arena, const char* s)
     new_s[l] = 0;
   }
   return new_s;
+}
+
+int
+e_arena_reset(e_arena* arena)
+{
+  e_arena_page* used = arena->current;
+  arena->current     = NULL;
+
+  if (used != NULL) {
+    e_arena_page* last = used;
+    while (last->next != NULL) {
+      last->head = 0; // mark page as free
+      last       = last->next;
+    }
+    last->head = 0;
+
+    last->next        = arena->free_pages;
+    arena->free_pages = used;
+  }
+
+  return 0;
 }
 
 void
