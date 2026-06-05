@@ -6,7 +6,7 @@
 #include "stdafx.h"
 
 #define ERA_NUM_PHYS E_REG_COUNT
-#define ERA_SPILL_FLAG 0x80000000u
+#define ERA_SPILL_FLAG (0x80000000)
 #define ERA_SPILL_SCRATCH (E_REG_GENERAL_END - 1)
 
 typedef struct era_range {

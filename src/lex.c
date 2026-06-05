@@ -224,6 +224,11 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
     if (isdigit(*s)) {
       char* end = NULL;
 
+      const char* parse_end = s;
+      while (isdigit(*parse_end)) parse_end++;
+
+      bool has_dotdot = (parse_end[0] == '.' && parse_end[1] == '.');
+
       double f = strtod(s, &end);
 
       if (end == s) {
@@ -231,11 +236,15 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
         goto err;
       }
 
+      if (has_dotdot) end = (char*)parse_end;
+
       bool is_float = false;
-      for (const char* p = s; p < end; p++) {
-        if (*p == '.' || *p == 'e' || *p == 'E') {
-          is_float = true;
-          break;
+      if (!has_dotdot) {
+        for (const char* p = s; p < end; p++) {
+          if (*p == '.' || *p == 'e' || *p == 'E') {
+            is_float = true;
+            break;
+          }
         }
       }
 
@@ -283,6 +292,8 @@ e_tokenize(const char* input, const char* advertised_file, e_str_interner* inter
         tk = (e_token){ .type = E_TOKEN_TYPE_BOOL, .val.b = false, .span = SPAN };
       } else if (len == strlen("if") && strncmp(snap, "if", len) == 0) {
         tk = (e_token){ .type = E_TOKEN_TYPE_IF, .span = SPAN };
+      } else if (len == strlen("in") && strncmp(snap, "in", len) == 0) {
+        tk = (e_token){ .type = E_TOKEN_TYPE_IN, .span = SPAN };
       } else if (len == strlen("else") && strncmp(snap, "else", len) == 0) {
         tk = (e_token){ .type = E_TOKEN_TYPE_ELSE, .span = SPAN };
       } else if (len == strlen("while") && strncmp(snap, "while", len) == 0) {

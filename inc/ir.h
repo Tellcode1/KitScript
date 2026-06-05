@@ -4,8 +4,9 @@
 #include "stdafx.h"
 
 typedef int e_vreg_t;
+typedef u32 e_reg_t; /* register when it is in memory, u8 is disk */
 
-typedef enum eir_opcode {
+typedef enum eir_opcode_bits {
   EIR_OPCODE_NOP = 0,
 
   /**
@@ -149,7 +150,8 @@ typedef enum eir_opcode {
    * and error if it is not.
    */
   EIR_OPCODE_ASSERT,
-} eir_opcode;
+} eir_opcode_bits;
+typedef u8 eir_opcode;
 
 /**
  * An instruction loaded into memory.
@@ -159,64 +161,64 @@ typedef union e_ins {
   eir_opcode opcode;
   struct eir_ins_binop {
     eir_opcode opcode;
-    u32        dst;
-    u32        a;
-    u32        b;
+    e_reg_t    dst;
+    e_reg_t    a;
+    e_reg_t    b;
   } binop;
   struct eir_ins_unop {
     eir_opcode opcode;
-    u32        dst;
-    u32        a;
+    e_reg_t    dst;
+    e_reg_t    a;
   } unop;
   struct eir_ins_loadk {
     eir_opcode opcode;
-    u32        dst;
+    e_reg_t    dst;
     u32        id;
   } loadk;
   struct eir_ins_mov {
     eir_opcode opcode;
-    u32        dst;
-    u32        src;
+    e_reg_t    dst;
+    e_reg_t    src;
   } mov, movg, getg, setg;
   struct eir_ins_movi {
     eir_opcode opcode;
-    u32        dst;
+    e_reg_t    dst;
     int        value;
   } movi;
   struct eir_ins_movf {
     eir_opcode opcode;
-    u32        dst;
+    e_reg_t    dst;
     double     value;
   } movf;
   struct eir_ins_ret {
     eir_opcode opcode;
-    u32        return_value;
+    e_reg_t    return_value;
   } ret;
   struct eir_ins_mk_list {
     eir_opcode opcode;
-    u32        dst;
+    e_reg_t    dst;
     u32        nelems;
   } mk_list;
   struct eir_ins_mk_map {
     eir_opcode opcode;
-    u32        dst;
+    e_reg_t    dst;
     u32        npairs;
   } mk_map;
   struct eir_ins_index {
     eir_opcode opcode;
-    u32        dst;
-    u32        base;
-    u32        index;
+    e_reg_t    dst;
+    e_reg_t    base;
+    e_reg_t    index;
   } index;
   struct eir_ins_index_assign {
     eir_opcode opcode;
-    u32        value;
-    u32        base;
-    u32        index;
+    e_reg_t    value;
+    e_reg_t    base;
+    e_reg_t    index;
   } index_assign;
   struct eir_ins_call {
     eir_opcode opcode;
-    u32        dst;
+    e_reg_t    dst;
     u32        function_id;
     u32        nargs;
   } call;
@@ -226,8 +228,8 @@ typedef union e_ins {
   } jmp;
   struct eir_ins_cjmp { // conditional jump
     eir_opcode opcode;
+    e_reg_t    condition;
     u32        target;
-    u32        condition;
   } cj, jz, jnz, je, jne;
   struct eir_ins_label {
     eir_opcode opcode;
@@ -235,28 +237,28 @@ typedef union e_ins {
   } label;
   struct eir_ins_member_access {
     eir_opcode opcode;
-    u32        dst;
-    u32        base;
+    e_reg_t    dst;
+    e_reg_t    base;
     u32        member_id;
   } member_access;
   struct eir_ins_member_assign {
     eir_opcode opcode;
-    u32        value;
-    u32        base;
+    e_reg_t    value;
+    e_reg_t    base;
     u32        member_id;
   } member_assign;
   struct eir_ins_mk_struct {
     eir_opcode opcode;
-    u32        dst;
+    e_reg_t    dst;
     u32        struct_id;
   } mk_struct;
   struct eir_ins_push {
     eir_opcode opcode;
-    u32        reg;
+    e_reg_t    reg;
   } push, pop;
   struct eir_ins_assert {
     eir_opcode opcode;
-    u32        cond;
+    e_reg_t    cond;
     u32        line_id; /* the constant ID of the line */
   } assertion;
 } e_ins;

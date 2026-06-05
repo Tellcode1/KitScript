@@ -158,6 +158,7 @@ main(int argc, char* argv[])
   if (e) goto RET;
 
   e_var gvars[128];
+  for (u32 i = 0; i < E_ARRLEN(gvars); i++) { gvars[i] = E_NULLVAR; };
 
   e_exec_info info = {
     .gvars           = gvars,

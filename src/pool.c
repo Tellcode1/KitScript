@@ -47,12 +47,13 @@ e_refdobj_pool_init(u32 nbranches, e_refdobj_pool* pool)
   pool->nbranches = nbranches;
 
   // array of pointers to branches!
-  pool->branches = (e_refdobj_branch**)e_xalloc(nbranches, sizeof(e_refdobj_branch*));
+  pool->branches = (e_refdobj_branch**)e_aligned_malloc(nbranches * sizeof(e_refdobj_branch*), 16);
   if (!pool->branches) return -1;
 
   pool->in_use_masks = (u32*)e_xalloc(nbranches, sizeof(u32));
   if (!pool->in_use_masks) return -1;
 
+  memset((void*)pool->branches, 0x0, sizeof(e_refdobj_branch*) * nbranches);
   memset(pool->in_use_masks, 0x0, sizeof(u32) * nbranches);
 
   for (u32 i = 0; i < nbranches; i++) {
@@ -70,7 +71,7 @@ e_refdobj_pool_free(e_refdobj_pool* pool)
 {
   for (u32 i = 0; i < pool->nbranches; i++) e_aligned_free(pool->branches[i]);
   E_ARR_FREE(pool->in_use_masks);
-  E_ARR_FREE(pool->branches);
+  e_aligned_free((void*)pool->branches);
 }
 
 static inline int
@@ -111,8 +112,9 @@ e_refdobj_pool_acquire(e_refdobj_pool* pool)
     /* Double number of branches and recurse */
     u32 new_branch_count = pool->nbranches * 2;
     u32 old_branch_count = pool->nbranches;
-
-    e_refdobj_branch** new_branches = E_ARR_REALLOC(pool->branches, e_refdobj_branch*, new_branch_count);
+    // E_ARR_REALLOC(pool->branches, e_refdobj_branch*, new_branch_count);
+    e_refdobj_branch** new_branches = (e_refdobj_branch**)e_aligned_realloc(
+        (void*)pool->branches, old_branch_count * sizeof(e_refdobj_branch*), new_branch_count * sizeof(e_refdobj_branch*), 16);
     if (!new_branches) return NULL;
 
     u32* new_free_lists = E_ARR_REALLOC(pool->in_use_masks, u32, new_branch_count);

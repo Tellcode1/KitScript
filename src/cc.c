@@ -151,6 +151,7 @@ static RETURNS_ERRCODE e_vreg_t compile_function_call(e_compiler* cc, int node);
 static RETURNS_ERRCODE e_vreg_t compile_if_statement(e_compiler* cc, int node);
 static RETURNS_ERRCODE e_vreg_t compile_while_statement(e_compiler* cc, int node);
 static RETURNS_ERRCODE e_vreg_t compile_for_statement(e_compiler* cc, int node);
+static RETURNS_ERRCODE e_vreg_t compile_ranged_for_statement(e_compiler* cc, int node);
 static RETURNS_ERRCODE e_vreg_t compile_member_access(e_compiler* cc, int node);
 static RETURNS_ERRCODE e_vreg_t compile_assign(e_compiler* cc, int node);
 static RETURNS_ERRCODE e_vreg_t compile_return(e_compiler* cc, int node);
@@ -184,11 +185,11 @@ scope_define(e_compiler* cc, e_filespan span, const char* name, bool is_const)
   cc->scope->vars = v;
   if (v->is_global) {
     v->slot.global_id = cc->next_global++;
-    return (e_vreg_t)v->slot.global_id;
+  } else {
+    v->slot.reg = reg;
   }
 
-  v->slot.reg = reg;
-  return v->slot.reg;
+  return v->is_global ? (e_vreg_t)v->slot.global_id : v->slot.reg;
 }
 
 static void
@@ -702,13 +703,27 @@ emit_lvalue_assign(e_compiler* cc, e_vreg_t value, val_t* lv)
         return -1;
       }
 
+      if (v->is_const) {
+        cerror(*lv->span, "Can not assign to const variable %s\n", lv->val.var.name);
+        return -1;
+      }
+
       /* local to local operation. global to global operations need a temporary register. */
       e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = v->slot.reg, .src = value } });
       break;
     }
     case E_LVAL_GVAR: {
       ecc_var* v = scope_lookup_info(cc, lv->val.var.id);
-      if (!v) return -1;
+
+      if (!v) {
+        cerror(*lv->span, "Undeclared global variable %s\n", lv->val.var.name);
+        return -1;
+      }
+
+      if (v->is_const) {
+        cerror(*lv->span, "Can not assign to const global variable %s\n", lv->val.var.name);
+        return -1;
+      }
 
       /* writing to a global variable from a local register */
       e_emit_ins(cc, (e_ins){ .setg = { .opcode = EIR_OPCODE_SETG, .dst = v->slot.global_id, .src = value } });
@@ -2042,6 +2057,83 @@ ERR:
 }
 
 static e_vreg_t
+compile_ranged_for_statement(e_compiler* cc, int node)
+{
+  const int*  stmts    = E_GET_NODE(cc->ast, node)->for_range_stmt.stmts;
+  u32         nstmts   = E_GET_NODE(cc->ast, node)->for_range_stmt.nstmts;
+  int         start    = E_GET_NODE(cc->ast, node)->for_range_stmt.start;
+  int         stop     = E_GET_NODE(cc->ast, node)->for_range_stmt.stop;
+  const char* iterator = E_GET_NODE(cc->ast, node)->for_range_stmt.iterator_name;
+
+  const char* interned_iterator = e_str_intern(iterator, cc->ast->interner);
+  char*       full_iterator     = qualify_name(cc, interned_iterator);
+
+  e_filespan span = E_GET_NODE(cc->ast, node)->for_range_stmt.span;
+
+  ecc_loop_location* old_loop = cc->loop;
+
+  scope_push(cc);
+  if (defer_push_scope(cc) < 0) goto ERR;
+
+  e_vreg_t iterator_reg = scope_define(cc, span, full_iterator, false);
+  e_emit_ins(cc, (e_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = iterator_reg, .value = start } });
+
+  /* start less than stop, then go up. start greater than stop, then go down. */
+  bool iterator_direction_upwards = start < stop;
+
+  u32 start_label   = make_label_id(cc);
+  u32 iterate_label = make_label_id(cc);
+  u32 end_label     = make_label_id(cc);
+
+  ecc_loop_location loop = {
+    .continue_label = iterate_label,
+    .break_label    = end_label,
+    .defer_depth    = defer_get_current_depth(cc),
+  };
+  cc->loop = &loop; /* stored our old cc->loop earlier to prevent a dangling reference */
+
+  define_and_emit_label(cc, start_label);
+
+  /* check if iterator == stop */
+  e_vreg_t condition_check = vreg_alloc(cc);
+  e_vreg_t stop_reg        = vreg_alloc(cc);
+  e_emit_ins(cc, (e_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = stop_reg, .value = stop } });
+  e_emit_ins(cc, (e_ins){ .binop = { .opcode = EIR_OPCODE_EQL, .dst = condition_check, .a = iterator_reg, .b = stop_reg } });
+  if (emit_and_record_jmp(cc, EIR_OPCODE_JNZ, condition_check, end_label) < 0) goto ERR;
+
+  for (u32 i = 0; i < nstmts; i++) {
+    if (compile(cc, stmts[i]) < 0) {
+      cerror(E_GET_NODE(cc->ast, stmts[i])->common.span, "Failed to compile statement [ranged for]\n");
+      goto ERR;
+    }
+  }
+
+  /* iterate label, inc/decrement our iterator */
+  define_and_emit_label(cc, iterate_label);
+
+  if (defer_emit_current_scope(cc) < 0) goto ERR;
+
+  /* increment if iterator direction is +1, decrement otherwise  */
+  e_emit_ins(
+      cc, (e_ins){ .unop = { .opcode = iterator_direction_upwards ? EIR_OPCODE_INC : EIR_OPCODE_DEC, .dst = iterator_reg, .a = iterator_reg } });
+
+  if (emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, start_label) < 0) goto ERR;
+
+  define_and_emit_label(cc, end_label);
+
+  scope_pop(cc);
+  defer_pop_scope(cc);
+
+  cc->loop = old_loop;
+
+  return 0;
+
+ERR:
+  cc->loop = old_loop;
+  return -1;
+}
+
+static e_vreg_t
 compile_member_access(e_compiler* cc, int node)
 {
   if (!can_make_value(cc->ast, node)) {
@@ -2376,14 +2468,23 @@ compile_variable_decleration(e_compiler* cc, int node)
     e_vreg_t init_reg = compile(cc, initializer);
     if (init_reg < 0) return init_reg;
 
-    if (emit_lvalue_assign(cc, init_reg, &lv) < 0) return -1;
+    /* global scope? */
+    if (cc->scope == NULL) {
+      e_emit_ins(cc, (e_ins){ .setg = { .opcode = EIR_OPCODE_SETG, .dst = new_var, .src = init_reg } });
+    } else {
+      e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = new_var, .src = init_reg } });
+    }
   } else {
     e_var    nil = E_NULLVAR;
     e_vreg_t n   = compile_and_push_literal_variable(cc, &nil);
     if (n < 0) return n;
 
     /* no initializer specified. initialize it to null. */
-    if (emit_lvalue_assign(cc, n, &lv) < 0) return -1;
+    if (cc->scope == NULL) {
+      e_emit_ins(cc, (e_ins){ .setg = { .opcode = EIR_OPCODE_SETG, .dst = new_var, .src = n } });
+    } else {
+      e_emit_ins(cc, (e_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = new_var, .src = n } });
+    }
   }
 
   value_free(&lv);
@@ -2421,6 +2522,9 @@ compile_root(e_compiler* cc, int node)
   e_var    v      = E_NULLVAR;
   e_vreg_t nilvar = compile_and_push_literal_variable(cc, &v);
   e_emit_ins(cc, (e_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
+
+  era_simple_register_allocation_pass(cc);
+  cc->ninstructions = label_pass(cc->arena, cc->instructions, cc->ninstructions, cc->next_label);
 
   return 0; // Done!
 }
@@ -2634,6 +2738,7 @@ compile(e_compiler* cc, int node)
     case E_AST_NODE_ASSIGN: return compile_assign(cc, node);
     case E_AST_NODE_CALL: return compile_function_call(cc, node);
     case E_AST_NODE_FOR: return compile_for_statement(cc, node);
+    case E_AST_NODE_RANGED_FOR: return compile_ranged_for_statement(cc, node);
     case E_AST_NODE_WHILE: return compile_while_statement(cc, node);
     case E_AST_NODE_IF: return compile_if_statement(cc, node);
     case E_AST_NODE_STRUCT_DECL: return compile_struct_decleration(cc, node);
@@ -2695,7 +2800,7 @@ compile(e_compiler* cc, int node)
 static u32
 get_destination_reg(const e_ins* i)
 {
-  switch (i->opcode) {
+  switch ((eir_opcode_bits)i->opcode) {
       /* getg, setg and movg  */
     case EIR_OPCODE_MOV: return i->mov.dst; break;
 
@@ -2769,7 +2874,7 @@ static u32
 get_source_registers(const e_ins* i, u32 sources[32])
 {
   u32 n = 0;
-  switch (i->opcode) {
+  switch ((eir_opcode_bits)i->opcode) {
       /* getg, setg and movg  */
     case EIR_OPCODE_MOV: sources[n++] = i->mov.src; break;
 
@@ -4067,7 +4172,7 @@ codegraph_constant_propagation(e_compiler* cc, codegraph* cfg)
 }
 
 static inline void
-update_reg(u32* ptr, u32 offset)
+update_reg(e_reg_t* ptr, u32 offset)
 {
   if (*ptr >= E_REG_GENERAL_BEGIN) *ptr += offset;
 }
@@ -4321,7 +4426,7 @@ codegraph_local_copy_propagation(e_compiler* cc, codegraph* cfg)
       e_ins* ins = &cc->instructions[ip];
       if (ins->opcode == EIR_OPCODE_NOP || ins->opcode == EIR_OPCODE_LABEL) continue;
 
-      switch (ins->opcode) {
+      switch ((eir_opcode_bits)ins->opcode) {
           /* getg, setg and movg  */
         case EIR_OPCODE_MOV: ins->mov.src = copy_map[ins->mov.src]; break;
 

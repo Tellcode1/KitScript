@@ -43,7 +43,7 @@ lookup(const e_compilation_result* r, u32 name)
 static inline const char*
 get_register_name(u32 reg_id, char buff[32])
 {
-  if (reg_id >= E_REG_ARG0 && reg_id <= E_REG_ARG15) {
+  if (reg_id >= E_REG_ARG0 && reg_id < E_REG_ARG_COUNT) {
     snprintf(buff, 32, "arg%i", reg_id - E_REG_ARG0);
   } else if (reg_id >= E_REG_GENERAL_BEGIN && reg_id <= E_REG_GENERAL_END) {
     snprintf(buff, 32, "r%i", reg_id - E_REG_GENERAL_BEGIN);
@@ -65,7 +65,7 @@ e_print_instruction(e_ins i, const e_compilation_result* r, FILE* f)
   char buf0[32];
   char buf1[32];
   char buf2[32];
-  switch (i.opcode) {
+  switch ((eir_opcode_bits)i.opcode) {
     case EIR_OPCODE_LOADK: {
       fprintf(f, "loadk dst=%s, id=%u\n", get_register_name(i.loadk.dst, buf0), i.loadk.id);
       break;

@@ -45,13 +45,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PASTE(x, y) x##y
-
-// clang-format off
-#define TRY(expr) do { int PASTE(__e__, __LINE__) = 0; if ((PASTE(__e__, __LINE__) = (expr))) { return PASTE(__e__, __LINE__); } } while (0)
-#define TRY_V(expr) do {   int PASTE(__e__, __LINE__) = (expr);   if (PASTE(__e__, __LINE__)) { return -1; } } while (0)
-// clang-format on
-
 #define remove(var)                                                                                                                                  \
   do {                                                                                                                                               \
     e_var_release(var);                                                                                                                              \
@@ -163,7 +156,7 @@ read_args_vector(e_var* regs, e_var* stack, u32 sp, u32 nelems)
 }
 
 e_ecode
-e_exec(const e_exec_info* info, e_var* ret)
+e_exec(const e_exec_info* const info, e_var* ret)
 {
   /* Initial state check. */
   if ((info->nargs > 0 && info->args == NULL) || (info->code == NULL && info->code_count != 0)
@@ -177,7 +170,7 @@ e_exec(const e_exec_info* info, e_var* ret)
   e_ecode e = E_OK;
 
   e_var regs[E_REG_COUNT];
-  for (u32 i = 0; i < E_REG_COUNT; i++) regs[i] = E_NULLVAR;
+  for (u32 i = 0; i < E_REG_COUNT; i++) { regs[i] = E_NULLVAR; }
 
   size_t stack_capacity = 256;
   e_var* stack          = e_xalloc(stack_capacity, sizeof(e_var));
@@ -208,7 +201,7 @@ e_exec(const e_exec_info* info, e_var* ret)
     /* set nilreg to null before every instruction, just for safety */
     regs[E_REG_NIL] = E_NULLVAR;
 
-    switch (ins.opcode) {
+    switch ((eir_opcode_bits)ins.opcode) {
       case EIR_OPCODE_LOADK: {
         u32 dst = ins.loadk.dst;
         u32 id  = ins.loadk.id;
@@ -261,6 +254,7 @@ e_exec(const e_exec_info* info, e_var* ret)
 
           print_err("[eexec::vm] ASSERTION FAILED: %s\n", line ? line : "[line debug symbol not found]");
 
+          /* propogate assertion failure to top, it will decide what to do */
           e = E_EASSERT;
           goto RET;
         }
@@ -294,8 +288,6 @@ e_exec(const e_exec_info* info, e_var* ret)
       case EIR_OPCODE_MOVF: {
         double value = ins.movf.value;
         u32    dst   = ins.movf.dst;
-
-        fprintf(stderr, "%u\n", dst);
 
         e_var src = e_var_from_float(value);
 
@@ -362,19 +354,29 @@ e_exec(const e_exec_info* info, e_var* ret)
         u32 dst = ins.unop.dst;
         u32 rhs = ins.unop.a;
 
-        if (dst != rhs) { print_err("operand != dst for inc/dec? Possibly corrupted bytecode stream. Continuing.\n"); }
+        /* There are cases (especially after register allocation && optimization) where this is not correct */
+        // if (dst != rhs) { print_err("operand != dst for inc/dec? Possibly corrupted bytecode stream. Continuing.\n"); }
 
-        e_var* r = &regs[rhs];
         e_var* d = &regs[dst];
+        e_var* r = &regs[rhs];
+
+        e_vartype type  = r->type;
+        int       ival  = e_cast_to_int(r);
+        double    fval  = e_cast_to_float(r);
+        int       delta = (ins.opcode == EIR_OPCODE_INC) ? 1 : -1;
 
         remove(d);
-        d->type = r->type;
-        if (r->type == E_VARTYPE_INT || r->type == E_VARTYPE_CHAR || r->type == E_VARTYPE_BOOL) {
-          d->val.i = e_cast_to_int(r) + (ins.opcode == EIR_OPCODE_INC ? 1 : -1);
-        } else if (r->type == E_VARTYPE_FLOAT) {
-          d->val.f = e_cast_to_float(r) + (ins.opcode == EIR_OPCODE_INC ? 1 : -1);
-        }
 
+        if (type == E_VARTYPE_INT || type == E_VARTYPE_CHAR || type == E_VARTYPE_BOOL) {
+          d->type  = E_VARTYPE_INT;
+          d->val.i = ival + delta;
+        } else if (type == E_VARTYPE_FLOAT) {
+          d->type  = E_VARTYPE_FLOAT;
+          d->val.f = fval + (double)delta;
+        } else {
+          d->type  = E_VARTYPE_INT;
+          d->val.i = delta; // null + 1 = 1
+        }
         break;
       }
 

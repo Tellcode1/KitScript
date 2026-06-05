@@ -139,6 +139,13 @@ e_ast_node_free(e_ast* p, int id)
       free(node->for_stmt.stmts);
       break;
 
+    case E_AST_NODE_RANGED_FOR: {
+      free(node->for_range_stmt.iterator_name);
+      for (u32 i = 0; i < node->for_range_stmt.nstmts; i++) e_ast_node_free(p, node->for_range_stmt.stmts[i]);
+      free(node->for_range_stmt.stmts);
+      break;
+    }
+
     case E_AST_NODE_IF: free_if_stmt(p, &node->if_stmt); break;
 
     case E_AST_NODE_RETURN:

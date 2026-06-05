@@ -43,6 +43,7 @@ typedef enum e_ast_nodetype {
   E_AST_NODE_ASSERT,
   E_AST_NODE_DEFER,
   E_AST_NODE_FOR,
+  E_AST_NODE_RANGED_FOR, /* for [let] x in 0..2 */
   E_AST_NODE_WHILE,
   E_AST_NODE_BREAK,
   E_AST_NODE_CONTINUE,
@@ -346,6 +347,16 @@ typedef union e_ast_node_val {
     int*            stmts;
   } for_stmt;
 
+  struct {
+    e_ast_node_type type;
+    e_filespan      span;
+    int*            stmts;
+    char*           iterator_name; /* for iterator_name in 0..5, malloc'd */
+    int             start;
+    int             stop;
+    u32             nstmts;
+  } for_range_stmt;
+
   e_if_stmt if_stmt;
 } e_ast_node_val;
 
@@ -443,8 +454,8 @@ static inline bool
 e_ast_is_limiter_exempt(e_ast_node_type t)
 {
   return (
-      t == E_AST_NODE_IF || t == E_AST_NODE_WHILE || t == E_AST_NODE_FOR || t == E_AST_NODE_FUNCTION_DEFINITION || t == E_AST_NODE_DEFER
-      || t == E_AST_NODE_NOP || t == E_AST_NODE_DEFER);
+      t == E_AST_NODE_IF || t == E_AST_NODE_WHILE || t == E_AST_NODE_FOR || t == E_AST_NODE_RANGED_FOR || t == E_AST_NODE_FUNCTION_DEFINITION
+      || t == E_AST_NODE_DEFER || t == E_AST_NODE_NOP || t == E_AST_NODE_DEFER);
 }
 
 int e_parse(e_parser* p) ATTR_NODISCARD;

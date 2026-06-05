@@ -621,11 +621,11 @@ parse_while(e_parser* p, int node)
   int* stmts  = NULL;
   u32  nstmts = 0;
 
-  // if (e_ast_expect(p, E_TOKEN_TYPE_OPENPAREN)) {
-  //   asterror(prev(p)->span, "Expected ( after 'while'\n");
-  //   goto err;
-  // }
-  if (peek(p)->type == E_TOKEN_TYPE_OPENPAREN) next(p);
+  if (e_ast_expect(p, E_TOKEN_TYPE_OPENPAREN)) {
+    asterror(prev(p)->span, "Expected ( after 'while'\n");
+    goto err;
+  }
+  // if (peek(p)->type == E_TOKEN_TYPE_OPENPAREN) next(p);
 
   e_filespan prev_span = peek(p)->span;
 
@@ -635,12 +635,12 @@ parse_while(e_parser* p, int node)
     goto err;
   }
 
-  if (peek(p)->type == E_TOKEN_TYPE_CLOSEPAREN) next(p);
+  // if (peek(p)->type == E_TOKEN_TYPE_CLOSEPAREN) next(p);
 
-  // if (e_ast_expect(p, E_TOKEN_TYPE_CLOSEPAREN)) {
-  //   asterror(prev(p)->span, "Expected ) after 'while'\n");
-  //   goto err;
-  // }
+  if (e_ast_expect(p, E_TOKEN_TYPE_CLOSEPAREN)) {
+    asterror(prev(p)->span, "Expected ) after 'while'\n");
+    goto err;
+  }
 
   prev_span = peek(p)->span;
   if (parse_body(p, &stmts, &nstmts)) {
@@ -662,9 +662,122 @@ err:
   return -1;
 }
 
+static inline const e_token*
+peekn(const e_parser* p, u32 n)
+{
+  if (p->head + n >= p->ntoks) return NULL;
+  return &p->toks[p->head + n];
+}
+
+static bool
+is_ranged_for_statement(const e_parser* p)
+{
+  u32            n  = 0;
+  const e_token* t0 = peekn(p, n++);
+  if (!t0) return false;
+
+  if (t0->type == E_TOKEN_TYPE_OPENPAREN) {
+    t0 = peekn(p, n++);
+    if (!t0) return false;
+  }
+
+  if (t0->type == E_TOKEN_TYPE_LET) {
+    const e_token* t1 = peekn(p, n++); // identifier
+    if (!t1 || t1->type != E_TOKEN_TYPE_IDENT) return false;
+    const e_token* t2 = peekn(p, n++); // 'in'
+    return t2 && t2->type == E_TOKEN_TYPE_IN;
+  }
+
+  if (t0->type == E_TOKEN_TYPE_IDENT) {
+    const e_token* t1 = peekn(p, n++); // in
+    return t1 && t1->type == E_TOKEN_TYPE_IN;
+  }
+
+  return false;
+}
+
+static RETURNS_ERRCODE int
+parse_ranged_for(e_parser* p, int node)
+{
+  char* iterator_name = NULL;
+  int*  stmts         = NULL;
+  u32   nstmts        = 0;
+
+  bool given_open_parenthesis = false;
+  if (peek(p)->type == E_TOKEN_TYPE_OPENPAREN) {
+    given_open_parenthesis = true;
+    next(p);
+  }
+
+  if (peek(p)->type == E_TOKEN_TYPE_LET) next(p);
+
+  if (peek(p)->type != E_TOKEN_TYPE_IDENT) {
+    asterror(peek(p)->span, "Expected identifier, got '%s' [ranged for]\n", e_token_type_to_string(peek(p)->type));
+    goto err;
+  }
+
+  iterator_name = e_strdup(peek(p)->val.ident);
+  if (iterator_name == NULL) goto err;
+
+  next(p);
+
+  if (e_ast_expect(p, E_TOKEN_TYPE_IN)) {
+    asterror(prev(p)->span, "Expected 'in' after loop variable, got '%s'  [ranged for]\n", e_token_type_to_string(prev(p)->type));
+    goto err;
+  }
+
+  /* start..stop */
+  if (peek(p)->type != E_TOKEN_TYPE_INT) {
+    asterror(prev(p)->span, "Expected start integer, got '%s'  [ranged for]\n", e_token_type_to_string(prev(p)->type));
+    goto err;
+  }
+  int start = peek(p)->val.i;
+  next(p);
+
+  if (e_ast_expect(p, E_TOKEN_TYPE_DOT) || e_ast_expect(p, E_TOKEN_TYPE_DOT)) {
+    asterror(prev(p)->span, "Expected .. after loop iterator start, got '%s'  [ranged for]\n", e_token_type_to_string(prev(p)->type));
+    goto err;
+  }
+
+  if (peek(p)->type != E_TOKEN_TYPE_INT) {
+    asterror(prev(p)->span, "Expected start integer, got '%s'  [ranged for]\n", e_token_type_to_string(prev(p)->type));
+    goto err;
+  }
+  int stop = peek(p)->val.i;
+  next(p);
+
+  if (given_open_parenthesis && e_ast_expect(p, E_TOKEN_TYPE_CLOSEPAREN)) {
+    asterror(prev(p)->span, "Expected ')' after range expression\n");
+    goto err;
+  }
+
+  e_filespan prev_span = peek(p)->span;
+  if (parse_body(p, &stmts, &nstmts)) {
+    asterror(prev_span, "Failed to parse body [ranged for]\n");
+    goto err;
+  }
+
+  E_GET_NODE(p->ast, node)->type                         = E_AST_NODE_RANGED_FOR;
+  E_GET_NODE(p->ast, node)->for_range_stmt.iterator_name = iterator_name;
+  E_GET_NODE(p->ast, node)->for_range_stmt.start         = start;
+  E_GET_NODE(p->ast, node)->for_range_stmt.stop          = stop;
+  E_GET_NODE(p->ast, node)->for_range_stmt.stmts         = stmts;
+  E_GET_NODE(p->ast, node)->for_range_stmt.nstmts        = nstmts;
+
+  return node;
+
+err:
+  if (iterator_name) free(iterator_name);
+  for (u32 i = 0; i < nstmts; i++) e_ast_node_free(p->ast, stmts[i]);
+  free(stmts);
+  return -1;
+}
+
 static RETURNS_ERRCODE int
 parse_for(e_parser* p, int node)
 {
+  if (is_ranged_for_statement(p)) { return parse_ranged_for(p, node); }
+
   int init = -1;
   int cond = -1;
 

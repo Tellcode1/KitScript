@@ -1,5 +1,6 @@
 #include "../inc/cc.h"
 #include "../inc/ir.h"
+#include "../inc/reg.h"
 #include "../inc/rwhelp.h"
 #include "../inc/stdafx.h"
 
@@ -8,67 +9,46 @@
 #include <stdlib.h>
 #include <string.h>
 
-static inline u8
-read_u8(FILE* f)
-{
-  u8 w = 0;
-  fread(&w, sizeof(w), 1, f);
-  return w;
-}
-
-static inline u32
-read_u32(FILE* f)
-{
-  u32 w = 0;
-  fread(&w, sizeof(w), 1, f);
-  return w;
-}
-
-static inline u64
-read_u64(FILE* f)
-{
-  u64 w = 0;
-  fread(&w, sizeof(w), 1, f);
-  return w;
-}
+#define write(ptr, f) fwrite(ptr, sizeof(*(ptr)), 1, f)
+#define write_reg(ptr, f) fwrite(ptr, E_REG_DISK_SIZE, 1, f)
+#define read(ptr, f) fread(ptr, sizeof(*(ptr)), 1, f)
+#define read_reg(ptr, f) fread(ptr, E_REG_DISK_SIZE, 1, f)
 
 e_ins
 read_ins(FILE* f)
 {
-  e_ins i  = { 0 };
-  i.opcode = read_u8(f);
-
-  switch (i.opcode) {
+  e_ins i = { 0 };
+  read(&i.opcode, f);
+  switch ((eir_opcode_bits)i.opcode) {
     case EIR_OPCODE_LOADK: {
-      i.loadk.dst = read_u32(f);
-      i.loadk.id  = read_u32(f);
+      read_reg(&i.loadk.dst, f);
+      read(&i.loadk.id, f);
       break;
     }
     case EIR_OPCODE_MOVG:
     case EIR_OPCODE_GETG:
     case EIR_OPCODE_SETG:
     case EIR_OPCODE_MOV: {
-      i.mov.dst = read_u32(f);
-      i.mov.src = read_u32(f);
+      read_reg(&i.mov.dst, f);
+      read_reg(&i.mov.src, f);
       break;
     }
 
     case EIR_OPCODE_ASSERT: {
-      i.assertion.cond    = read_u32(f);
-      i.assertion.line_id = read_u32(f);
+      read_reg(&i.assertion.cond, f);
+      read(&i.assertion.line_id, f);
       break;
     }
 
     case EIR_OPCODE_MOVI: {
-      i.movi.dst   = read_u32(f);
-      i.movi.value = (int)read_u32(f);
+      read_reg(&i.movi.dst, f);
+      read(&i.movi.value, f);
       break;
     }
 
     case EIR_OPCODE_MOVF: {
-      i.movf.dst = read_u32(f);
-      u64 read   = read_u64(f);
-      memcpy(&i.movf.value, &read, sizeof(double));
+      read_reg(&i.movf.dst, f);
+      read(&i.movf.value, f);
       break;
     }
 
@@ -89,9 +69,9 @@ read_ins(FILE* f)
     case EIR_OPCODE_LTE:
     case EIR_OPCODE_GT:
     case EIR_OPCODE_GTE: {
-      i.binop.dst = read_u32(f);
-      i.binop.a   = read_u32(f);
-      i.binop.b   = read_u32(f);
+      read_reg(&i.binop.dst, f);
+      read_reg(&i.binop.a, f);
+      read_reg(&i.binop.b, f);
       break;
     }
 
@@ -100,84 +80,84 @@ read_ins(FILE* f)
     case EIR_OPCODE_BNOT:
     case EIR_OPCODE_NEG:
     case EIR_OPCODE_NOT: {
-      i.unop.dst = read_u32(f);
-      i.unop.a   = read_u32(f);
+      read_reg(&i.unop.dst, f);
+      read_reg(&i.unop.a, f);
       break;
     }
 
     case EIR_OPCODE_RET: {
-      i.ret.return_value = read_u32(f);
+      read_reg(&i.ret.return_value, f);
       break;
     }
     case EIR_OPCODE_NOP: break;
 
     case EIR_OPCODE_MK_LIST: {
-      i.mk_list.dst    = read_u32(f);
-      i.mk_list.nelems = read_u32(f);
+      read_reg(&i.mk_list.dst, f);
+      read(&i.mk_list.nelems, f);
       break;
     }
     case EIR_OPCODE_MK_MAP: {
-      i.mk_map.dst    = read_u32(f);
-      i.mk_map.npairs = read_u32(f);
+      read_reg(&i.mk_map.dst, f);
+      read(&i.mk_map.npairs, f);
       break;
     }
     case EIR_OPCODE_INDEX: {
-      i.index.dst   = read_u32(f);
-      i.index.base  = read_u32(f);
-      i.index.index = read_u32(f);
+      read_reg(&i.index.dst, f);
+      read_reg(&i.index.base, f);
+      read_reg(&i.index.index, f);
       break;
     }
     case EIR_OPCODE_INDEX_ASSIGN: {
-      i.index_assign.value = read_u32(f);
-      i.index_assign.base  = read_u32(f);
-      i.index_assign.index = read_u32(f);
+      read_reg(&i.index_assign.value, f);
+      read_reg(&i.index_assign.base, f);
+      read_reg(&i.index_assign.index, f);
       break;
     }
     case EIR_OPCODE_CALL: {
-      i.call.dst         = read_u32(f);
-      i.call.function_id = read_u32(f);
-      i.call.nargs       = read_u32(f);
+      read_reg(&i.call.dst, f);
+      read(&i.call.function_id, f);
+      read(&i.call.nargs, f);
       break;
     }
     case EIR_OPCODE_JZ:
     case EIR_OPCODE_JNZ: {
-      i.cj.target    = read_u32(f);
-      i.cj.condition = read_u32(f);
+      read(&i.cj.target, f);
+      read_reg(&i.cj.condition, f);
       break;
     }
     case EIR_OPCODE_JMP: {
-      i.jmp.target = read_u32(f);
+      read(&i.jmp.target, f);
       break;
     }
 
     case EIR_OPCODE_LABEL: {
-      i.label.id = read_u32(f);
+      read(&i.label.id, f);
       break;
     }
 
     case EIR_OPCODE_MEMBER_ACCESS: {
-      i.member_access.dst       = read_u32(f);
-      i.member_access.base      = read_u32(f);
-      i.member_access.member_id = read_u32(f);
+      read_reg(&i.member_access.dst, f);
+      read_reg(&i.member_access.base, f);
+      read(&i.member_access.member_id, f);
       break;
     }
     case EIR_OPCODE_MEMBER_ASSIGN: {
-      i.member_assign.value     = read_u32(f);
-      i.member_assign.base      = read_u32(f);
-      i.member_assign.member_id = read_u32(f);
+      read_reg(&i.member_assign.value, f);
+      read_reg(&i.member_assign.base, f);
+      read(&i.member_assign.member_id, f);
       break;
     }
     case EIR_OPCODE_MK_STRUCT: {
-      i.mk_struct.dst       = read_u32(f);
-      i.mk_struct.struct_id = read_u32(f);
+      read_reg(&i.mk_struct.dst, f);
+      read(&i.mk_struct.struct_id, f);
       break;
     }
     case EIR_OPCODE_PUSH: {
-      i.push.reg = read_u32(f);
+      read_reg(&i.push.reg, f);
       break;
     }
     case EIR_OPCODE_POP: {
-      i.pop.reg = read_u32(f);
+      read_reg(&i.pop.reg, f);
       break;
     }
   }
@@ -185,50 +165,39 @@ read_ins(FILE* f)
 }
 
 static void
-write8(u8 x, FILE* f)
-{ fwrite(&x, sizeof(x), 1, f); }
-
-static void
-write32(u32 x, FILE* f)
-{ fwrite(&x, sizeof(x), 1, f); }
-
-static void
-writef(double flo, FILE* f)
-{ fwrite(&flo, sizeof(flo), 1, f); }
-
-static void
 write_ins(e_ins i, FILE* f)
 {
-  write8(i.opcode, f);
-
-  switch (i.opcode) {
+  write(&i.opcode, f);
+  switch ((eir_opcode_bits)i.opcode) {
     case EIR_OPCODE_LOADK: {
-      write32(i.loadk.dst, f);
-      write32(i.loadk.id, f);
-      break;
-    }
-    case EIR_OPCODE_MOVI: {
-      write32(i.movi.dst, f);
-      write32(i.movi.value, f);
-      break;
-    }
-    case EIR_OPCODE_MOVF: {
-      write32(i.movf.dst, f);
-      writef(i.movf.value, f);
+      write_reg(&i.loadk.dst, f);
+      write(&i.loadk.id, f);
       break;
     }
     case EIR_OPCODE_MOVG:
     case EIR_OPCODE_GETG:
     case EIR_OPCODE_SETG:
     case EIR_OPCODE_MOV: {
-      write32(i.mov.dst, f);
-      write32(i.mov.src, f);
+      write_reg(&i.mov.dst, f);
+      write_reg(&i.mov.src, f);
       break;
     }
 
     case EIR_OPCODE_ASSERT: {
-      write32(i.assertion.cond, f);
-      write32(i.assertion.line_id, f);
+      write_reg(&i.assertion.cond, f);
+      write(&i.assertion.line_id, f);
+      break;
+    }
+
+    case EIR_OPCODE_MOVI: {
+      write_reg(&i.movi.dst, f);
+      write(&i.movi.value, f);
+      break;
+    }
+
+    case EIR_OPCODE_MOVF: {
+      write_reg(&i.movf.dst, f);
+      write(&i.movf.value, f);
       break;
     }
 
@@ -249,9 +218,9 @@ write_ins(e_ins i, FILE* f)
     case EIR_OPCODE_LTE:
     case EIR_OPCODE_GT:
     case EIR_OPCODE_GTE: {
-      write32(i.binop.dst, f);
-      write32(i.binop.a, f);
-      write32(i.binop.b, f);
+      write_reg(&i.binop.dst, f);
+      write_reg(&i.binop.a, f);
+      write_reg(&i.binop.b, f);
       break;
     }
 
@@ -260,84 +229,84 @@ write_ins(e_ins i, FILE* f)
     case EIR_OPCODE_BNOT:
     case EIR_OPCODE_NEG:
     case EIR_OPCODE_NOT: {
-      write32(i.unop.dst, f);
-      write32(i.unop.a, f);
+      write_reg(&i.unop.dst, f);
+      write_reg(&i.unop.a, f);
       break;
     }
 
     case EIR_OPCODE_RET: {
-      write32(i.ret.return_value, f);
+      write_reg(&i.ret.return_value, f);
       break;
     }
     case EIR_OPCODE_NOP: break;
 
     case EIR_OPCODE_MK_LIST: {
-      write32(i.mk_list.dst, f);
-      write32(i.mk_list.nelems, f);
+      write_reg(&i.mk_list.dst, f);
+      write(&i.mk_list.nelems, f);
       break;
     }
     case EIR_OPCODE_MK_MAP: {
-      write32(i.mk_map.dst, f);
-      write32(i.mk_map.npairs, f);
+      write_reg(&i.mk_map.dst, f);
+      write(&i.mk_map.npairs, f);
       break;
     }
     case EIR_OPCODE_INDEX: {
-      write32(i.index.dst, f);
-      write32(i.index.base, f);
-      write32(i.index.index, f);
+      write_reg(&i.index.dst, f);
+      write_reg(&i.index.base, f);
+      write_reg(&i.index.index, f);
       break;
     }
     case EIR_OPCODE_INDEX_ASSIGN: {
-      write32(i.index_assign.value, f);
-      write32(i.index_assign.base, f);
-      write32(i.index_assign.index, f);
+      write_reg(&i.index_assign.value, f);
+      write_reg(&i.index_assign.base, f);
+      write_reg(&i.index_assign.index, f);
       break;
     }
     case EIR_OPCODE_CALL: {
-      write32(i.call.dst, f);
-      write32(i.call.function_id, f);
-      write32(i.call.nargs, f);
+      write_reg(&i.call.dst, f);
+      write(&i.call.function_id, f);
+      write(&i.call.nargs, f);
       break;
     }
     case EIR_OPCODE_JZ:
     case EIR_OPCODE_JNZ: {
-      write32(i.cj.target, f);
-      write32(i.cj.condition, f);
+      write(&i.cj.target, f);
+      write_reg(&i.cj.condition, f);
       break;
     }
     case EIR_OPCODE_JMP: {
-      write32(i.jmp.target, f);
+      write(&i.jmp.target, f);
       break;
     }
 
     case EIR_OPCODE_LABEL: {
-      write32(i.label.id, f);
+      write(&i.label.id, f);
       break;
     }
 
     case EIR_OPCODE_MEMBER_ACCESS: {
-      write32(i.member_access.dst, f);
-      write32(i.member_access.base, f);
-      write32(i.member_access.member_id, f);
+      write_reg(&i.member_access.dst, f);
+      write_reg(&i.member_access.base, f);
+      write(&i.member_access.member_id, f);
       break;
     }
     case EIR_OPCODE_MEMBER_ASSIGN: {
-      write32(i.member_assign.value, f);
-      write32(i.member_assign.base, f);
-      write32(i.member_assign.member_id, f);
+      write_reg(&i.member_assign.value, f);
+      write_reg(&i.member_assign.base, f);
+      write(&i.member_assign.member_id, f);
       break;
     }
     case EIR_OPCODE_MK_STRUCT: {
-      write32(i.mk_struct.dst, f);
-      write32(i.mk_struct.struct_id, f);
+      write_reg(&i.mk_struct.dst, f);
+      write(&i.mk_struct.struct_id, f);
       break;
     }
     case EIR_OPCODE_PUSH: {
-      write32(i.push.reg, f);
+      write_reg(&i.push.reg, f);
       break;
     }
     case EIR_OPCODE_POP: {
-      write32(i.pop.reg, f);
+      write_reg(&i.pop.reg, f);
       break;
     }
   }
@@ -555,7 +524,7 @@ e_file_load(e_compilation_result* r, void** root_allocation, FILE* f)
     if (func.code == NULL) return -1;
 
     for (u32 j = 0; j < func.code_count; j++) { func.code[j] = read_ins(f); }
-    // if (fread(func.code, sizeof(e_ins), func.code_count, f) != func.code_count) goto ERR;
+
     r->functions[i] = func;
   }
 
@@ -682,43 +651,53 @@ e_emit_ins(e_compiler* cc, e_ins ins)
   memcpy(&cc->instructions[cc->ninstructions++], &ins, sizeof(e_ins));
 }
 
+#define read_reg_ip(ptr, ip)                                                                                                                         \
+  do {                                                                                                                                               \
+    memcpy((void*)(ptr), (void*)(ip), E_REG_DISK_SIZE);                                                                                              \
+    *(ip) += sizeof(*(ptr));                                                                                                                         \
+  } while (0)
+
+#define read_ip(ptr, ip)                                                                                                                             \
+  do {                                                                                                                                               \
+    memcpy((void*)(ptr), (void*)(ip), sizeof(*(ptr)));                                                                                               \
+    *(ip) += sizeof(*(ptr));                                                                                                                         \
+  } while (0)
+
 e_ins
 e_read_ins(const u8** ip)
 {
-  e_ins i  = { 0 };
-  i.opcode = e_read_u8(ip);
-
-  switch (i.opcode) {
+  e_ins i = { 0 };
+  read_ip(&i.opcode, ip);
+  switch ((eir_opcode_bits)i.opcode) {
     case EIR_OPCODE_LOADK: {
-      i.loadk.dst = e_read_u32(ip);
-      i.loadk.id  = e_read_u32(ip);
+      read_reg_ip(&i.loadk.dst, ip);
+      read_ip(&i.loadk.id, ip);
       break;
     }
     case EIR_OPCODE_MOVG:
     case EIR_OPCODE_GETG:
     case EIR_OPCODE_SETG:
     case EIR_OPCODE_MOV: {
-      i.mov.dst = e_read_u32(ip);
-      i.mov.src = e_read_u32(ip);
-      break;
-    }
-
-    case EIR_OPCODE_MOVI: {
-      i.movi.dst   = e_read_u32(ip);
-      i.movi.value = (int)e_read_u32(ip);
+      read_reg_ip(&i.mov.dst, ip);
+      read_reg_ip(&i.mov.src, ip);
       break;
     }
 
     case EIR_OPCODE_ASSERT: {
-      i.assertion.cond    = e_read_u32(ip);
-      i.assertion.line_id = e_read_u32(ip);
+      read_reg_ip(&i.assertion.cond, ip);
+      read_ip(&i.assertion.line_id, ip);
+      break;
+    }
+
+    case EIR_OPCODE_MOVI: {
+      read_reg_ip(&i.movi.dst, ip);
+      read_ip(&i.movi.value, ip);
       break;
     }
 
     case EIR_OPCODE_MOVF: {
-      i.movf.dst = e_read_u32(ip);
-      u64 read   = e_read_u64(ip);
-      memcpy(&i.movf.value, &read, sizeof(double));
+      read_reg_ip(&i.movf.dst, ip);
+      read_ip(&i.movf.value, ip);
       break;
     }
 
@@ -739,9 +718,9 @@ e_read_ins(const u8** ip)
     case EIR_OPCODE_LTE:
     case EIR_OPCODE_GT:
     case EIR_OPCODE_GTE: {
-      i.binop.dst = e_read_u32(ip);
-      i.binop.a   = e_read_u32(ip);
-      i.binop.b   = e_read_u32(ip);
+      read_reg_ip(&i.binop.dst, ip);
+      read_reg_ip(&i.binop.a, ip);
+      read_reg_ip(&i.binop.b, ip);
       break;
     }
 
@@ -750,84 +729,84 @@ e_read_ins(const u8** ip)
     case EIR_OPCODE_BNOT:
     case EIR_OPCODE_NEG:
     case EIR_OPCODE_NOT: {
-      i.unop.dst = e_read_u32(ip);
-      i.unop.a   = e_read_u32(ip);
+      read_reg_ip(&i.unop.dst, ip);
+      read_reg_ip(&i.unop.a, ip);
       break;
     }
 
     case EIR_OPCODE_RET: {
-      i.ret.return_value = e_read_u32(ip);
+      read_reg_ip(&i.ret.return_value, ip);
       break;
     }
     case EIR_OPCODE_NOP: break;
 
     case EIR_OPCODE_MK_LIST: {
-      i.mk_list.dst    = e_read_u32(ip);
-      i.mk_list.nelems = e_read_u32(ip);
+      read_reg_ip(&i.mk_list.dst, ip);
+      read_ip(&i.mk_list.nelems, ip);
       break;
     }
     case EIR_OPCODE_MK_MAP: {
-      i.mk_map.dst    = e_read_u32(ip);
-      i.mk_map.npairs = e_read_u32(ip);
+      read_reg_ip(&i.mk_map.dst, ip);
+      read_ip(&i.mk_map.npairs, ip);
       break;
     }
     case EIR_OPCODE_INDEX: {
-      i.index.dst   = e_read_u32(ip);
-      i.index.base  = e_read_u32(ip);
-      i.index.index = e_read_u32(ip);
+      read_reg_ip(&i.index.dst, ip);
+      read_reg_ip(&i.index.base, ip);
+      read_reg_ip(&i.index.index, ip);
       break;
     }
     case EIR_OPCODE_INDEX_ASSIGN: {
-      i.index_assign.value = e_read_u32(ip);
-      i.index_assign.base  = e_read_u32(ip);
-      i.index_assign.index = e_read_u32(ip);
+      read_reg_ip(&i.index_assign.value, ip);
+      read_reg_ip(&i.index_assign.base, ip);
+      read_reg_ip(&i.index_assign.index, ip);
       break;
     }
     case EIR_OPCODE_CALL: {
-      i.call.dst         = e_read_u32(ip);
-      i.call.function_id = e_read_u32(ip);
-      i.call.nargs       = e_read_u32(ip);
+      read_reg_ip(&i.call.dst, ip);
+      read_ip(&i.call.function_id, ip);
+      read_ip(&i.call.nargs, ip);
       break;
     }
     case EIR_OPCODE_JZ:
     case EIR_OPCODE_JNZ: {
-      i.cj.target    = e_read_u32(ip);
-      i.cj.condition = e_read_u32(ip);
+      read_ip(&i.cj.target, ip);
+      read_reg_ip(&i.cj.condition, ip);
       break;
     }
     case EIR_OPCODE_JMP: {
-      i.jmp.target = e_read_u32(ip);
+      read_ip(&i.jmp.target, ip);
       break;
     }
 
     case EIR_OPCODE_LABEL: {
-      i.label.id = e_read_u32(ip);
+      read_ip(&i.label.id, ip);
       break;
     }
 
     case EIR_OPCODE_MEMBER_ACCESS: {
-      i.member_access.dst       = e_read_u32(ip);
-      i.member_access.base      = e_read_u32(ip);
-      i.member_access.member_id = e_read_u32(ip);
+      read_reg_ip(&i.member_access.dst, ip);
+      read_reg_ip(&i.member_access.base, ip);
+      read_ip(&i.member_access.member_id, ip);
       break;
     }
     case EIR_OPCODE_MEMBER_ASSIGN: {
-      i.member_assign.value     = e_read_u32(ip);
-      i.member_assign.base      = e_read_u32(ip);
-      i.member_assign.member_id = e_read_u32(ip);
+      read_reg_ip(&i.member_assign.value, ip);
+      read_reg_ip(&i.member_assign.base, ip);
+      read_ip(&i.member_assign.member_id, ip);
       break;
     }
     case EIR_OPCODE_MK_STRUCT: {
-      i.mk_struct.dst       = e_read_u32(ip);
-      i.mk_struct.struct_id = e_read_u32(ip);
+      read_reg_ip(&i.mk_struct.dst, ip);
+      read_ip(&i.mk_struct.struct_id, ip);
       break;
     }
     case EIR_OPCODE_PUSH: {
-      i.push.reg = e_read_u32(ip);
+      read_reg_ip(&i.push.reg, ip);
       break;
     }
     case EIR_OPCODE_POP: {
-      i.pop.reg = e_read_u32(ip);
+      read_reg_ip(&i.pop.reg, ip);
       break;
     }
   }

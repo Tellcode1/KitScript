@@ -47,7 +47,7 @@ era_compute_ranges(e_compiler* cc, era_state* ra)
     if (i > ra->ranges[_r].end) ra->ranges[_r].end = i;                                                                                              \
   } while (0)
 
-    switch (ins.opcode) {
+    switch ((eir_opcode_bits)ins.opcode) {
       /* getg, setg and movg  */
       case EIR_OPCODE_MOV:
         WRITES_TO(ins.mov.dst);
@@ -291,7 +291,7 @@ era_rewrite(e_compiler* cc, const u32* vreg_to_phys)
   for (u32 i = 0; i < cc->ninstructions; i++) {
     e_ins ins = cc->instructions[i];
 
-    switch (ins.opcode) {
+    switch ((eir_opcode_bits)ins.opcode) {
       case EIR_OPCODE_MOV:
         MAP(ins.mov.dst);
         MAP(ins.mov.src);

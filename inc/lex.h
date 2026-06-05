@@ -56,6 +56,7 @@ typedef enum e_token_type {
   E_TOKEN_TYPE_DEFER,  // defer keyword
   E_TOKEN_TYPE_CONST,  // const qualifier
   E_TOKEN_TYPE_IF,
+  E_TOKEN_TYPE_IN,
   E_TOKEN_TYPE_ELSE,
   E_TOKEN_TYPE_WHILE,
   E_TOKEN_TYPE_FOR,
@@ -135,6 +136,7 @@ e_token_type_to_string(e_token_type e)
     case E_TOKEN_TYPE_FLOAT: return "float";
     case E_TOKEN_TYPE_STRING: return "string";
     case E_TOKEN_TYPE_FN: return "fn";
+    case E_TOKEN_TYPE_IN: return "in";
     case E_TOKEN_TYPE_LET: return "let";
     case E_TOKEN_TYPE_PLUS: return "+";
     case E_TOKEN_TYPE_MINUS: return "-";
