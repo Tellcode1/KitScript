@@ -7,7 +7,7 @@ fn disallow_optimizations(var) {
 fn main() {
   let start = time::mono();
 
-  const iterations = 1000000;
+  const iterations = 10000;
 
   let vectors = [];
   for (let i = 0; i < iterations; i++) {

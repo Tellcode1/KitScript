@@ -33,6 +33,7 @@
 #include "bfunc.sys.h"
 #include "bfunc.time.h"
 #include "bfunc.vec.h"
+#include "cast.h"
 #include "stdafx.h"
 #include "var.h"
 
@@ -114,6 +115,16 @@ eb_var_dup(e_var* args, u32 nargs)
   return v;
 }
 
+static inline e_var
+eb_var_hash(e_var* args, u32 nargs)
+{
+  (void)nargs;
+  return e_var_from_int((int)e_hash(&args[0], sizeof(e_var)));
+}
+
+e_var eb_struct_name(e_var* args, u32 nargs);
+e_var eb_struct_member_count(e_var* args, u32 nargs);
+
 e_var eb_rand_seed(e_var* args, u32 nargs);
 e_var eb_rand_int(e_var* args, u32 nargs);
 e_var eb_rand_range(e_var* args, u32 nargs);
@@ -175,10 +186,15 @@ static const e_builtin_func eb_funcs[] = {
   {"mat3", "Cast three vector3's into a mat3", "fn mat3(row0, row1, row2) -> mat3", E_VARTYPE_VEC3, 3, 3, eb_mat3},
   {"mat4", "Cast three vector4's into a mat3", "fn mat4(row0, row1, row2, row3) -> mat4", E_VARTYPE_VEC4, 4, 4, eb_mat4},
   
-    /* Can convert anything to string. */
-  { "string", "Cast a variable to a string", "fn string(v) -> string", 0xFFFFFFFF, 1, 1, eb_cast_string },
+  
+  { "esl::type_of", "Get the type of the input, as an enumerator (see bvar.h, E_TYPE_* constants)", "fn kat::type_of(input) -> int", 0xFFFFFFFF, 1, 1, eb_type_of },
+  { "esl::struct::name", "Get the name of the structure, as a string", "fn kat::struct_name(input) -> string", 0xFFFFFFFF, 1, 1, eb_struct_name },
+  { "esl::struct::member_count", "Get the number of members in the given structure", "fn kat::struct::member_count(struc) -> int", 0xFFFFFFFF, 1, 1, eb_struct_member_count },
+  { "esl::dup", "Duplicate the given variable, performing a deep copy, and return it", "fn kat::dup(x : any) -> any", 0xFFFFFFFF, 1, 1, eb_var_dup },
+  { "esl::hash", "Hash a given variable. This is not a cryptographic hash.", "fn kat::hash(x : any) -> int", 0xFFFFFFFF, 1, 1, eb_var_hash },
 
-  { "type_of", "Get the type of the input, as an enumerator (see bvar.h, E_TYPE_* constants)", "fn type_of(input) -> int", 0xFFFFFFFF, 1, 1, eb_type_of },
+  /* Can convert anything to string. */
+  { "string", "Cast a variable to a string", "fn string(v) -> string", 0xFFFFFFFF, 1, 1, eb_cast_string },
 
   /* Scalar types */
   { "int", "Cast a variable to a int", "fn int(v) -> int", E_VARTYPE_INT | E_VARTYPE_CHAR | E_VARTYPE_BOOL | E_VARTYPE_FLOAT | E_VARTYPE_STRING,    1,    1, eb_cast_int },
@@ -232,8 +248,8 @@ static const e_builtin_func eb_funcs[] = {
   { "math::min", "Smallest between two given inputs", "fn math::min(x,y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_min },
   { "math::max", "Largest between two given inputs", "fn math::max(x,y) -> float", E_VARTYPE_FLOAT, 2, 2, eb_max },
   { "math::clamp", "Largest between two given inputs", "fn math::clamp(x, min, max) -> float", E_VARTYPE_FLOAT, 3, 3, eb_clamp },
-  { "math::lerp", "Linearly interpolate between two integral values", "fn math::lerp(a, b, t) -> int|float|char|bool", E_VARTYPE_FLOAT, 3, 3, eb_lerp },
-  { "math::smoothstep", "Smoothstep between two integral values", "fn math::smoothstep(a, b, t) -> int|float|char|bool", E_VARTYPE_FLOAT, 3, 3, eb_smoothstep },
+  { "math::lerp", "Linearly interpolate between two integral or vector values", "fn math::lerp(a, b, t) -> int|float|char|bool", E_VARTYPE_FLOAT, 3, 3, eb_lerp },
+  { "math::smoothstep", "Smoothstep between two integral or vector values", "fn math::smoothstep(a, b, t) -> int|float|char|bool", E_VARTYPE_FLOAT, 3, 3, eb_smoothstep },
 
   { "io::open", "Open a file. null on error. File descriptor (integer) on success.", "fn io::open( path:string, mode:string ) -> fd", E_VARTYPE_INT, 2, 2, eb_io_open },
   { "io::close", "Close a file.", "fn io::close( fd ) -> null", E_VARTYPE_INT, 1, 1, eb_io_close },

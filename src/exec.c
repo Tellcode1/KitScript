@@ -495,7 +495,7 @@ e_exec(const e_exec_info* const info, e_var* ret)
         e_aligned_free(args);
 
         if (e) {
-          print_err("e_var_index_assign: error\n");
+          print_err("call() returned error: %s\n", e_ecode_str(e));
           goto RET;
         }
 

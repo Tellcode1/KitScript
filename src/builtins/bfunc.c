@@ -154,3 +154,11 @@ eb_cast_list(e_var* args, u32 nargs)
 
   return new_list;
 }
+
+e_var
+eb_struct_name(e_var* args, u32 nargs)
+{ return e_make_var_from_string(e_strdup(E_VAR_AS_STRUCT(&args[0])->name)); }
+
+e_var
+eb_struct_member_count(e_var* args, u32 nargs)
+{ return e_var_from_int(E_VAR_AS_STRUCT(&args[0])->member_count); }

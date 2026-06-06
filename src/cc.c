@@ -2282,16 +2282,26 @@ collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_i
 {
   for (u32 i = 0; i < nstmts; i++) {
     e_ast_node_type type = E_GET_NODE(cc->ast, stmts[i])->type;
+
     if (type == E_AST_NODE_STATEMENT_LIST) {
       int* list_stmts  = E_GET_NODE(cc->ast, stmts[i])->stmts.stmts;
       u32  list_nstmts = E_GET_NODE(cc->ast, stmts[i])->stmts.nstmts;
       // RECURSE!
       int e = collect_struct_declerations(cc, list_stmts, list_nstmts, deposit);
       if (e < 0) return e;
-    } else if (type == E_AST_NODE_VARIABLE_DECL) {
+      continue;
+    }
+
+    if (type == E_AST_NODE_VARIABLE_DECL) {
       bool is_const = E_GET_NODE(cc->ast, stmts[i])->let.is_const;
       if (is_const) {
-        cerror(E_GET_NODE(cc->ast, stmts[i])->let.span, "A member of a struct cannot be declared 'const' [unsupported]\n");
+        cerror(E_GET_NODE(cc->ast, stmts[i])->let.span, "A member of a struct cannot be declared 'const' [struct decleration]\n");
+        return -1;
+      }
+
+      int initializer = E_GET_NODE(cc->ast, stmts[i])->let.initializer;
+      if (initializer >= 0) {
+        cerror(E_GET_NODE(cc->ast, stmts[i])->let.span, "Initializer given in decleration of struct member [struct decleration]\n");
         return -1;
       }
 
@@ -2300,7 +2310,8 @@ collect_struct_declerations(e_compiler* cc, int* stmts, u32 nstmts, ecc_struct_i
       if (e < 0) return e;
     } else {
       const char* member_name = E_GET_NODE(cc->ast, stmts[i])->let.name;
-      cerror(E_GET_NODE(cc->ast, stmts[i])->let.span, "Member index %u, with name %s is not allowed in a struct\n", i, member_name);
+      cerror(
+          E_GET_NODE(cc->ast, stmts[i])->let.span, "Member index %u, with name %s is not allowed in a struct [struct decleration]\n", i, member_name);
       return -1;
     }
   }
