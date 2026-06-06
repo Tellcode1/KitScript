@@ -4936,6 +4936,12 @@ era_rewrite(kit_compiler* cc, const u32* vreg_to_phys)
 #define MAP(r)                                                                                                                                       \
   do {                                                                                                                                               \
     u32 _r = (r);                                                                                                                                    \
+    /*                                                                                                                                               \
+    if (_r & ERA_SPILL_FLAG) {                                                                                                                       \
+      fprintf(stderr, "Spilled register %u not rewritten\n", r);                                                                                     \
+      (r) = KIT_REG_NIL;                                                                                                                             \
+    }                                                                                                                                                \
+      */                                                                                                                                             \
     if (_r < KIT_REG_GENERAL_BEGIN) break;                                                                                                           \
     if (!(_r & ERA_SPILL_FLAG)) (r) = vreg_to_phys[_r];                                                                                              \
   } while (0)
@@ -5062,21 +5068,14 @@ era_compute_ranges_from_cfg(kit_compiler* cc, era_state* ra)
     }
   }
 
-  bool* live = kit_arnalloc(&cfg_arena, nvregs * sizeof(bool));
-  if (!live) goto die;
-  memset(live, 0, nvregs * sizeof(bool));
-
-  for (u32 b = 0; b < cfg.nblocks; b++) {
-    codeblock* blk = &cfg.blocks[b];
-    if (blk->nsuccessors == 0) {
-      for (u32 r = 0; r < nvregs; r++) {
-        if (blk->live_out[r]) live[r] = true;
-      }
-    }
-  }
-
   for (i64 b = cfg.nblocks - 1; b >= 0; b--) {
     codeblock* blk = &cfg.blocks[b];
+
+    bool* live = kit_arnalloc(&cfg_arena, nvregs * sizeof(bool));
+    if (!live) goto die;
+
+    memcpy(live, blk->live_out, nvregs * sizeof(bool));
+
     for (i64 ip = blk->end; ip >= (i64)blk->start; ip--) {
       kit_ins* ins = &cc->instructions[ip];
 
@@ -5091,29 +5090,33 @@ era_compute_ranges_from_cfg(kit_compiler* cc, era_state* ra)
       }
 
       u32 dst = get_destination_reg(ins);
-      if (dst < nvregs) { live[dst] = false; }
+      if (dst < nvregs) live[dst] = false;
     }
+
+    kit_arnfree(&cfg_arena, live);
   }
 
-  /* If theres a loop, extend all registers to the end of the function */
-  bool has_loop = false;
+  u32* label_map = kit_arnalloc(cfg.arena, cc->next_label * sizeof(u32));
+  memset(label_map, 0xFF, cc->next_label * sizeof(u32));
+
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    kit_ins* ins = &cc->instructions[i];
+    if (ins->opcode == EIR_OPCODE_LABEL) label_map[ins->label.id] = i;
+  }
+
+  /* If theres a loop, extend all registers to the end of the jump */
   for (u32 i = 0; i < cc->ninstructions; i++) {
     const kit_ins* ins = &cc->instructions[i];
+    if (ins->opcode != EIR_OPCODE_JMP && ins->opcode != EIR_OPCODE_JZ && ins->opcode != EIR_OPCODE_JNZ) continue;
 
-    /* find a backward jump */
-    if (ins->opcode == EIR_OPCODE_JMP && ins->jmp.target < i) {
-      has_loop = true;
-      break;
-    }
-    if ((ins->opcode == EIR_OPCODE_JZ || ins->opcode == EIR_OPCODE_JNZ) && ins->cj.target < i) {
-      has_loop = true;
-      break;
-    }
-  }
-  if (has_loop) {
-    u32 last = cc->ninstructions - 1;
-    for (u32 r = 0; r < cc->next_vreg; r++) {
-      if (ra->ranges[r].start != UINT32_MAX && ra->ranges[r].end < last) { ra->ranges[r].end = last; }
+    u32 target = label_map[ins->opcode == EIR_OPCODE_JMP ? ins->jmp.target : ins->cj.target];
+    if (i > target) {
+      for (u32 r = 0; r < cc->next_vreg; r++) {
+        if (ra->ranges[r].start != UINT32_MAX && ra->ranges[r].end >= target // currently reaches into the loop
+            && ra->ranges[r].end < i) {                                      // but doesn't reach the back-edge yet
+          ra->ranges[r].end = i + 1;
+        }
+      }
     }
   }
 

@@ -135,6 +135,8 @@ main(int argc, char* argv[])
   /* set every option disable to false */
   memset(&compiler_option_set, 0, sizeof(compiler_option_set));
 
+  compiler_option_set.disable_register_allocation_i_know_what_im_doing = false;
+
   const char* out = NULL;
   for (int i = 1; i < argc; i++) {
     const char* opt = argv[i];

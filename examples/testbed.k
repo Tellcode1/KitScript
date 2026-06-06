@@ -185,6 +185,20 @@ fn main() {
       error = true;
    }
 
+   let original = ["avx", "avx2", "sse"];
+   let i = 0;
+   
+   /* try to clobber original */ 
+   while (i < len(original)) {
+      let elem = original[i];
+      i = i + 1;
+   }
+
+   if (kit::type_of(original) != type::LIST || len(original) != 3 || original[0] != "avx") {
+      io::println(io::STDERR, "loop clobbered our register!");
+      error = true;
+   }
+
    if (!error) {
       io::println(io::STDERR, "Successful! No errors");
    } else {

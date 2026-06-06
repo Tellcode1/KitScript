@@ -3,7 +3,7 @@
 
 #define KIT_REG_ARG_COUNT 16
 
-/* kit_preg_t must be large enough to store this amount (includes special registers). */
+/* kit_reg_t must be large enough to store this amount (includes special registers). */
 #define KIT_REG_COUNT 128
 
 /* 1 byte on disk */
