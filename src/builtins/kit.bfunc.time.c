@@ -129,7 +129,7 @@ kit_builtins_time_local(kit_var* args, u32 nargs)
 
   kit_var s   = { 0 };
   s.type      = KIT_VARTYPE_STRUCT;
-  s.val.struc = kit_refdobj_pool_acquire(&ge_pool);
+  s.val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
 
   const char* members[]                = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
   KIT_VAR_AS_STRUCT(&s)->name          = "time::timestamp";
@@ -161,7 +161,7 @@ kit_builtins_time_utc(kit_var* args, u32 nargs)
 
   kit_var s   = { 0 };
   s.type      = KIT_VARTYPE_STRUCT;
-  s.val.struc = kit_refdobj_pool_acquire(&ge_pool);
+  s.val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
 
   const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
 

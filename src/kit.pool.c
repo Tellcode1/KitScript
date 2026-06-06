@@ -29,7 +29,7 @@
 #include <stdint.h>
 #include <string.h>
 
-kit_refdobj_pool ge_pool = { 0 };
+kit_refdobj_pool kit_g_obj_pool = { 0 };
 
 static int
 branch_init(kit_refdobj_pool* pool, kit_refdobj_branch* b)
@@ -145,6 +145,7 @@ kit_refdobj_pool_acquire(kit_refdobj_pool* pool)
   br->pool = pool;
 
   kit_refdobj* leaf = &br->leaves[leaf_idx];
+  memset(leaf, 0, sizeof(*leaf));
 
   /* Reset reference counter */
   leaf->refc = 1;

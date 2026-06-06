@@ -232,7 +232,7 @@ kit_builtins_rand_list(kit_var* args, u32 nargs)
   }
 
   kit_var v  = (kit_var){ .type = KIT_VARTYPE_LIST };
-  v.val.list = kit_refdobj_pool_acquire(&ge_pool);
+  v.val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool);
 
   kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&v));
 

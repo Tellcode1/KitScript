@@ -25,6 +25,6 @@ typedef struct era_state {
 } era_state;
 
 /* rewrite cc's instruction stream to use physical register indices instead of vregisters. */
-int era_simple_register_allocation_pass(struct kit_compiler* cc);
+int era_register_allocation_pass(struct kit_compiler* cc);
 
 #endif // KIT_REGISTER_ALLOCATION_H

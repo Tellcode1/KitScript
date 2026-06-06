@@ -140,7 +140,7 @@ kit_map_keys(const kit_map* map)
 
   kit_var v = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&ge_pool),
+    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
   memcpy(v.val.list, &l, sizeof(kit_list));
 
@@ -160,7 +160,7 @@ kit_map_values(const kit_map* map)
 
   kit_var v = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&ge_pool),
+    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
   memcpy(v.val.list, &l, sizeof(kit_list));
 

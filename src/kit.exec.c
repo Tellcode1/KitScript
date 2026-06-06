@@ -403,7 +403,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         remove(dstp); // overwriting it
 
         dstp->type    = KIT_VARTYPE_MAP;
-        dstp->val.map = kit_refdobj_pool_acquire(&ge_pool);
+        dstp->val.map = kit_refdobj_pool_acquire(&kit_g_obj_pool);
 
         /* Constructing it directly in our register. No need for refcounting here. */
         if (kit_map_init(tmp, npairs, KIT_VAR_AS_MAP(dstp)) != 0) {
@@ -433,7 +433,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         remove(dstp); // overwriting it
 
         dstp->type     = KIT_VARTYPE_LIST;
-        dstp->val.list = kit_refdobj_pool_acquire(&ge_pool);
+        dstp->val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool);
 
         /* Constructing it directly in our register. No need for refcounting here. */
         if (kit_list_init(tmp, nelems, KIT_VAR_AS_LIST(dstp)) != 0) {
@@ -628,7 +628,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
             kit_var* member = &st->members[i];
             remove(member);
             kit_var_shallow_cpy(&regs[value], member);
-            // kit_var_acquire(member);
+            kit_var_acquire(member);
             break;
           }
         }
@@ -659,7 +659,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         remove(dstp);
 
         dstp->type      = KIT_VARTYPE_STRUCT;
-        dstp->val.struc = kit_refdobj_pool_acquire(&ge_pool);
+        dstp->val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
 
         if (kit_struct_init(st->name, st->fields_count, (const char**)st->field_names, KIT_VAR_AS_STRUCT(dstp)) != 0) {
           e = KIT_EMALLOC;
@@ -683,6 +683,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 src = ins.getg.src;
         remove(&regs[dst]);
         kit_var_shallow_cpy(&info->gvars[src], &regs[dst]);
+        kit_var_acquire(&regs[dst]);
         break;
       }
 
@@ -691,6 +692,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 src = ins.setg.src;
         remove(&info->gvars[dst]);
         kit_var_shallow_cpy(&regs[src], &info->gvars[dst]);
+        kit_var_acquire(&info->gvars[dst]);
         break;
       }
 
@@ -699,6 +701,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 src = ins.movg.src;
         remove(&info->gvars[dst]);
         kit_var_shallow_cpy(&info->gvars[src], &info->gvars[dst]);
+        kit_var_acquire(&info->gvars[dst]);
         break;
       }
 
@@ -737,8 +740,11 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
   }
 
 RET:
+  false;
+
+  const u32 sp_save = sp->val.i;
   for (u32 i = 0; i < KIT_REG_COUNT; i++) { remove(&regs[i]); }
-  for (i32 i = 0; i < sp->val.i; i++) { remove(&stack[i]); }
+  for (i32 i = 0; i < sp_save; i++) { remove(&stack[i]); }
   free(stack);
   return e;
 }

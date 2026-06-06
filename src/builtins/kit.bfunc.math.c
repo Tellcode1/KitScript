@@ -86,7 +86,7 @@ kit_builtins_mat3(kit_var* args, u32 nargs)
 
   kit_var m = {
     .type     = KIT_VARTYPE_MAT3,
-    .val.mat3 = kit_refdobj_pool_acquire(&ge_pool),
+    .val.mat3 = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
   for (u32 i = 0; i < 3; i++) { memcpy(KIT_VAR_AS_MAT3(&m)->m[i], &args[i].val.vec3, sizeof(kit_vec3)); }
   return m;
@@ -99,7 +99,7 @@ kit_builtins_mat4(kit_var* args, u32 nargs)
 
   kit_var m = {
     .type     = KIT_VARTYPE_MAT4,
-    .val.mat4 = kit_refdobj_pool_acquire(&ge_pool),
+    .val.mat4 = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
   for (u32 i = 0; i < 4; i++) { memcpy(KIT_VAR_AS_MAT4(&m)->m[i], &args[i].val.vec4, sizeof(kit_vec4)); }
   return m;

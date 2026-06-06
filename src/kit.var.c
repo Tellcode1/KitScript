@@ -75,7 +75,7 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
     case KIT_VARTYPE_FLOAT: dst->val = var->val; break;
 
     case KIT_VARTYPE_STRING:
-      dst->val.s = kit_refdobj_pool_acquire(&ge_pool);
+      dst->val.s = kit_refdobj_pool_acquire(&kit_g_obj_pool);
       if (!dst->val.s) {
         dst->type = KIT_VARTYPE_NULL;
         return -1;
@@ -83,7 +83,7 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
       KIT_VAR_AS_STRING(dst)->s = kit_strdup(KIT_VAR_AS_STRING(var)->s);
       break;
     case KIT_VARTYPE_LIST: {
-      dst->val.list = kit_refdobj_pool_acquire(&ge_pool);
+      dst->val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool);
       if (!dst->val.list) {
         dst->type = KIT_VARTYPE_NULL;
         return -1;
@@ -95,7 +95,7 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
       kit_struct* s = KIT_VAR_AS_STRUCT(var);
       if (!s) return -1;
 
-      dst->val.struc = kit_refdobj_pool_acquire(&ge_pool);
+      dst->val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
       if (!dst->val.struc) return -1;
 
       if (kit_struct_init_from(s, KIT_VAR_AS_STRUCT(dst))) return -1;
@@ -103,7 +103,7 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
       return 0;
     }
     case KIT_VARTYPE_MAP: {
-      dst->val.map = kit_refdobj_pool_acquire(&ge_pool);
+      dst->val.map = kit_refdobj_pool_acquire(&kit_g_obj_pool);
       /**
        * Create an array of all key value pairs as a map
        * And use it to create the map.
@@ -117,12 +117,12 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
       return e;
     }
     case KIT_VARTYPE_MAT3: {
-      dst->val.mat3 = kit_refdobj_pool_acquire(&ge_pool);
+      dst->val.mat3 = kit_refdobj_pool_acquire(&kit_g_obj_pool);
       if (dst->val.mat3 && var->val.mat3) { memcpy(dst->val.mat3->data, var->val.mat3->data, sizeof(kit_mat3)); }
       return 0;
     }
     case KIT_VARTYPE_MAT4: {
-      dst->val.mat4 = kit_refdobj_pool_acquire(&ge_pool);
+      dst->val.mat4 = kit_refdobj_pool_acquire(&kit_g_obj_pool);
       if (dst->val.mat4 && var->val.mat4) { memcpy(dst->val.mat4->data, var->val.mat4->data, sizeof(kit_mat4)); }
       return 0;
     }
@@ -185,14 +185,16 @@ kit_var_free(kit_var* var)
     case KIT_VARTYPE_VEC4:
     case KIT_VARTYPE_FLOAT: break;
 
-    case KIT_VARTYPE_STRING:
-      free(KIT_VAR_AS_STRING(var)->s);
-      kit_refdobj_pool_return(&ge_pool, var->val.s);
+    case KIT_VARTYPE_STRING: {
+      char* s = KIT_VAR_AS_STRING(var)->s;
+      free(s);
+      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.s);
       break;
+    }
 
     case KIT_VARTYPE_LIST:
       kit_list_free(KIT_VAR_AS_LIST(var));
-      kit_refdobj_pool_return(&ge_pool, var->val.list);
+      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.list);
       break;
 
     case KIT_VARTYPE_STRUCT:
@@ -201,21 +203,21 @@ kit_var_free(kit_var* var)
       free(KIT_VAR_AS_STRUCT(var)->members);
       free(KIT_VAR_AS_STRUCT(var)->member_hashes);
       free((void*)KIT_VAR_AS_STRUCT(var)->member_names);
-      kit_refdobj_pool_return(&ge_pool, var->val.struc);
+      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.struc);
       break;
 
     case KIT_VARTYPE_MAP:
       kit_map_free(KIT_VAR_AS_MAP(var));
-      kit_refdobj_pool_return(&ge_pool, var->val.map);
+      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.map);
       break;
 
     case KIT_VARTYPE_MAT3: {
-      kit_refdobj_pool_return(&ge_pool, var->val.mat3);
+      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.mat3);
       break;
     }
 
     case KIT_VARTYPE_MAT4: {
-      kit_refdobj_pool_return(&ge_pool, var->val.mat4);
+      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.mat4);
       break;
     }
   }
@@ -387,7 +389,7 @@ kit_var_to_string_size(const struct kit_var* v)
     case KIT_VARTYPE_NULL: total += strlen("null"); break;
     case KIT_VARTYPE_INT: total += snprintf(NULL, 0, "%i", v->val.i); break;
     case KIT_VARTYPE_CHAR: total += snprintf(NULL, 0, "%c", v->val.c); break;
-    case KIT_VARTYPE_BOOL: return strlen((int)v->val.b ? "true" : "false"); break;
+    case KIT_VARTYPE_BOOL: total += strlen((int)v->val.b ? "true" : "false"); break;
     case KIT_VARTYPE_FLOAT: total += snprintf(NULL, 0, "%g", v->val.f); break;
     case KIT_VARTYPE_VEC2:
     case KIT_VARTYPE_VEC3:
@@ -559,7 +561,7 @@ kit_make_var_from_string(char* s)
 {
   if (!s) { return (kit_var){ .type = KIT_VARTYPE_NULL }; }
   kit_var ret                = { .type = KIT_VARTYPE_STRING };
-  ret.val.s                  = kit_refdobj_pool_acquire(&ge_pool);
+  ret.val.s                  = kit_refdobj_pool_acquire(&kit_g_obj_pool);
   KIT_VAR_AS_STRING(&ret)->s = s; // we just allocated
   return ret;
 }

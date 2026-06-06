@@ -24,6 +24,7 @@
 
 #include "../../inc/kit.bfunc.str.h"
 
+#include "../../inc/kit.bfunc.h"
 #include "../../inc/kit.cast.h"
 #include "../../inc/kit.pool.h"
 #include "../../inc/kit.stdafx.h"
@@ -40,13 +41,19 @@ kit_builtins_str_cat(kit_var* args, u32 nargs)
   (void)nargs;
 
   u32 total_len = 0;
-  for (u32 i = 0; i < nargs; i++) { total_len += strlen(KIT_VAR_AS_STRING(&args[i])->s); }
+  for (u32 i = 0; i < nargs; i++) { total_len += kit_var_to_string_size(&args[i]); }
 
   char* big_s = kit_xalloc(1, total_len + 1);
 
   char* p = big_s;
   p[0]    = 0;
-  for (u32 i = 0; i < nargs; i++) { p = kit_strlpcat(p, KIT_VAR_AS_STRING(&args[i])->s, big_s, total_len + 1); }
+  for (u32 i = 0; i < nargs; i++) {
+    kit_var s = kit_builtins_cast_string(&args[i], 1);
+
+    p = kit_strlpcat(p, KIT_VAR_AS_STRING(&s)->s, big_s, total_len + 1);
+
+    kit_var_release(&s);
+  }
 
   return kit_make_var_from_string(big_s);
 }
@@ -158,7 +165,7 @@ kit_builtins_str_split(kit_var* args, u32 nargs)
 
   kit_var returned_list = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&ge_pool),
+    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
 
   kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&returned_list));

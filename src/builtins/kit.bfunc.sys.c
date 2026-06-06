@@ -47,7 +47,7 @@ kit_builtins_sys_get_cmd_args(kit_var* args, u32 nargs)
 
   kit_var l = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&ge_pool),
+    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
   kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&l));
 
@@ -94,7 +94,7 @@ kit_builtins_sys_get_cwd(kit_var* args, u32 nargs)
 
   kit_var cwd = {
     .type  = KIT_VARTYPE_STRING,
-    .val.s = kit_refdobj_pool_acquire(&ge_pool),
+    .val.s = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
   KIT_VAR_AS_STRING(&cwd)->s = s;
 

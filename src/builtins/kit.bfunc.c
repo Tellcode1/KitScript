@@ -131,7 +131,7 @@ kit_builtins_cast_string(kit_var* args, u32 nargs)
 
   kit_var_to_string(&args[0], s, len + 1);
 
-  kit_refdobj* obj = kit_refdobj_pool_acquire(&ge_pool);
+  kit_refdobj* obj = kit_refdobj_pool_acquire(&kit_g_obj_pool);
 
   KIT_OBJ_AS_STRING(obj)->s = s;
 
@@ -143,12 +143,12 @@ kit_builtins_cast_list(kit_var* args, u32 nargs)
 {
   kit_var new_list = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&ge_pool),
+    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
 
   if (!new_list.val.list || kit_list_init(args, nargs, KIT_OBJ_AS_LIST(new_list.val.list))) // acquires the elements. Stack frees them later.
   {
-    kit_refdobj_pool_return(&ge_pool, new_list.val.list);
+    kit_refdobj_pool_return(&kit_g_obj_pool, new_list.val.list);
     return (kit_var){ .type = KIT_VARTYPE_NULL };
   }
 

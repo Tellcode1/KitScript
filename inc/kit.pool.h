@@ -94,7 +94,7 @@ typedef struct kit_refdobj_pool {
  * integrate this into long running programs, like say, games.
  * Or not?? Check it out.
  */
-extern kit_refdobj_pool ge_pool;
+extern kit_refdobj_pool kit_g_obj_pool;
 
 /* Returns 0 on success. */
 int  kit_refdobj_pool_init(u32 nbranches, kit_refdobj_pool* pool);

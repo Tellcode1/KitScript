@@ -52,6 +52,19 @@ typedef struct ecc_feature_set {
   bool disable_dead_move_forwarding;
   bool disable_dead_store_elimination;
   bool disable_redundant_jump_elimination;
+
+  /**
+   * Disable register allocation, leaving the virtual registers as is.
+   * Your code WILL crash if it contains more than 256 virtual registers,
+   * which is not a large limit!
+   * This switch is provided for debugging purposes, particularly
+   * where register allocations breaks working code.
+   *
+   * Register allocation is not very expensive, and is expected
+   * to be on.
+   * You have been warned.
+   */
+  bool disable_register_allocation_i_know_what_im_doing;
 } ecc_feature_set;
 
 typedef struct ecc_info {
@@ -292,7 +305,7 @@ typedef struct kit_compilation_result {
 } kit_compilation_result;
 
 /**
- * Uses ge_pool, Initialize it using kit_refdobj_pool_init().
+ * Uses kit_g_obj_pool, Initialize it using kit_refdobj_pool_init().
  * Free later with kit_refdobj_pool_free();
  */
 int kit_compile(const ecc_info* info, kit_compilation_result* result);

@@ -40,7 +40,7 @@
 
 #define print_err(...)                                                                                                                               \
   do {                                                                                                                                               \
-    fputs("[eexec] ", stderr);                                                                                                                       \
+    fputs("[KitExec] ", stderr);                                                                                                                     \
     fprintf(stderr, __VA_ARGS__);                                                                                                                    \
   } while (0)
 
@@ -154,10 +154,10 @@ main(int argc, char* argv[])
 
   const u32 init_branches = 8;
 
-  e = kit_refdobj_pool_init(init_branches, &ge_pool);
+  e = kit_refdobj_pool_init(init_branches, &kit_g_obj_pool);
   if (e) goto RET;
 
-  kit_var gvars[128];
+  kit_var gvars[128] = { 0 };
   for (u32 i = 0; i < KIT_ARRLEN(gvars); i++) { gvars[i] = KIT_NULLVAR; };
 
   kit_exec_info info = {
@@ -229,7 +229,7 @@ RET:
 
   if (!run_from_stdin && f) fclose(f);
   kit_var_release(&v);
-  kit_refdobj_pool_free(&ge_pool);
+  kit_refdobj_pool_free(&kit_g_obj_pool);
 
   /* No need to free anything else */
   free(root_allocation);

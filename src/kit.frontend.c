@@ -95,9 +95,12 @@ read_file_arena_better(FILE* f)
 
 #define print_err(...)                                                                                                                               \
   do {                                                                                                                                               \
-    fputs("[ec] ", stderr);                                                                                                                          \
+    fputs("[KitC] ", stderr);                                                                                                                        \
     fprintf(stderr, __VA_ARGS__);                                                                                                                    \
   } while (0)
+
+const char* help_str = "KitC: The compiler for the Kit scripting language\n"
+                       "";
 
 int
 main(int argc, char* argv[])
@@ -122,7 +125,7 @@ main(int argc, char* argv[])
     goto ret;
   }
 
-  if (kit_refdobj_pool_init(16, &ge_pool)) goto ret;
+  if (kit_refdobj_pool_init(16, &kit_g_obj_pool)) goto ret;
 
   if (kit_str_interner_init(256, &interner)) goto ret;
 
@@ -189,6 +192,8 @@ main(int argc, char* argv[])
       compiler_option_set.disable_dead_store_elimination = true;
     } else if (strcmp(opt, "no-redundant-jump-elimination") == 0) {
       compiler_option_set.disable_redundant_jump_elimination = true;
+    } else if (strcmp(opt, "no-register-allocation-i-know-what-im-doing") == 0) {
+      compiler_option_set.disable_register_allocation_i_know_what_im_doing = true;
     }
 
     else {
@@ -346,7 +351,7 @@ main(int argc, char* argv[])
 ret:
   kit_ast_free(&ast);
   kit_compilation_result_free(&compiled);
-  kit_refdobj_pool_free(&ge_pool);
+  kit_refdobj_pool_free(&kit_g_obj_pool);
   kit_str_interner_free(&interner);
   kit_arena_free(&arena);
   return e;

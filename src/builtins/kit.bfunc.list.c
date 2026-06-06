@@ -31,12 +31,12 @@ kit_builtins_list_make(kit_var* args, u32 nargs)
 {
   kit_var v = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&ge_pool),
+    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
 
   int e = kit_list_init(args, nargs, KIT_VAR_AS_LIST(&v));
   if (e) {
-    kit_refdobj_pool_return(&ge_pool, v.val.list);
+    kit_refdobj_pool_return(&kit_g_obj_pool, v.val.list);
     return KIT_NULLVAR;
   }
 

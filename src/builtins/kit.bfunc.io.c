@@ -91,7 +91,7 @@ kit_builtins_io_read(kit_var* args, u32 nargs)
 
   kit_var v = {
     .type  = KIT_VARTYPE_STRING,
-    .val.s = kit_refdobj_pool_acquire(&ge_pool),
+    .val.s = kit_refdobj_pool_acquire(&kit_g_obj_pool),
   };
   KIT_VAR_AS_STRING(&v)->s = s;
 
@@ -303,9 +303,9 @@ kit_builtins_io_listdir(kit_var* args, u32 nargs)
   const char* path = KIT_VAR_AS_STRING(&args[0])->s;
   if (!path) return KIT_NULLVAR;
 
-  kit_var l = { .type = KIT_VARTYPE_LIST, .val.list = kit_refdobj_pool_acquire(&ge_pool) };
+  kit_var l = { .type = KIT_VARTYPE_LIST, .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool) };
   if (kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&l))) {
-    kit_refdobj_pool_return(&ge_pool, l.val.list);
+    kit_refdobj_pool_return(&kit_g_obj_pool, l.val.list);
     return KIT_NULLVAR;
   }
 
