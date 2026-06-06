@@ -6,12 +6,12 @@ These are: Arena allocator, Pool (reference objects), and the system allocator.
 For instance, compilation uses an arena (bump) allocator for temporary allocations.
 
 1. Arena allocator:
-* The arena allocator simply allocates a block of E_PAGESIZE memory,
+* The arena allocator simply allocates a block of KIT_PAGESIZE memory,
 * It stores a "head" variable to track where the next allocation will start.
 * When you allocate from the arena, it returns a pointer in the page starting from head,
-* aligning it to E_ARENA_MINIMUM_ALIGNMENT, returning it.
+* aligning it to KIT_ARENA_MINIMUM_ALIGNMENT, returning it.
 * It then moves the head forward by the number of bytes allocated.
-* No free function is present! All pages are cleared on e_arena_free().
+* No free function is present! All pages are cleared on kit_arena_free().
 
 2. Pool allocator:
 * Used for referenced objects.

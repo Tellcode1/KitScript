@@ -1,16 +1,16 @@
 CC = clang
 AR ?= ar
-CFLAGS ?= -std=c99 -Wall -Wpedantic -g3 -fsanitize=address,undefined
-LDFLAGS ?= -lm -Wall -Wpedantic -g3 -fsanitize=address,undefined
+CFLAGS ?= -std=c99 -Wall -Wpedantic -g
+LDFLAGS ?= -lm -Wall -Wpedantic -g
 PREFIX?=/usr/bin/
 
 SRC_DIR=src
 BUILD_DIR?=build
 
-SOURCES=ast.c ast.free.c lex.c var.c list.c map.c builtins/bfunc.c builtins/bfunc.rt.c builtins/bfunc.str.c builtins/bfunc.list.c builtins/bfunc.io.c builtins/bfunc.sys.c builtins/bfunc.math.c builtins/bfunc.rand.c builtins/bfunc.log.c builtins/bfunc.time.c pool.c ldfile.c arena.c cvt.c struct.c regalloc.c
-COMPILER_SOURCES=frontend.c
-DECOMPILER_SOURCES=dc.c
-RUNTIME_SOURCES=execprog.c
+SOURCES=kit.ast.c kit.ast.free.c kit.lex.c kit.var.c kit.list.c kit.map.c builtins/kit.bfunc.c builtins/kit.bfunc.rt.c builtins/kit.bfunc.str.c builtins/kit.bfunc.list.c builtins/kit.bfunc.io.c builtins/kit.bfunc.sys.c builtins/kit.bfunc.math.c builtins/kit.bfunc.rand.c builtins/kit.bfunc.log.c builtins/kit.bfunc.time.c kit.pool.c kit.ldfile.c kit.arena.c kit.cvt.c kit.struct.c kit.regalloc.c kit.cc.c kit.exec.c
+COMPILER_SOURCES=kit.frontend.c
+DECOMPILER_SOURCES=kit.dc.c
+RUNTIME_SOURCES=kit.execprog.c
 
 OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
 
@@ -20,18 +20,18 @@ RUNTIME_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(RUNTIME_SOURCES))
 
 .PHONY: all clean
 
-all: $(BUILD_DIR) $(BUILD_DIR)/libesl.a $(BUILD_DIR)/ec $(BUILD_DIR)/dc $(BUILD_DIR)/eexec
+all: $(BUILD_DIR) $(BUILD_DIR)/libkit.a $(BUILD_DIR)/kitc $(BUILD_DIR)/kitdc $(BUILD_DIR)/kitexec
 
-$(BUILD_DIR)/libesl.a: $(OBJ) $(BUILD_DIR)/cc.o $(BUILD_DIR)/exec.o
+$(BUILD_DIR)/libkit.a: $(OBJ)
 	$(AR) rcs $@ $^	
 
-$(BUILD_DIR)/ec: $(COMPILER_OBJ) $(BUILD_DIR)/libesl.a
+$(BUILD_DIR)/kitc: $(COMPILER_OBJ) $(BUILD_DIR)/libkit.a
 	$(CC) $(LDFLAGS) $^ -o $@
 
-$(BUILD_DIR)/dc: $(DECOMPILER_OBJ) $(BUILD_DIR)/libesl.a
+$(BUILD_DIR)/kitdc: $(DECOMPILER_OBJ) $(BUILD_DIR)/libkit.a
 	$(CC) $(LDFLAGS) $^ -o $@
 
-$(BUILD_DIR)/eexec: $(RUNTIME_OBJ) $(BUILD_DIR)/libesl.a
+$(BUILD_DIR)/kitexec: $(RUNTIME_OBJ) $(BUILD_DIR)/libkit.a
 	$(CC) $(LDFLAGS) $^ -o $@
 
 $(BUILD_DIR)/rt/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
@@ -56,7 +56,6 @@ $(BUILD_DIR)/%.eb: %.e $(BUILD_DIR)/ec | $(BUILD_DIR)
 clean:
 	rm -rf $(BUILD_DIR)
 
-install: $(BUILD_DIR)/ec $(BUILD_DIR)/eexec
-	ln -sf -T $(realpath $(BUILD_DIR)/ec) $(PREFIX)/ec
-	ln -sf -T $(realpath $(BUILD_DIR)/eexec) $(PREFIX)/eexec
-	ln -sf -T $(realpath ./erun.sh) $(PREFIX)/erun.sh
+install: $(BUILD_DIR)/kitc $(BUILD_DIR)/kitexec
+	ln -sf -T $(realpath $(BUILD_DIR)/kitc) $(PREFIX)/kitc
+	ln -sf -T $(realpath $(BUILD_DIR)/kitexec) $(PREFIX)/kitexec

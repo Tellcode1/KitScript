@@ -118,11 +118,11 @@ MAGIC : u32
 bytesMemNeeded : u32 // << The number of bytes of memory required to load the whole program
                          Explanation below
 nLiterals : u32
-Literals : e_var[nLiterals]{
-   Type : e_vartype
-   value : e_varval
+Literals : kit_var[nLiterals]{
+   Type : kit_vartype
+   value : kit_varval
  For strings:
-   Type : e_vartype
+   Type : kit_vartype
    Len : u32
    String : u8[Len]
 }
@@ -147,8 +147,8 @@ to the allocation (+offset) and initialize their refcounters to 1.
 
 
 [C INTEROPABILITY | CALLING C FUNCTIONS FROM SCRIPT]
-C functions can be called from the script using the e_extern_function entry
-in e_exec_info. The table defines a list of functions that can be called,
+C functions can be called from the script using the kit_extern_function entry
+in kit_exec_info. The table defines a list of functions that can be called,
 using their hashes.
 
 A namespaced (external) function can be defined from C simply by hashing the full name.

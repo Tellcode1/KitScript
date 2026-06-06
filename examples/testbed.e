@@ -143,9 +143,9 @@ fn main() {
    assert "I added dynamic execution" == "I added dynamic execution";
    assert [] != false;
    assert "Hello" != "hello";
-   assert type_of("[]") == type::STRING;
-   assert type_of([]) == type::LIST;
-   assert type_of(nested_struct) == type::STRUCT;
+   assert kit::type_of("[]") == type::STRING;
+   assert kit::type_of([]) == type::LIST;
+   assert kit::type_of(nested_struct) == type::STRUCT;
    assert 0 != null; // They're different types. NULL should only be equal to NULL.
    assert [] != "";
 
@@ -157,14 +157,14 @@ fn main() {
       "return x;",
    "}"
    );
-   let exec_info = esl::exec_info(
+   let exec_info = kit::exec_info(
       /* source_code */ source_file,
       /* entry_point */ "main",
       /* optimization_level */ 3,
       /* arguments */ [],
       /* command_line_arguments */ [],
    );
-   let r = esl::compile_and_exec(exec_info);
+   let r = kit::compile_and_exec(exec_info);
    if (r != 0xDEADBEEF) {
       io::println(io::STDERR, "JIT compilation failed... Expected 0xDEADBEEF, got:  ", r);
       error = true;

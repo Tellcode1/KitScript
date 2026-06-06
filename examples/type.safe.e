@@ -1,5 +1,5 @@
 fn only_accept_strings(s) {
-   if (type_of(s) != type::STRING) {
+   if (kit::type_of(s) != type::STRING) {
       println("Invalid input: Only expect strings");
       return -1;
    }
@@ -10,7 +10,7 @@ fn only_accept_strings(s) {
 
 fn list_of_args(args) {
    for (let i = 0; i < len(args); i++) {
-      if (type_of(args[i]) != type::STRING) {
+      if (kit::type_of(args[i]) != type::STRING) {
          println("Function only expects strings in the list");
          return -1;
       }
@@ -23,7 +23,7 @@ fn list_of_args(args) {
 
 fn list_of_args_but_with_assertions(args) {
    for (let i = 0; i < len(args); i++) {
-      assert(type_of(args[i]) == type::STRING);
+      assert(kit::type_of(args[i]) == type::STRING);
    }
 
    for (let i = 0; i < len(args); i++) {

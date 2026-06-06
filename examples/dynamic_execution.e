@@ -8,13 +8,13 @@ fn main() {
     file_contents = str::cat(file_contents, line, "\n");
   }
 
-  let exec_info = esl::exec_info(
+  let exec_info = kit::exec_info(
       /* source_code */ file_contents,
       /* entry_point */ "main",
       /* optimization_level */ 0,
       /* arguments */ [],
       /* command_line_arguments */ [ "examples/cat.e" ],
   );
-  let r = esl::compile_and_exec(exec_info);
+  let r = kit::compile_and_exec(exec_info);
   println("we just executed cat.e (presumably) dynamically!!!");
 }
