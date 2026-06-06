@@ -249,10 +249,7 @@ scope_push(e_compiler* cc)
 
 static void
 scope_pop(e_compiler* cc)
-{
-  assert(cc->scope && cc->scope->parent);
-  cc->scope = cc->scope->parent;
-}
+{ cc->scope = cc->scope->parent; }
 
 /* the lesser the bias, the more likely it is to inline a function */
 static int
@@ -1062,7 +1059,6 @@ static RETURNS_ERRCODE int
 compile_list(e_compiler* cc, int node)
 {
   u32 nelems = E_GET_NODE(cc->ast, node)->list.nelems;
-  assert(nelems < INT32_MAX);
 
   e_vreg_t dst = vreg_alloc(cc);
 
@@ -3182,14 +3178,9 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
     blk->defines  = e_arnalloc(dst->arena, nvregs * sizeof(bool));
     blk->live_in  = e_arnalloc(dst->arena, nvregs * sizeof(bool));
     blk->live_out = e_arnalloc(dst->arena, nvregs * sizeof(bool));
-    assert(1 && blk->uses != NULL && blk->defines != NULL && blk->live_in != NULL && blk->live_out != NULL);
 
     memset(blk->defines, 0, nvregs * sizeof(bool));
-    assert(2 && blk->uses != NULL && blk->defines != NULL && blk->live_in != NULL && blk->live_out != NULL);
-
     memset(blk->uses, 0, nvregs * sizeof(bool));
-    assert(3 && blk->uses != NULL && blk->defines != NULL && blk->live_in != NULL && blk->live_out != NULL);
-
     memset(blk->live_in, 0, nvregs * sizeof(bool));
     memset(blk->live_out, 0, nvregs * sizeof(bool));
   }
@@ -3252,8 +3243,6 @@ codegraph_liveliness_analysis(e_compiler* cc, codegraph* dst)
       /* new_live_out = U live_in[successor] */
       for (u32 s = 0; s < blk->nsuccessors; s++) {
         codeblock* successor = &dst->blocks[blk->successors[s]];
-
-        assert(successor->live_in != NULL);
 
         for (u32 reg = 0; reg < nvregs; reg++) {
           if (successor->live_in[reg]) { new_live_out[reg] = true; }
