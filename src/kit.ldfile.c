@@ -346,7 +346,7 @@ kit_file_write(const kit_compilation_result* r, FILE* f)
 
   fwrite(&r->structs_count, sizeof(u32), 1, f);
   for (u32 i = 0; i < r->structs_count; i++) {
-    ecc_struct_information* st = &r->structs[i];
+    kitc_struct_information* st = &r->structs[i];
 
     u32 name_len = strlen(st->name);
     fwrite(&name_len, sizeof(u32), 1, f);
@@ -363,7 +363,7 @@ kit_file_write(const kit_compilation_result* r, FILE* f)
 
   fwrite(&r->functions_count, sizeof(r->functions_count), 1, f);
   for (u32 i = 0; i < r->functions_count; i++) {
-    const ecc_function* fn = &r->functions[i];
+    const kitc_function* fn = &r->functions[i];
     fwrite(&fn->code_count, sizeof(fn->code_count), 1, f);
     fwrite(&fn->nargs, sizeof(fn->nargs), 1, f);
     fwrite(&fn->name_hash, sizeof(fn->name_hash), 1, f);
@@ -463,11 +463,11 @@ kit_file_load(kit_compilation_result* r, void** root_allocation, FILE* f)
   if (fread(&r->structs_count, sizeof(u32), 1, f) != 1) goto ERR;
 
   alloc      = kit_align_ptr(alloc, 8);
-  r->structs = (ecc_struct_information*)alloc;
-  alloc += sizeof(ecc_struct_information) * r->structs_count;
+  r->structs = (kitc_struct_information*)alloc;
+  alloc += sizeof(kitc_struct_information) * r->structs_count;
 
   for (u32 i = 0; i < r->structs_count; i++) {
-    ecc_struct_information* st = &r->structs[i];
+    kitc_struct_information* st = &r->structs[i];
 
     st->name = (char*)alloc;
 
@@ -508,11 +508,11 @@ kit_file_load(kit_compilation_result* r, void** root_allocation, FILE* f)
   if (fread(&r->functions_count, sizeof(r->functions_count), 1, f) != 1) goto ERR;
 
   alloc        = kit_align_ptr(alloc, 8);
-  r->functions = (ecc_function*)alloc;
-  alloc += sizeof(ecc_function) * (r->functions_count);
+  r->functions = (kitc_function*)alloc;
+  alloc += sizeof(kitc_function) * (r->functions_count);
 
   for (u32 i = 0; i < r->functions_count; i++) {
-    ecc_function func = { 0 };
+    kitc_function func = { 0 };
     if (fread(&func.code_count, sizeof(func.code_count), 1, f) != 1) goto ERR;
     if (fread(&func.nargs, sizeof(func.nargs), 1, f) != 1) goto ERR;
     if (fread(&func.name_hash, sizeof(func.name_hash), 1, f) != 1) goto ERR;
@@ -600,7 +600,7 @@ kit_file_bytes_required(const kit_compilation_result* r)
 
   // structures array
   size = kit_align_size(size, 8);
-  size += sizeof(ecc_struct_information) * r->structs_count;
+  size += sizeof(kitc_struct_information) * r->structs_count;
   for (u32 i = 0; i < r->structs_count; i++) {
     u32 fields_count = r->structs[i].fields_count;
     size += strlen(r->structs[i].name) + 1; // NULL term
@@ -616,9 +616,9 @@ kit_file_bytes_required(const kit_compilation_result* r)
 
   // functions array
   size = kit_align_size(size, 8);
-  size += sizeof(ecc_function) * r->functions_count;
+  size += sizeof(kitc_function) * r->functions_count;
   for (u32 i = 0; i < r->functions_count; i++) {
-    const ecc_function* fn = &r->functions[i];
+    const kitc_function* fn = &r->functions[i];
 
     size = kit_align_size(size, 16);
     size += fn->code_count * sizeof(kit_ins); // code
@@ -647,7 +647,7 @@ kit_file_bytes_required(const kit_compilation_result* r)
 void
 kit_emit_ins(kit_compiler* cc, kit_ins ins)
 {
-  if (cc->ninstructions >= cc->cinstructions) ecc_stream_resize(cc, cc->cinstructions * 2U);
+  if (cc->ninstructions >= cc->cinstructions) kitc_stream_resize(cc, cc->cinstructions * 2U);
   memcpy(&cc->instructions[cc->ninstructions++], &ins, sizeof(kit_ins));
 }
 

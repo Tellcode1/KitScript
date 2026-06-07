@@ -128,7 +128,7 @@ Literals : kit_var[nLiterals]{
 }
 
 nFunctions : u32
-Functions = ecc_function[]{
+Functions = kitc_function[]{
   code_size : u32
   nargs : u32
   name_hash : u32

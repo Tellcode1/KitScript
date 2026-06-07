@@ -13,7 +13,7 @@
 #include "../../inc/kit.var.h"
 
 static inline int
-find_func(const char* name, const kit_compilation_result* r, ecc_function* out)
+find_func(const char* name, const kit_compilation_result* r, kitc_function* out)
 {
   u32 hash = kit_hash(name, strlen(name));
   for (u32 i = 0; i < r->functions_count; i++) {
@@ -98,12 +98,15 @@ kit_builtins_rt_compile_and_exec(kit_var* args, u32 nargs)
     goto RET;
   }
 
-  ecc_info info = {
+  kitc_feature_set fset = { 0 };
+
+  kitc_info info = {
     .arena              = &arena,
     .ast                = &ast,
     .root_node          = ast.root,
     .custom_entry_point = NULL,
     .opt_level          = optimization_level,
+    .feature_set        = fset,
   };
 
   e = kit_compile(&info, &compiled);
@@ -112,7 +115,7 @@ kit_builtins_rt_compile_and_exec(kit_var* args, u32 nargs)
     goto RET;
   }
 
-  ecc_function entry_func = { 0 };
+  kitc_function entry_func = { 0 };
   if (find_func(entry_point, &compiled, &entry_func)) {
     kit_xerror("kit::exec: Entry point not in code\n");
     goto RET;

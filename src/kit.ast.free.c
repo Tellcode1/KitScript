@@ -140,6 +140,8 @@ kit_ast_node_free(kit_ast* p, int id)
       break;
 
     case KIT_AST_NODE_RANGED_FOR: {
+      kit_ast_node_free(p, node->for_range_stmt.start);
+      kit_ast_node_free(p, node->for_range_stmt.stop);
       free(node->for_range_stmt.iterator_name);
       for (u32 i = 0; i < node->for_range_stmt.nstmts; i++) kit_ast_node_free(p, node->for_range_stmt.stmts[i]);
       free(node->for_range_stmt.stmts);

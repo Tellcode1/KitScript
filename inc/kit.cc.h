@@ -33,15 +33,15 @@
 #include "kit.stdafx.h"
 #include "kit.var.h"
 
-#define KIT_OBJ_AS_INFO(obj) ((ecc_variable_information*)((obj)->data))
-#define KIT_VAR_AS_INFO(var) ((ecc_variable_information*)((var)->val.s->data))
+#define KIT_OBJ_AS_INFO(obj) ((kitc_variable_information*)((obj)->data))
+#define KIT_VAR_AS_INFO(var) ((kitc_variable_information*)((var)->val.s->data))
 
-#define KIT_OBJ_AS_STRUCT_INFO(obj) ((ecc_struct_information*)((obj)->data))
-#define KIT_VAR_AS_STRUCT_INFO(var) ((ecc_struct_information*)((var)->val.s->data))
+#define KIT_OBJ_AS_STRUCT_INFO(obj) ((kitc_struct_information*)((obj)->data))
+#define KIT_VAR_AS_STRUCT_INFO(var) ((kitc_struct_information*)((var)->val.s->data))
 
 struct kit_ast;
 
-typedef struct ecc_feature_set {
+typedef struct kitc_feature_set {
   bool disable_noop_stripping;
   bool disable_dead_branch_elimination;
   bool disable_constant_propagation;
@@ -65,9 +65,9 @@ typedef struct ecc_feature_set {
    * You have been warned.
    */
   bool disable_register_allocation_i_know_what_im_doing;
-} ecc_feature_set;
+} kitc_feature_set;
 
-typedef struct ecc_info {
+typedef struct kitc_info {
   kit_arena* arena; // Must not be NULL
 
   struct kit_ast* ast; // Must not be NULL
@@ -98,9 +98,9 @@ typedef struct ecc_info {
   const kit_builtin_var* hook_vars;
   u32                    nhooked_vars;
 
-  int             opt_level; // 0 or 1/2/3
-  ecc_feature_set feature_set;
-} ecc_info;
+  int              opt_level; // 0 or 1/2/3
+  kitc_feature_set feature_set;
+} kitc_info;
 
 /**
  * Loop location structure.
@@ -110,15 +110,15 @@ typedef struct ecc_info {
  *
  * Both "label"s are the label IDs, generated during
  * compile time.
- * The defer_depth is the depth in the ecc_defer_scope
+ * The defer_depth is the depth in the kitc_defer_scope
  * struct, used to determine which defer scopes to clear
  * on break/continue and return statements inside loops.
  */
-typedef struct ecc_loop_location {
+typedef struct kitc_loop_location {
   u32 continue_label; // Where continue goes
   u32 break_label;    // Where break goes
   u32 defer_depth;
-} ecc_loop_location;
+} kitc_loop_location;
 
 /**
  * The namespace list, in order.
@@ -134,13 +134,13 @@ typedef struct ecc_loop_location {
  * This identifier is then hashed, and the result is used
  * as if it were a normal variable ID.
  */
-typedef struct ecc_namespace_stack {
+typedef struct kitc_namespace_stack {
   char** namespaces;
   u32    nnamespaces;
   u32    capacity;
-} ecc_namespace_stack;
+} kitc_namespace_stack;
 
-typedef struct ecc_variable_information {
+typedef struct kitc_variable_information {
   kit_filespan span; // Span at where the variable (name) is.
   int          reg;
   u32          name_hash;
@@ -148,29 +148,29 @@ typedef struct ecc_variable_information {
   int          current_value; // <0 if no value currently (void)
   u32          times_loaded;  // How many times this variable has been loaded.
   bool         is_const;
-} ecc_variable_information;
+} kitc_variable_information;
 
 /**
  * Data deposit for a structure.
  */
-typedef struct ecc_struct_information {
+typedef struct kitc_struct_information {
   char** field_names; // Array allocated. Strings arena allocated.
   u32*   field_hashes;
   u32    fields_count;
   u32    field_capacity;
   u32    name_hash;
   char*  name; // Arena allocated.
-} ecc_struct_information;
+} kitc_struct_information;
 
 /**
  * Stored information about all structures.
  * Filled in as the compiler runs.
  */
-typedef struct ecc_struct_table {
-  ecc_struct_information* structs;
-  u32                     structs_count;
-  u32                     structs_capacity;
-} ecc_struct_table;
+typedef struct kitc_struct_table {
+  kitc_struct_information* structs;
+  u32                      structs_count;
+  u32                      structs_capacity;
+} kitc_struct_table;
 
 /**
  * Stored information about all literal variables
@@ -179,68 +179,68 @@ typedef struct ecc_struct_table {
  * Serialized, and used by the executor to reduce
  * memory usage.
  */
-typedef struct ecc_literal_table {
+typedef struct kitc_literal_table {
   kit_var* literals;
   u32*     literal_hashes;
   u32      literals_count;
   u32      literals_capacity;
-} ecc_literal_table;
+} kitc_literal_table;
 
 /**
  * A constant list (upfront, before compilation starts) of
  * all the builtin variables, provided by the kit_compile caller.
  * Shared across all forks of a compiler.
  */
-typedef struct ecc_builtin_variables_table {
+typedef struct kitc_builtin_variables_table {
   const kit_builtin_var* builtin_vars;
   const u32*             builtin_var_hashes;
   u32                    builtin_vars_count;
-} ecc_builtin_variables_table;
+} kitc_builtin_variables_table;
 
 /**
  * Compiled function structure.
  */
-typedef struct ecc_function {
+typedef struct kitc_function {
   u32      name_hash;
   u32      nargs;
   u32      code_count;
   u32      vregs_used;
   u32      labels_used;
   kit_ins* code;
-} ecc_function;
+} kitc_function;
 
 /**
  * All functions in the resulting binary
  * Shared across all forks of a compiler.
  */
-typedef struct ecc_function_table {
-  ecc_function* functions;
-  u32           functions_count;
-  u32           functions_capacity;
-} ecc_function_table;
+typedef struct kitc_function_table {
+  kitc_function* functions;
+  u32            functions_count;
+  u32            functions_capacity;
+} kitc_function_table;
 
 /**
  * A defer statement.
  * eg. defer io::close(fd); io::close(fd) is our expression
  */
-typedef struct ecc_defer_entry {
+typedef struct kitc_defer_entry {
   u32  nexprs; // Can be 0!
   u32  capacity;
   int* exprs;
-} ecc_defer_entry;
+} kitc_defer_entry;
 
 /**
  * All the defer statements in a scope.
  * Instantiated on function return / scope break.
  */
-typedef struct ecc_defer_scope {
-  struct ecc_defer_scope* parent;
-  ecc_defer_entry*        entries;
-  u32                     count;
-  u32                     capacity;
-} ecc_defer_scope;
+typedef struct kitc_defer_scope {
+  struct kitc_defer_scope* parent;
+  kitc_defer_entry*        entries;
+  u32                      count;
+  u32                      capacity;
+} kitc_defer_scope;
 
-typedef struct ecc_var {
+typedef struct kitc_var {
   kit_filespan span;
   const char*  name;
   u32          name_hash;
@@ -248,31 +248,31 @@ typedef struct ecc_var {
     kit_vreg_t reg;
     u32        global_id;
   } slot;
-  bool            is_const;
-  bool            is_global;
-  struct ecc_var* next;
-} ecc_var;
+  bool             is_const;
+  bool             is_global;
+  struct kitc_var* next;
+} kitc_var;
 
-typedef struct ecc_scope {
-  ecc_var*          vars;
-  struct ecc_scope* parent;
-} ecc_scope;
+typedef struct kitc_scope {
+  kitc_var*          vars;
+  struct kitc_scope* parent;
+} kitc_scope;
 
 typedef struct kit_compiler {
-  const ecc_info* info;
+  const kitc_info* info;
 
   kit_arena*      arena;
   struct kit_ast* ast;
 
-  ecc_literal_table*           lit_table;
-  ecc_builtin_variables_table* builtin_var_table;
-  ecc_function_table*          function_table;
-  ecc_defer_scope*             defer_stack;
-  ecc_struct_table*            struct_table;
+  kitc_literal_table*           lit_table;
+  kitc_builtin_variables_table* builtin_var_table;
+  kitc_function_table*          function_table;
+  kitc_defer_scope*             defer_stack;
+  kitc_struct_table*            struct_table;
 
-  ecc_scope*           scope;
-  ecc_loop_location*   loop;
-  ecc_namespace_stack* ns;
+  kitc_scope*           scope;
+  kitc_loop_location*   loop;
+  kitc_namespace_stack* ns;
 
   /* Stack for storing information about variables during compilation. */
   struct kit_stackemu* stack;
@@ -293,11 +293,11 @@ typedef struct kit_compilation_result {
   u32 names_count;
   u32 structs_count;
 
-  kit_var*                literals;        // Array allocated by struct, don't free inviduals.
-  u32*                    literals_hashes; // Array allocated by struct. Free after use.
-  ecc_function*           functions;       // Array allocated by struct. Free after use.
-  kit_ins*                instructions;    // Array allocated by struct. Free after use.
-  ecc_struct_information* structs;         // Array (and arrays inside) allocated by struct. Free after use.
+  kit_var*                 literals;        // Array allocated by struct, don't free inviduals.
+  u32*                     literals_hashes; // Array allocated by struct. Free after use.
+  kitc_function*           functions;       // Array allocated by struct. Free after use.
+  kit_ins*                 instructions;    // Array allocated by struct. Free after use.
+  kitc_struct_information* structs;         // Array (and arrays inside) allocated by struct. Free after use.
 
   /* Debug symbols. Optional. */
   char** names; // Array && individuals allocated.
@@ -308,10 +308,10 @@ typedef struct kit_compilation_result {
  * Uses kit_g_obj_pool, Initialize it using kit_refdobj_pool_init().
  * Free later with kit_refdobj_pool_free();
  */
-int kit_compile(const ecc_info* info, kit_compilation_result* result);
+int kit_compile(const kitc_info* info, kit_compilation_result* result);
 
 static inline void
-ecc_stream_resize(kit_compiler* cc, u32 new_cap)
+kitc_stream_resize(kit_compiler* cc, u32 new_cap)
 {
   if (cc == NULL || new_cap == 0) return;
 

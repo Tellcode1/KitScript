@@ -342,14 +342,14 @@ main(int argc, char** argv)
 
   kit_print_instruction_stream(&r, r.instructions, r.instructions_count, 0, stdout);
   for (u32 i = 0; i < r.functions_count; i++) {
-    const ecc_function* func = &r.functions[i];
+    const kitc_function* func = &r.functions[i];
     fprintf(stdout, "[%s|%u](%u):\n", lookup(&r, func->name_hash), func->name_hash, func->nargs);
     kit_print_instruction_stream(&r, func->code, func->code_count, 4, stdout);
   }
 
   fprintf(stdout, "\nstructures:\n");
   for (u32 i = 0; i < r.structs_count; i++) {
-    const ecc_struct_information* info = &r.structs[i];
+    const kitc_struct_information* info = &r.structs[i];
     fprintf(stdout, "[%s] = {", info->name);
     for (u32 j = 0; j < info->fields_count; j++) {
       fprintf(stdout, "%s/%u", info->field_names[j], info->field_hashes[j]);

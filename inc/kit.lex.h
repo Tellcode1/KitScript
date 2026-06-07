@@ -35,6 +35,7 @@ typedef enum kit_token_type {
   KIT_TOKEN_TYPE_DOUBLE_COLON,
   KIT_TOKEN_TYPE_COMMA,
   KIT_TOKEN_TYPE_DOT,
+  KIT_TOKEN_TYPE_DOTDOT,         // ..
   KIT_TOKEN_TYPE_HASH_OPENBRACE, // #{
   KIT_TOKEN_TYPE_OPENBRACE,
   KIT_TOKEN_TYPE_CLOSEBRACE,
@@ -176,6 +177,7 @@ kit_token_type_to_string(kit_token_type e)
     case KIT_TOKEN_TYPE_GT: return ">";
     case KIT_TOKEN_TYPE_GTE: return ">=";
     case KIT_TOKEN_TYPE_DOT: return ".";
+    case KIT_TOKEN_TYPE_DOTDOT: return "..";
     case KIT_TOKEN_TYPE_OPENBRACKET: return "[";
     case KIT_TOKEN_TYPE_CLOSEBRACKET: return "]";
     case KIT_TOKEN_TYPE_EXTERN: return "extern";

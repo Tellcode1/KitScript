@@ -229,7 +229,18 @@ void
 kit_arnfree(kit_arena* a, void* ptr)
 {
   if (ptr == a->top) {
-    if (a->top_size > a->current->head) a->current->head = 0;
-    else a->current->head -= a->top_size;
+    if (a->top_size >= a->current->head) {
+      /* mark page as free and move it to the free list */
+      a->current->head = 0;
+
+      /* set current page to next linked page */
+      kit_arena_page* curr = a->current;
+      a->current           = curr->next;
+
+      /* link our free page */
+      curr->next    = a->free_pages;
+      a->free_pages = curr;
+
+    } else a->current->head -= a->top_size;
   }
 }

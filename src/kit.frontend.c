@@ -116,7 +116,7 @@ main(int argc, char* argv[])
   kit_arena              arena               = { 0 };
   int                    e                   = 0;
   int                    opt_level           = 0;
-  ecc_feature_set        compiler_option_set = { 0 };
+  kitc_feature_set       compiler_option_set = { 0 };
 
   e = kit_arena_init(1, &arena);
   if (e) {
@@ -134,8 +134,6 @@ main(int argc, char* argv[])
 
   /* set every option disable to false */
   memset(&compiler_option_set, 0, sizeof(compiler_option_set));
-
-  compiler_option_set.disable_register_allocation_i_know_what_im_doing = false;
 
   const char* out = NULL;
   for (int i = 1; i < argc; i++) {
@@ -306,7 +304,7 @@ main(int argc, char* argv[])
     return 0;
   }
 
-  ecc_info info = {
+  kitc_info info = {
     .arena              = &arena,
     .ast                = &ast,
     .root_node          = ast.root,

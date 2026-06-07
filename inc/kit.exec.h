@@ -36,15 +36,15 @@
 #include <stddef.h>
 
 typedef struct kit_exec_info {
-  kit_var*                      gvars;
-  const kit_ins*                code;
-  const kit_var*                args;     // NULL if nargs == 0, shallow copied.
-  const kit_var*                literals; // must outlive the exec function.
-  const u32*                    literals_hashes;
-  const ecc_function*           funcs;
-  const kit_builtin_func*       extern_funcs;
-  const kit_builtin_var*        extern_vars;
-  const ecc_struct_information* structs;
+  kit_var*                       gvars;
+  const kit_ins*                 code;
+  const kit_var*                 args;     // NULL if nargs == 0, shallow copied.
+  const kit_var*                 literals; // must outlive the exec function.
+  const u32*                     literals_hashes;
+  const kitc_function*           funcs;
+  const kit_builtin_func*        extern_funcs;
+  const kit_builtin_var*         extern_vars;
+  const kitc_struct_information* structs;
 
   const char** names;
   const u32*   names_hashes;

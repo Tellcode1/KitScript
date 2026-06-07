@@ -92,13 +92,13 @@ static int                codegraph_liveliness_analysis(kit_compiler* cc, codegr
 static int                codegraph_build_successor_list(kit_compiler* cc, codegraph* dst);
 static void               codegraph_free(kit_compiler* cc, codegraph* graph);
 
-static void codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg);
-static void codegraph_constant_folding(kit_compiler* cc, const codegraph* cfg);
-static int  codegraph_preliminary_dead_store_elimination(kit_compiler* cc, const codegraph* cfg);
-static int  codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg);
-static void codegraph_eliminate_unreachable_code(kit_compiler* cc, codegraph* cfg);
-static void codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg);
-static void codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_constant_folding(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_preliminary_dead_store_elimination(kit_compiler* cc, const codegraph* cfg);
+static bool codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_eliminate_unreachable_code(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg);
 
 static void opt_inline_function_calls(kit_compiler* cc);
 
@@ -120,12 +120,12 @@ static inline RETURNS_ERRCODE int emit_and_record_jmp(kit_compiler* cc, eir_opco
 static inline void                define_and_emit_label(kit_compiler* cc, u32 label_id);
 
 static RETURNS_ERRCODE int append_defer_entry(kit_compiler* cc, int* exprs, u32 nexprs);
-static RETURNS_ERRCODE int append_function_entry(kit_arena* a, ecc_function_table* funcs, const ecc_function* func);
-static RETURNS_ERRCODE int append_struct_decleration(kit_arena* a, const char* name, ecc_struct_information* deposit);
-static RETURNS_ERRCODE int append_literal_variable(ecc_literal_table* literals, const kit_var* v);
+static RETURNS_ERRCODE int append_function_entry(kit_arena* a, kitc_function_table* funcs, const kitc_function* func);
+static RETURNS_ERRCODE int append_struct_decleration(kit_arena* a, const char* name, kitc_struct_information* deposit);
+static RETURNS_ERRCODE int append_literal_variable(kitc_literal_table* literals, const kit_var* v);
 
-static RETURNS_ERRCODE int collect_struct_declerations(kit_compiler* cc, int* stmts, u32 nstmts, ecc_struct_information* deposit);
-static RETURNS_ERRCODE int append_struct_info(kit_compiler* cc, const ecc_struct_information* data);
+static RETURNS_ERRCODE int collect_struct_declerations(kit_compiler* cc, int* stmts, u32 nstmts, kitc_struct_information* deposit);
+static RETURNS_ERRCODE int append_struct_info(kit_compiler* cc, const kitc_struct_information* data);
 
 static inline RETURNS_ERRCODE int compiler_make_fork(const kit_compiler* old_c, kit_compiler* new_c);
 static inline void                compiler_join_fork(kit_compiler* copy, kit_compiler* cc);
@@ -155,7 +155,7 @@ static RETURNS_ERRCODE kit_vreg_t compile_ranged_for_statement(kit_compiler* cc,
 static RETURNS_ERRCODE kit_vreg_t compile_member_access(kit_compiler* cc, int node);
 static RETURNS_ERRCODE kit_vreg_t compile_assign(kit_compiler* cc, int node);
 static RETURNS_ERRCODE kit_vreg_t compile_return(kit_compiler* cc, int node);
-// static RETURNS_ERRCODE ereg_t compile_struct_constructor(kit_compiler* fork, kit_filespan span, const ecc_struct_information* struc);
+// static RETURNS_ERRCODE ereg_t compile_struct_constructor(kit_compiler* fork, kit_filespan span, const kitc_struct_information* struc);
 static RETURNS_ERRCODE kit_vreg_t compile_struct_decleration(kit_compiler* cc, int node);
 static RETURNS_ERRCODE kit_vreg_t compile_variable_decleration(kit_compiler* cc, int node);
 static RETURNS_ERRCODE kit_vreg_t compile_variable_load(kit_compiler* cc, int node);
@@ -175,7 +175,7 @@ scope_define(kit_compiler* cc, kit_filespan span, const char* name, bool is_cons
 {
   kit_vreg_t reg = vreg_alloc(cc);
 
-  ecc_var* v      = kit_arnalloc(cc->arena, sizeof(ecc_var));
+  kitc_var* v     = kit_arnalloc(cc->arena, sizeof(kitc_var));
   v->name         = name;
   v->name_hash    = kit_hash(name, strlen(name));
   v->is_const     = is_const;
@@ -195,7 +195,7 @@ scope_define(kit_compiler* cc, kit_filespan span, const char* name, bool is_cons
 static void
 scope_define_in_register(kit_compiler* cc, kit_vreg_t reg, kit_filespan span, const char* name, bool is_const)
 {
-  ecc_var* v      = kit_arnalloc(cc->arena, sizeof(ecc_var));
+  kitc_var* v     = kit_arnalloc(cc->arena, sizeof(kitc_var));
   v->name         = name;
   v->name_hash    = kit_hash(name, strlen(name));
   v->is_const     = is_const;
@@ -211,9 +211,9 @@ scope_define_in_register(kit_compiler* cc, kit_vreg_t reg, kit_filespan span, co
 static int
 scope_lookup_reg(kit_compiler* cc, u32 hash)
 {
-  ecc_scope* s = cc->scope;
+  kitc_scope* s = cc->scope;
   while (s) {
-    ecc_var* v = s->vars;
+    kitc_var* v = s->vars;
     while (v) {
       if (v->name_hash == hash) return v->slot.reg;
       v = v->next;
@@ -223,12 +223,12 @@ scope_lookup_reg(kit_compiler* cc, u32 hash)
   return -1;
 }
 
-static ecc_var*
+static kitc_var*
 scope_lookup_info(kit_compiler* cc, u32 hash)
 {
-  ecc_scope* s = cc->scope;
+  kitc_scope* s = cc->scope;
   while (s) {
-    ecc_var* v = s->vars;
+    kitc_var* v = s->vars;
     while (v) {
       if (v->name_hash == hash) return v;
       v = v->next;
@@ -241,10 +241,10 @@ scope_lookup_info(kit_compiler* cc, u32 hash)
 static void
 scope_push(kit_compiler* cc)
 {
-  ecc_scope* s = kit_arnalloc(cc->arena, sizeof(ecc_scope));
-  s->vars      = NULL;
-  s->parent    = cc->scope;
-  cc->scope    = s;
+  kitc_scope* s = kit_arnalloc(cc->arena, sizeof(kitc_scope));
+  s->vars       = NULL;
+  s->parent     = cc->scope;
+  cc->scope     = s;
 }
 
 static void
@@ -253,7 +253,7 @@ scope_pop(kit_compiler* cc)
 
 /* the lesser the bias, the more likely it is to inline a function */
 static int
-get_cost_for_inlining_function(const kit_compiler* cc, int bias, const ecc_function* fn)
+get_cost_for_inlining_function(const kit_compiler* cc, int bias, const kitc_function* fn)
 {
   int cost = bias;
   if (cc->info->opt_level == 0) {
@@ -389,10 +389,10 @@ can_make_value(const kit_ast* ast, int node)
 static inline RETURNS_ERRCODE int
 defer_push_scope(kit_compiler* cc)
 {
-  ecc_defer_scope* scope = kit_arnalloc(cc->arena, sizeof(ecc_defer_scope));
+  kitc_defer_scope* scope = kit_arnalloc(cc->arena, sizeof(kitc_defer_scope));
   if (!scope) return -1;
 
-  scope->entries = kit_xalloc(init_defer_entry_capacity, sizeof(ecc_defer_entry));
+  scope->entries = kit_xalloc(init_defer_entry_capacity, sizeof(kitc_defer_entry));
   if (!scope->entries) return -1;
 
   scope->count    = 0;
@@ -405,18 +405,18 @@ defer_push_scope(kit_compiler* cc)
 static inline void
 defer_pop_scope(kit_compiler* cc)
 {
-  ecc_defer_scope* scope = cc->defer_stack;
-  cc->defer_stack        = scope->parent;
+  kitc_defer_scope* scope = cc->defer_stack;
+  cc->defer_stack         = scope->parent;
   free(scope->entries);
 }
 
 static inline RETURNS_ERRCODE int
 append_defer_entry(kit_compiler* cc, int* exprs, u32 nexprs)
 {
-  ecc_defer_scope* scope = cc->defer_stack;
+  kitc_defer_scope* scope = cc->defer_stack;
   if (scope->count >= scope->capacity) {
-    u32              new_capacity = MAX(scope->capacity * 2, 4);
-    ecc_defer_entry* new_entries  = realloc(scope->entries, sizeof(ecc_defer_entry) * new_capacity);
+    u32               new_capacity = MAX(scope->capacity * 2, 4);
+    kitc_defer_entry* new_entries  = realloc(scope->entries, sizeof(kitc_defer_entry) * new_capacity);
     if (!new_entries) return -1;
 
     scope->entries  = new_entries;
@@ -430,7 +430,7 @@ append_defer_entry(kit_compiler* cc, int* exprs, u32 nexprs)
     }
   }
 
-  scope->entries[scope->count++] = (ecc_defer_entry){ .exprs = exprs, .nexprs = nexprs };
+  scope->entries[scope->count++] = (kitc_defer_entry){ .exprs = exprs, .nexprs = nexprs };
 
   return 0;
 }
@@ -439,7 +439,7 @@ append_defer_entry(kit_compiler* cc, int* exprs, u32 nexprs)
 static inline RETURNS_ERRCODE int
 defer_emit_current_scope(kit_compiler* cc)
 {
-  ecc_defer_scope* scope = cc->defer_stack;
+  kitc_defer_scope* scope = cc->defer_stack;
   if (!scope) return 0;
 
   for (i64 i = (i64)scope->count - 1; i >= 0; i--) {
@@ -459,7 +459,7 @@ defer_emit_current_scope(kit_compiler* cc)
 static inline RETURNS_ERRCODE int
 defer_emit_all_scopes(kit_compiler* cc)
 {
-  ecc_defer_scope* scope = cc->defer_stack;
+  kitc_defer_scope* scope = cc->defer_stack;
   while (scope) {
     for (i64 i = (i64)scope->count - 1; i >= 0; i--) {
       u32        nexprs = scope->entries[i].nexprs;
@@ -480,8 +480,8 @@ defer_emit_all_scopes(kit_compiler* cc)
 static inline u32
 defer_get_current_depth(kit_compiler* cc)
 {
-  u32              d     = 0;
-  ecc_defer_scope* scope = cc->defer_stack;
+  u32               d     = 0;
+  kitc_defer_scope* scope = cc->defer_stack;
   while (scope) {
     d++;
     scope = scope->parent;
@@ -493,8 +493,8 @@ defer_get_current_depth(kit_compiler* cc)
 static inline RETURNS_ERRCODE int
 defer_emit_to_depth(kit_compiler* cc, u32 target_depth)
 {
-  ecc_defer_scope* scope = cc->defer_stack;
-  u32              depth = defer_get_current_depth(cc);
+  kitc_defer_scope* scope = cc->defer_stack;
+  u32               depth = defer_get_current_depth(cc);
   while (scope && depth > target_depth) {
     for (i64 i = (i64)scope->count - 1; i >= 0; i--) {
       for (u32 j = 0; j < scope->entries[i].nexprs; j++) {
@@ -534,7 +534,7 @@ define_and_emit_label(kit_compiler* cc, u32 label_id)
 static inline RETURNS_ERRCODE int
 compiler_make_fork(const kit_compiler* old_c, kit_compiler* new_c)
 {
-  ecc_scope* top_scope = old_c->scope;
+  kitc_scope* top_scope = old_c->scope;
   while (top_scope && top_scope->parent) { top_scope = top_scope->parent; }
 
   *new_c = (kit_compiler){
@@ -605,7 +605,7 @@ value_init(kit_compiler* cc, int node, val_t* d)
 
       u32 id = kit_hash(name, strlen(name));
 
-      ecc_var* v = scope_lookup_info(cc, id);
+      kitc_var* v = scope_lookup_info(cc, id);
       if (!v) {
         cerror(span, "Undeclared variable %s\n", name);
         return -1;
@@ -623,8 +623,8 @@ value_init(kit_compiler* cc, int node, val_t* d)
     case KIT_AST_NODE_VARIABLE_DECL: {
       char* name = qualify_name(cc, KIT_GET_NODE(cc->ast, node)->let.name);
 
-      u32      id = kit_hash(name, strlen(name));
-      ecc_var* v  = scope_lookup_info(cc, id);
+      u32       id = kit_hash(name, strlen(name));
+      kitc_var* v  = scope_lookup_info(cc, id);
       if (!v) return -1;
 
       l.span         = &KIT_GET_NODE(cc->ast, node)->common.span;
@@ -694,7 +694,7 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
 {
   switch (lv->type) {
     case KIT_LVAL_VAR: {
-      ecc_var* v = scope_lookup_info(cc, lv->val.var.id);
+      kitc_var* v = scope_lookup_info(cc, lv->val.var.id);
       if (!v) {
         cerror(*lv->span, "Undeclared variable %s\n", lv->val.var.name);
         return -1;
@@ -710,7 +710,7 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       break;
     }
     case KIT_LVAL_GVAR: {
-      ecc_var* v = scope_lookup_info(cc, lv->val.var.id);
+      kitc_var* v = scope_lookup_info(cc, lv->val.var.id);
 
       if (!v) {
         cerror(*lv->span, "Undeclared global variable %s\n", lv->val.var.name);
@@ -796,7 +796,7 @@ emit_lvalue_load(kit_compiler* cc, val_t* lv)
     }
 
     case KIT_LVAL_GVAR: {
-      ecc_var* v = scope_lookup_info(cc, lv->val.var.id);
+      kitc_var* v = scope_lookup_info(cc, lv->val.var.id);
       if (!v) return -1;
 
       kit_vreg_t dst = vreg_alloc(cc);
@@ -964,7 +964,7 @@ qualify_name(const kit_compiler* cc, const char* name)
 }
 
 static int
-append_literal_variable(ecc_literal_table* literals, const kit_var* v)
+append_literal_variable(kitc_literal_table* literals, const kit_var* v)
 {
   if (literals->literals_count >= literals->literals_capacity) {
     u32 new_c = MAX(literals->literals_capacity * 2, 4);
@@ -996,9 +996,9 @@ append_literal_variable(ecc_literal_table* literals, const kit_var* v)
 static RETURNS_ERRCODE int
 add_literal_to_track(kit_compiler* cc, const kit_var* v)
 {
-  ecc_literal_table* literals = cc->lit_table;
-  u32                hash     = kit_var_hash(v);
-  bool               found    = false;
+  kitc_literal_table* literals = cc->lit_table;
+  u32                 hash     = kit_var_hash(v);
+  bool                found    = false;
 
   for (u32 i = 0; i < literals->literals_count; i++) {
     if (literals->literal_hashes[i] == hash && kit_var_equal(v, &literals->literals[i])) {
@@ -1144,11 +1144,11 @@ compile_map(kit_compiler* cc, int node)
 }
 
 static int
-append_function_entry(kit_arena* a, ecc_function_table* funcs, const ecc_function* func)
+append_function_entry(kit_arena* a, kitc_function_table* funcs, const kitc_function* func)
 {
   if (funcs->functions_count >= funcs->functions_capacity) {
-    u32           new_capacity  = MAX(funcs->functions_capacity * 2, 4);
-    ecc_function* new_functions = (ecc_function*)realloc(funcs->functions, sizeof(ecc_function) * new_capacity);
+    u32            new_capacity  = MAX(funcs->functions_capacity * 2, 4);
+    kitc_function* new_functions = (kitc_function*)realloc(funcs->functions, sizeof(kitc_function) * new_capacity);
     if (!new_functions) return -1;
 
     funcs->functions          = new_functions;
@@ -1157,6 +1157,18 @@ append_function_entry(kit_arena* a, ecc_function_table* funcs, const ecc_functio
 
   funcs->functions[funcs->functions_count] = *func;
   funcs->functions_count++;
+
+  return 0;
+}
+
+static inline int
+codegraph_rebuild(kit_compiler* cc, codegraph* cfg)
+{
+  int e = codegraph_build_successor_list(cc, cfg);
+  if (e < 0) return e;
+
+  e = codegraph_liveliness_analysis(cc, cfg);
+  if (e < 0) return e;
 
   return 0;
 }
@@ -1173,9 +1185,9 @@ compile_function_definition(kit_compiler* cc, int node)
   int e = 0;
 
   /* Ensure it doesn't already exist */
-  const ecc_function_table* func_table = cc->function_table;
+  const kitc_function_table* func_table = cc->function_table;
   for (u32 i = 0; i < func_table->functions_count; i++) {
-    ecc_function* func = &func_table->functions[i];
+    kitc_function* func = &func_table->functions[i];
     if (func->name_hash == hash) {
       cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Function \"%s\" redefined [function definition]\n", function_name);
       e = -1;
@@ -1247,26 +1259,39 @@ compile_function_definition(kit_compiler* cc, int node)
     /* constant folding needs a clean instruction stream */
     // if (!fork.info->feature_set.disable_function_inlining) { opt_inline_function_calls(&fork); }
 
-    for (u32 pass = 0; pass < 16; pass++) {
+    for (u32 pass = 0; pass < 4; pass++) {
       if (kit_arena_reset(&codegraph_arena) < 0) return -1;
-
       codegraph cfg = { 0 };
-      e             = codegraph_init(&codegraph_arena, &fork, &cfg);
+
+      e = codegraph_init(&codegraph_arena, &fork, &cfg);
       if (e < 0) goto ERR;
 
       // codegraph_preliminary_dead_store_elimination(&fork, &cfg);
-      if (!fork.info->feature_set.disable_local_copy_propagation) { codegraph_local_copy_propagation(&fork, &cfg); }
-      if (!fork.info->feature_set.disable_dead_store_elimination) { codegraph_dead_store_elimination(&fork, &cfg); }
-      // if (!fork.info->feature_set.disable_constant_propagation) { codegraph_constant_propagation(&fork, &cfg); }
-      // if (!fork.info->feature_set.disable_constant_folding) { codegraph_constant_folding(&fork, &cfg); }
-      if (!fork.info->feature_set.disable_redundant_move_elimination) { codegraph_redundant_move_elimination(&fork, &cfg); }
-      if (!fork.info->feature_set.disable_dead_branch_elimination) { codegraph_eliminate_unreachable_code(&fork, &cfg); }
 
+      // if (!fork.info->feature_set.disable_local_copy_propagation) {
+      //   if (codegraph_local_copy_propagation(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      // }
+      // if (!fork.info->feature_set.disable_dead_store_elimination) {
+      //   if (codegraph_dead_store_elimination(&fork, &cfg)) codegraph_rebuild(&fork, &cfg);
+      // }
+      // if (!fork.info->feature_set.disable_constant_propagation) {
+      //   if (codegraph_constant_propagation(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      // }
+      // if (!fork.info->feature_set.disable_constant_folding) {
+      //   if (codegraph_constant_folding(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      // }
+      // if (!fork.info->feature_set.disable_redundant_move_elimination) {
+      //   if (codegraph_redundant_move_elimination(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      // }
+      // if (!fork.info->feature_set.disable_dead_branch_elimination) {
+      //   if (codegraph_eliminate_unreachable_code(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      // }
+
+      /* codegraph invalidated after these calls */
+      // if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
+      // if (!fork.info->feature_set.disable_noop_stripping) { strip_noops(&fork); }
+      // if (!fork.info->feature_set.disable_dead_move_forwarding) { forward_dead_moves(&fork); }
       codegraph_free(&fork, &cfg);
-
-      if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
-      if (!fork.info->feature_set.disable_noop_stripping) { strip_noops(&fork); }
-      if (!fork.info->feature_set.disable_dead_move_forwarding) { forward_dead_moves(&fork); }
     }
 
     /* OUT OF THE LOOP!!!  */
@@ -1280,7 +1305,7 @@ compile_function_definition(kit_compiler* cc, int node)
   compiler_join_fork(&fork, cc);
 
   /* write our info to the table */
-  ecc_function f = {
+  kitc_function f = {
     .code        = fork.instructions,
     .code_count  = fork.ninstructions,
     .name_hash   = hash,
@@ -1625,8 +1650,8 @@ compile_function_call(kit_compiler* cc, int node)
   }
   // Find the function (user defined) and check if the argument count matches
   else {
-    ecc_function*       func       = NULL;
-    ecc_function_table* func_table = cc->function_table;
+    kitc_function*       func       = NULL;
+    kitc_function_table* func_table = cc->function_table;
     for (u32 i = 0; i < func_table->functions_count; i++) {
       if (func_table->functions[i].name_hash == hash) {
         func = &func_table->functions[i];
@@ -1883,15 +1908,15 @@ compile_while_statement(kit_compiler* cc, int node)
   if (e < 0) goto ERR;
 
   /* Append a loop entry to our compiler. */
-  ecc_loop_location loop = {
+  kitc_loop_location loop = {
     .continue_label = pre_condition_label,
     .break_label    = end_label,
     .defer_depth    = defer_get_current_depth(cc),
   };
 
   /* Ensure we don't overwrite it... */
-  ecc_loop_location* last = cc->loop;
-  cc->loop                = &loop;
+  kitc_loop_location* last = cc->loop;
+  cc->loop                 = &loop;
 
   // WHILE BODY
   const int* while_body = KIT_GET_NODE(cc->ast, node)->while_stmt.stmts;
@@ -1953,15 +1978,15 @@ compile_for_statement(kit_compiler* cc, int node)
   int e = 0;
 
   /* Append a loop entry to our compiler. */
-  ecc_loop_location loop = {
+  kitc_loop_location loop = {
     .continue_label = iterator_label,
     .break_label    = end_label,
     .defer_depth    = defer_get_current_depth(cc),
   };
 
   /* Ensure we don't overwrite it... */
-  ecc_loop_location* last = cc->loop;
-  cc->loop                = &loop;
+  kitc_loop_location* last = cc->loop;
+  cc->loop                 = &loop;
 
   // See comment over while loop compilation
   scope_push(cc);
@@ -2068,22 +2093,61 @@ compile_ranged_for_statement(kit_compiler* cc, int node)
 
   kit_filespan span = KIT_GET_NODE(cc->ast, node)->for_range_stmt.span;
 
-  ecc_loop_location* old_loop = cc->loop;
+  kitc_loop_location* old_loop = cc->loop;
 
   scope_push(cc);
   if (defer_push_scope(cc) < 0) goto ERR;
 
-  kit_vreg_t iterator_reg = scope_define(cc, span, full_iterator, false);
-  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = iterator_reg, .value = start } });
+  kitc_var* existing = scope_lookup_info(cc, kit_hash(full_iterator, strlen(full_iterator)));
 
-  /* start less than stop, then go up. start greater than stop, then go down. */
-  bool iterator_direction_upwards = start < stop;
+  kit_vreg_t iterator_reg = -1;
+  if (existing) {
+    iterator_reg = existing->slot.reg;
+  } else {
+    iterator_reg = scope_define(cc, span, full_iterator, false);
+  }
+
+  /* Compile start value and move it to our register */
+  kit_vreg_t iterator_start_value = compile(cc, start);
+  kit_vreg_t iterator_stop_value  = compile(cc, stop);
+
+  /* compile increment amount */
+  kit_vreg_t iterator_increment_amount             = vreg_alloc(cc);
+  kit_vreg_t iterator_increment_amount_calculation = vreg_alloc(cc);
+
+  u32 reverse_iterator_direction_label         = make_label_id(cc);
+  u32 end_iterator_direction_calculation_label = make_label_id(cc);
+
+  kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = iterator_reg, .src = iterator_start_value } });
+
+  /* calc = stop < start [for i in 10..0]*/
+  kit_emit_ins(
+      cc,
+      (kit_ins){
+          .binop = { .opcode = EIR_OPCODE_LT, .dst = iterator_increment_amount_calculation, .a = iterator_stop_value, .b = iterator_start_value } });
+
+  /* jnz calc reverse_direction */
+  kit_emit_ins(
+      cc,
+      (kit_ins){
+          .jnz = { .opcode = EIR_OPCODE_JNZ, .target = reverse_iterator_direction_label, .condition = iterator_increment_amount_calculation } });
+
+  /* jnz failed, normal iterator direction */
+  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = iterator_increment_amount, .value = 1 } });
+  kit_emit_ins(cc, (kit_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = end_iterator_direction_calculation_label } });
+
+  define_and_emit_label(cc, reverse_iterator_direction_label);
+
+  /* reverse iterator direction */
+  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = iterator_increment_amount, .value = -1 } });
+
+  define_and_emit_label(cc, end_iterator_direction_calculation_label);
 
   u32 start_label   = make_label_id(cc);
   u32 iterate_label = make_label_id(cc);
   u32 end_label     = make_label_id(cc);
 
-  ecc_loop_location loop = {
+  kitc_loop_location loop = {
     .continue_label = iterate_label,
     .break_label    = end_label,
     .defer_depth    = defer_get_current_depth(cc),
@@ -2094,9 +2158,9 @@ compile_ranged_for_statement(kit_compiler* cc, int node)
 
   /* check if iterator == stop */
   kit_vreg_t condition_check = vreg_alloc(cc);
-  kit_vreg_t stop_reg        = vreg_alloc(cc);
-  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = stop_reg, .value = stop } });
-  kit_emit_ins(cc, (kit_ins){ .binop = { .opcode = EIR_OPCODE_EQL, .dst = condition_check, .a = iterator_reg, .b = stop_reg } });
+
+  // neq dst=condition_check, iterator, stop
+  kit_emit_ins(cc, (kit_ins){ .binop = { .opcode = EIR_OPCODE_EQL, .dst = condition_check, .a = iterator_reg, .b = iterator_stop_value } });
   if (emit_and_record_jmp(cc, EIR_OPCODE_JNZ, condition_check, end_label) < 0) goto ERR;
 
   for (u32 i = 0; i < nstmts; i++) {
@@ -2111,9 +2175,8 @@ compile_ranged_for_statement(kit_compiler* cc, int node)
 
   if (defer_emit_current_scope(cc) < 0) goto ERR;
 
-  /* increment if iterator direction is +1, decrement otherwise  */
-  kit_emit_ins(
-      cc, (kit_ins){ .unop = { .opcode = iterator_direction_upwards ? EIR_OPCODE_INC : EIR_OPCODE_DEC, .dst = iterator_reg, .a = iterator_reg } });
+  /* increase iterator_reg by increment_amount (+1 or -1)  */
+  kit_emit_ins(cc, (kit_ins){ .binop = { .opcode = EIR_OPCODE_ADD, .dst = iterator_reg, .a = iterator_reg, .b = iterator_increment_amount } });
 
   if (emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, start_label) < 0) goto ERR;
 
@@ -2163,9 +2226,9 @@ compile_assign(kit_compiler* cc, int node)
   int   e = value_init(cc, left, &lv);
   if (e < 0) return e;
 
-  ecc_builtin_variables_table* builtin_vars_table = cc->builtin_var_table;
+  kitc_builtin_variables_table* builtin_vars_table = cc->builtin_var_table;
 
-  ecc_var* exists = scope_lookup_info(cc, lv.val.var.id);
+  kitc_var* exists = scope_lookup_info(cc, lv.val.var.id);
 
   if (!exists && KIT_GET_NODE(cc->ast, left)->type == KIT_AST_NODE_VARIABLE) {
     // Doesn't exist and node is supposed to be a variable (Not member access or index)
@@ -2251,7 +2314,7 @@ compile_return(kit_compiler* cc, int node)
 }
 
 static int
-append_struct_decleration(kit_arena* a, const char* name, ecc_struct_information* deposit)
+append_struct_decleration(kit_arena* a, const char* name, kitc_struct_information* deposit)
 {
   u32 hash = kit_hash(name, strlen(name));
 
@@ -2280,7 +2343,7 @@ append_struct_decleration(kit_arena* a, const char* name, ecc_struct_information
 }
 
 static int
-collect_struct_declerations(kit_compiler* cc, int* stmts, u32 nstmts, ecc_struct_information* deposit)
+collect_struct_declerations(kit_compiler* cc, int* stmts, u32 nstmts, kitc_struct_information* deposit)
 {
   for (u32 i = 0; i < nstmts; i++) {
     kit_ast_node_type type = KIT_GET_NODE(cc->ast, stmts[i])->type;
@@ -2325,26 +2388,26 @@ collect_struct_declerations(kit_compiler* cc, int* stmts, u32 nstmts, ecc_struct
 }
 
 static int
-append_struct_info(kit_compiler* cc, const ecc_struct_information* data)
+append_struct_info(kit_compiler* cc, const kitc_struct_information* data)
 {
-  ecc_struct_table* table = cc->struct_table;
+  kitc_struct_table* table = cc->struct_table;
   if (table->structs_count >= table->structs_capacity) {
-    u32                     new_capacity = MAX(table->structs_capacity * 2, 4);
-    ecc_struct_information* new_structs  = realloc(table->structs, new_capacity * sizeof(ecc_struct_information));
+    u32                      new_capacity = MAX(table->structs_capacity * 2, 4);
+    kitc_struct_information* new_structs  = realloc(table->structs, new_capacity * sizeof(kitc_struct_information));
     if (!new_structs) return -1;
 
     table->structs_capacity = new_capacity;
     table->structs          = new_structs;
   }
 
-  memcpy(&table->structs[table->structs_count], data, sizeof(ecc_struct_information));
+  memcpy(&table->structs[table->structs_count], data, sizeof(kitc_struct_information));
   table->structs_count++;
 
   return 0;
 }
 
 static kit_vreg_t
-compile_struct_constructor(kit_compiler* fork, kit_filespan span, const ecc_struct_information* struc)
+compile_struct_constructor(kit_compiler* fork, kit_filespan span, const kitc_struct_information* struc)
 {
   u32        struct_id = kit_hash(struc->name, strlen(struc->name));
   kit_vreg_t tmp       = vreg_alloc(fork);
@@ -2369,7 +2432,7 @@ compile_struct_constructor(kit_compiler* fork, kit_filespan span, const ecc_stru
 
   /* No need to clean up the stack, the CALL handler is responsible for that */
 
-  ecc_function f = {
+  kitc_function f = {
     .code        = fork->instructions,
     .code_count  = fork->ninstructions,
     .name_hash   = struct_id,
@@ -2387,9 +2450,9 @@ compile_struct_constructor(kit_compiler* fork, kit_filespan span, const ecc_stru
 static kit_vreg_t
 compile_struct_decleration(kit_compiler* cc, int node)
 {
-  int                    e           = 0;
-  kit_compiler           fork        = { 0 };
-  ecc_struct_information struct_data = { 0 };
+  int                     e           = 0;
+  kit_compiler            fork        = { 0 };
+  kitc_struct_information struct_data = { 0 };
 
   const char* struct_name        = KIT_GET_NODE(cc->ast, node)->struct_decl.name;
   int*        struct_decl_stmts  = KIT_GET_NODE(cc->ast, node)->struct_decl.stmts;
@@ -2399,7 +2462,7 @@ compile_struct_decleration(kit_compiler* cc, int node)
   kit_str_intern(struct_name, cc->ast->interner);
 
   /* Gather all information the user provided into one big structure. */
-  struct_data = (ecc_struct_information){
+  struct_data = (kitc_struct_information){
     .name           = kit_arnstrdup(cc->arena, struct_name),
     .name_hash      = kit_hash(struct_name, strlen(struct_name)),
     .field_hashes   = (u32*)kit_xalloc(init_fields_capacity, sizeof(u32)),
@@ -2451,7 +2514,7 @@ compile_variable_decleration(kit_compiler* cc, int node)
   u32 hash        = kit_hash(full, strlen(full));
   int initializer = KIT_GET_NODE(cc->ast, node)->let.initializer;
 
-  ecc_var* v = cc->scope->vars;
+  kitc_var* v = cc->scope->vars;
   while (v) {
     if (v->name_hash == hash) {
       cerror(v->span, "Variable redeclared in same scope\n");
@@ -2469,7 +2532,7 @@ compile_variable_decleration(kit_compiler* cc, int node)
 
   /* Define the variable */
   kit_vreg_t new_var = scope_define(cc, span, full, is_const);
-  ecc_var*   info    = scope_lookup_info(cc, hash);
+  kitc_var*  info    = scope_lookup_info(cc, hash);
 
   if (initializer_provided) {
     /* cant use the lval system because it doesn't handle const global variables (this is a variable decleration, and if it is const,
@@ -2647,7 +2710,7 @@ compile_builtin_structure(kit_compiler* cc, const kit_builtin_struct* b)
   /* intern its name for debug symbols. */
   kit_str_intern(b->name, cc->ast->interner);
 
-  ecc_struct_information st = {
+  kitc_struct_information st = {
     .name           = kit_arnstrdup(cc->arena, b->name),
     .name_hash      = kit_hash(b->name, strlen(b->name)),
     .field_hashes   = kit_xalloc(b->fields_count, sizeof(u32)),
@@ -3238,13 +3301,13 @@ codegraph_liveliness_analysis(kit_compiler* cc, codegraph* dst)
     }
   }
 
+  bool* new_live_out = kit_arnalloc(dst->arena, nvregs);
+  bool* new_live_in  = kit_arnalloc(dst->arena, nvregs);
+
   /* start out as true so while loop starts */
   bool changed = true;
   while (changed) {
     changed = false; /* assume we didn't change */
-
-    bool* new_live_out = kit_arnalloc(dst->arena, nvregs);
-    bool* new_live_in  = kit_arnalloc(dst->arena, nvregs);
 
     for (i64 i = (i64)dst->nblocks - 1; i >= 0; i--) {
       codeblock* blk = &dst->blocks[i];
@@ -3371,22 +3434,22 @@ is_instruction_impure(eir_opcode op)
   }
 }
 
-static void
+static bool
 codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
 {
   codegraph_build_successor_list(cc, cfg);
 
-  bool changed = true;
-  while (changed) {
-    changed = false;
+  bool* live = kit_arnalloc(cfg->arena, cfg->nvregs);
 
+  bool changed = false;
+
+  for (u32 pass = 0; pass < 4; pass++) {
     /* reparse liveliness information */
     codegraph_liveliness_analysis(cc, cfg);
 
     for (u32 i = 0; i < cfg->nblocks; i++) {
       codeblock* blk = &cfg->blocks[i];
 
-      bool* live = kit_arnalloc(cfg->arena, cfg->nvregs);
       memcpy(live, blk->live_out, cfg->nvregs);
 
       for (i64 ip = blk->end; ip >= blk->start; ip--) {
@@ -3405,6 +3468,7 @@ codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
         if (!is_instruction_impure(ins->opcode) && (dst != UINT32_MAX && !live[dst])) {
           /* dead store */
           ins->opcode = EIR_OPCODE_NOP;
+          changed     = true;
           continue;
         }
 
@@ -3412,10 +3476,10 @@ codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
         for (u32 s = 0; s < nsrc; s++) { live[src[s]] = true; }
         if (dst != UINT32_MAX) live[dst] = false;
       }
-
-      // kit_arnfree(cfg->arena, live);
     }
   }
+
+  return changed;
 }
 
 static inline bool
@@ -3428,7 +3492,7 @@ is_instruction_noop(eir_opcode opcode)
   }
 }
 
-static int
+static bool
 codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
 {
   codegraph_build_successor_list(cc, cfg);
@@ -3446,12 +3510,9 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
    * (and can we switch a to b?). If no one does,
    * replace the pattern with a single mov b, x
    */
+  bool changed = false;
 
-  bool changed = true; /* to start the loop */
-
-  while (changed) {
-    changed = false;
-
+  for (u32 pass = 0; pass < 4; pass++) {
     for (u32 i = 0; i < cc->ninstructions; i++) {
       if (i + 1 >= cc->ninstructions) break;
 
@@ -3584,12 +3645,14 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
     }
   }
 
-  return 0;
+  return changed;
 }
 
-static int
+static bool
 codegraph_preliminary_dead_store_elimination(kit_compiler* cc, const codegraph* cfg)
 {
+  bool changed = false;
+
   for (u32 b = 0; b < cfg->nblocks; b++) {
     codeblock* blk = &cfg->blocks[b];
     for (u32 ip = blk->start; ip <= blk->end; ip++) {
@@ -3604,6 +3667,7 @@ codegraph_preliminary_dead_store_elimination(kit_compiler* cc, const codegraph* 
       if (ins_dst == nxt_dst && ins_dst != UINT32_MAX && nxt_dst != UINT32_MAX) {
         /* The first write is invalidated by the next. remove the first */
         ins->opcode = EIR_OPCODE_NOP;
+        changed     = true;
       }
     }
   }
@@ -3699,9 +3763,11 @@ get_instruction_constant_result(const kit_compiler* cc, const kit_ins* i, kit_va
   return -1;
 }
 
-static void
-codegraph_constant_folding(kit_compiler* cc, const codegraph* cfg)
+static bool
+codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
 {
+  bool changed_anything = false;
+
   bool changed = true;
   while (changed) {
     changed = false;
@@ -3795,76 +3861,79 @@ codegraph_constant_folding(kit_compiler* cc, const codegraph* cfg)
         three->loadk.dst = three_dst;
       }
 
-      changed = true;
+      changed          = true;
+      changed_anything = true;
     }
   }
 
   /* now do unary operations */
-  for (u32 i = 0; i < cc->ninstructions; i++) {
-    if (i + 2 >= cc->ninstructions) break;
+  // for (u32 i = 0; i < cc->ninstructions; i++) {
+  //   if (i + 2 >= cc->ninstructions) break;
 
-    kit_ins* one = &cc->instructions[i];
-    kit_ins* two = &cc->instructions[i + 1];
+  //   kit_ins* one = &cc->instructions[i];
+  //   kit_ins* two = &cc->instructions[i + 1];
 
-    if (!instruction_produces_constant_value(one->opcode)) continue;
+  //   if (!instruction_produces_constant_value(one->opcode)) continue;
 
-    u32 one_dst = get_destination_reg(one);
+  //   u32 one_dst = get_destination_reg(one);
 
-    /* special case, conditional jumps */
-    if ((two->opcode == EIR_OPCODE_JZ || two->opcode == EIR_OPCODE_JNZ) && two->cj.condition == one_dst) {
-      /* load the constant */
-      kit_var one_result = KIT_NULLVAR;
-      if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+  //   /* special case, conditional jumps */
+  //   if ((two->opcode == EIR_OPCODE_JZ || two->opcode == EIR_OPCODE_JNZ) && two->cj.condition == one_dst) {
+  //     /* load the constant */
+  //     kit_var one_result = KIT_NULLVAR;
+  //     if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
 
-      bool b = kit_cast_to_bool(&one_result);
+  //     bool b = kit_cast_to_bool(&one_result);
 
-      if (two->opcode == EIR_OPCODE_JZ) {
-        if (b) { /* condition always false, fallthrough */
-          two->opcode = EIR_OPCODE_NOP;
-        } else { /* condition always true, just jump to it */
-          two->opcode     = EIR_OPCODE_JMP;
-          two->jmp.target = two->cj.target;
-        }
-      }
-      if (two->opcode == EIR_OPCODE_JNZ) {
-        if (!b) { /* condition always false, fallthrough */
-          two->opcode = EIR_OPCODE_NOP;
-        } else { /* condition always true, just jump to it */
-          two->opcode     = EIR_OPCODE_JMP;
-          two->jmp.target = two->cj.target;
-        }
-      }
-      continue;
-    }
+  //     if (two->opcode == EIR_OPCODE_JZ) {
+  //       if (b) { /* condition always false, fallthrough */
+  //         two->opcode = EIR_OPCODE_NOP;
+  //       } else { /* condition always true, just jump to it */
+  //         two->opcode     = EIR_OPCODE_JMP;
+  //         two->jmp.target = two->cj.target;
+  //       }
+  //     }
+  //     if (two->opcode == EIR_OPCODE_JNZ) {
+  //       if (!b) { /* condition always false, fallthrough */
+  //         two->opcode = EIR_OPCODE_NOP;
+  //       } else { /* condition always true, just jump to it */
+  //         two->opcode     = EIR_OPCODE_JMP;
+  //         two->jmp.target = two->cj.target;
+  //       }
+  //     }
+  //     continue;
+  //   }
 
-    // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
-    if (!is_instruction_unary_operation(two->opcode)) continue;
+  //   // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
+  //   if (!is_instruction_unary_operation(two->opcode)) continue;
 
-    /* check if two depends on one */
-    u32 two_sources[32];
-    get_source_registers(two, two_sources);
+  //   /* check if two depends on one */
+  //   u32 two_sources[32];
+  //   get_source_registers(two, two_sources);
 
-    bool found_one = two_sources[0] == one_dst;
+  //   bool found_one = two_sources[0] == one_dst;
 
-    if (!found_one) continue;
+  //   if (!found_one) continue;
 
-    kit_var one_result = KIT_NULLVAR;
-    if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+  //   kit_var one_result = KIT_NULLVAR;
+  //   if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
 
-    kit_var result = operate(KIT_NULLVAR, one_result, two->opcode);
+  //   kit_var result = operate(KIT_NULLVAR, one_result, two->opcode);
 
-    /* replace the three instructions with a single loadk */
+  //   /* replace the three instructions with a single loadk */
 
-    if (add_literal_to_track(cc, &result) < 0) continue;
+  //   if (add_literal_to_track(cc, &result) < 0) continue;
 
-    one->opcode = EIR_OPCODE_NOP;
+  //   one->opcode = EIR_OPCODE_NOP;
 
-    u32 two_dst = get_destination_reg(two);
+  //   u32 two_dst = get_destination_reg(two);
 
-    two->opcode    = EIR_OPCODE_LOADK;
-    two->loadk.id  = kit_var_hash(&result);
-    two->loadk.dst = two_dst;
-  }
+  //   two->opcode    = EIR_OPCODE_LOADK;
+  //   two->loadk.id  = kit_var_hash(&result);
+  //   two->loadk.dst = two_dst;
+  // }
+
+  return changed_anything;
 }
 
 static int
@@ -3930,11 +3999,10 @@ label_pass(kit_arena* arena, kit_ins* instructions, u32 ninstructions, u32 label
   return ctr;
 }
 
-static void
+static bool
 codegraph_eliminate_unreachable_code(kit_compiler* cc, codegraph* cfg)
 {
-  codegraph_build_successor_list(cc, cfg);
-  codegraph_liveliness_analysis(cc, cfg);
+  bool changed = false;
 
   bool* reachable = kit_arnalloc(cfg->arena, cfg->nblocks * sizeof(bool));
   memset(reachable, 0, cfg->nblocks * sizeof(bool));
@@ -3962,10 +4030,14 @@ codegraph_eliminate_unreachable_code(kit_compiler* cc, codegraph* cfg)
     codeblock* blk = &cfg->blocks[i];
     for (u32 ip = blk->start; ip <= blk->end; ip++) {
       // dont kill labels!!
-      if (cc->instructions[ip].opcode != EIR_OPCODE_LABEL) { cc->instructions[ip].opcode = EIR_OPCODE_NOP; }
+      if (cc->instructions[ip].opcode != EIR_OPCODE_LABEL) {
+        changed                     = true;
+        cc->instructions[ip].opcode = EIR_OPCODE_NOP;
+      }
     }
   }
 
+  return changed;
   // kit_arnfree(cfg->arena, reachable);
 }
 
@@ -3991,12 +4063,9 @@ replace_move_with_constant_load(kit_compiler* cc, const codegraph* cfg, kit_ins*
   return 0;
 }
 
-static void
+static bool
 codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
 {
-  codegraph_build_successor_list(cc, cfg);
-  codegraph_liveliness_analysis(cc, cfg);
-
   kit_var* regs         = kit_arnalloc(cfg->arena, cfg->nvregs * sizeof(kit_var));
   bool*    values_known = kit_arnalloc(cfg->arena, cfg->nvregs * sizeof(bool));
 
@@ -4005,6 +4074,8 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
     regs[i]         = KIT_NULLVAR;
     values_known[i] = false;
   }
+
+  bool changed = false;
 
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* ins = &cc->instructions[i];
@@ -4032,11 +4103,13 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
         /* If the value is already in dst, turn this instruction into a NOOP */
         if (values_known[dst] && values_known[src] && kit_var_equal(&regs[dst], &regs[src])) {
+          changed     = true;
           ins->opcode = EIR_OPCODE_NOP;
           continue;
         }
 
         if (values_known[src]) {
+          changed = true;
           replace_move_with_constant_load(cc, cfg, ins, dst, &regs[src]);
           values_known[dst] = true;
         }
@@ -4069,6 +4142,7 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
         u32 dst = ins->binop.dst;
         if (a == b) {
           values_known[dst] = true;
+          changed           = true;
           /* register self comparison will always result in true (for EQL)*/
           regs[dst] = kit_var_from_bool(ins->opcode == EIR_OPCODE_EQL ? true : false);
 
@@ -4106,6 +4180,8 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
           u32 dst = ins->binop.dst;
           replace_move_with_constant_load(cc, cfg, ins, dst, &result);
 
+          changed = true;
+
           regs[dst]         = result;
           values_known[dst] = true;
           break;
@@ -4127,6 +4203,8 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
         u32 dst = ins->unop.dst;
         replace_move_with_constant_load(cc, cfg, ins, dst, &result);
 
+        changed = true;
+
         regs[dst]         = result;
         values_known[dst] = true;
         break;
@@ -4144,6 +4222,8 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
           kit_var tmp = *lit;
           replace_move_with_constant_load(cc, cfg, ins, ins->loadk.dst, lit);
+
+          changed           = true;
           regs[dst]         = tmp;
           values_known[dst] = true;
 
@@ -4170,6 +4250,8 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
       default: break;
     }
   }
+
+  return changed;
 }
 
 static inline void
@@ -4346,11 +4428,11 @@ opt_inline_function_calls(kit_compiler* cc)
       continue;
     }
 
-    u32           hash   = ins->call.function_id;
-    ecc_function* lookup = NULL;
+    u32            hash   = ins->call.function_id;
+    kitc_function* lookup = NULL;
 
     for (u32 j = 0; j < cc->function_table->functions_count; j++) {
-      ecc_function* func = &cc->function_table->functions[j];
+      kitc_function* func = &cc->function_table->functions[j];
 
       if (func->name_hash == hash) {
         lookup = func;
@@ -4411,11 +4493,10 @@ opt_inline_function_calls(kit_compiler* cc)
   // kit_arnfree(cc->arena, old_instructions);
 }
 
-static void
+static bool
 codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
 {
-  codegraph_build_successor_list(cc, cfg);
-  codegraph_liveliness_analysis(cc, cfg);
+  bool changed = false;
 
   u32* copy_map = kit_arnalloc(cfg->arena, cc->next_vreg * sizeof(u32));
   for (u32 b = 0; b < cfg->nblocks; b++) {
@@ -4429,15 +4510,24 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
 
       switch ((eir_opcode_bits)ins->opcode) {
           /* getg, setg and movg  */
-        case EIR_OPCODE_MOV: ins->mov.src = copy_map[ins->mov.src]; break;
+        case EIR_OPCODE_MOV:
+          ins->mov.src = copy_map[ins->mov.src];
+          changed      = true;
+          break;
 
-        case EIR_OPCODE_ASSERT: ins->assertion.cond = copy_map[ins->assertion.cond]; break;
+        case EIR_OPCODE_ASSERT:
+          ins->assertion.cond = copy_map[ins->assertion.cond];
+          changed             = true;
+          break;
 
         case EIR_OPCODE_MOVI:
         case EIR_OPCODE_MOVF: /* values are not registers */
         case EIR_OPCODE_GETG: break;
 
-        case EIR_OPCODE_SETG: ins->mov.src = copy_map[ins->mov.src]; break;
+        case EIR_OPCODE_SETG:
+          ins->mov.src = copy_map[ins->mov.src];
+          changed      = true;
+          break;
 
         case EIR_OPCODE_MOVG:
         case EIR_OPCODE_LOADK: /* id is not a register */ break;
@@ -4461,13 +4551,17 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
         case EIR_OPCODE_GTE:
           ins->binop.a = copy_map[ins->binop.a];
           ins->binop.b = copy_map[ins->binop.b];
+          changed      = true;
           break;
 
         case EIR_OPCODE_NOT:
         case EIR_OPCODE_NEG:
         case EIR_OPCODE_BNOT:
         case EIR_OPCODE_DEC:
-        case EIR_OPCODE_INC: ins->unop.a = copy_map[ins->unop.a]; break;
+        case EIR_OPCODE_INC:
+          ins->unop.a = copy_map[ins->unop.a];
+          changed     = true;
+          break;
 
         /* can't rewrite argument vector */
         case EIR_OPCODE_MK_LIST:
@@ -4478,23 +4572,36 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
         case EIR_OPCODE_INDEX:
           ins->index.base  = copy_map[ins->index.base];
           ins->index.index = copy_map[ins->index.index];
+          changed          = true;
           break;
         case EIR_OPCODE_INDEX_ASSIGN:
           ins->index_assign.value = copy_map[ins->index_assign.value];
           ins->index_assign.index = copy_map[ins->index_assign.index];
           ins->index_assign.base  = copy_map[ins->index_assign.base];
+          changed                 = true;
           break;
 
-        case EIR_OPCODE_MEMBER_ACCESS: ins->member_access.base = copy_map[ins->member_access.base]; break;
+        case EIR_OPCODE_MEMBER_ACCESS:
+          ins->member_access.base = copy_map[ins->member_access.base];
+          changed                 = true;
+          break;
         case EIR_OPCODE_MEMBER_ASSIGN:
           ins->member_assign.value = copy_map[ins->member_assign.value];
           ins->member_assign.base  = copy_map[ins->member_assign.base];
+          changed                  = true;
           break;
-        case EIR_OPCODE_RET: ins->ret.return_value = copy_map[ins->ret.return_value]; break;
+        case EIR_OPCODE_RET:
+          ins->ret.return_value = copy_map[ins->ret.return_value];
+          changed               = true;
+          break;
         case EIR_OPCODE_JZ:
-        case EIR_OPCODE_JNZ: ins->cj.condition = copy_map[ins->cj.condition]; break;
+        case EIR_OPCODE_JNZ:
+          ins->cj.condition = copy_map[ins->cj.condition];
+          changed           = true;
+          break;
         case EIR_OPCODE_PUSH: {
           ins->push.reg = copy_map[ins->push.reg];
+          changed       = true;
           break;
         }
 
@@ -4512,9 +4619,11 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
           u32 src = ins->mov.src;
           if (src < KIT_REG_GENERAL_BEGIN) {
             copy_map[dst] = dst; /* fixed registers always die in any circumstance */
+            changed       = true;
           } else {
             copy_map[dst] = src;
             if (dst == src) ins->opcode = EIR_OPCODE_NOP;
+            changed = true;
           }
         } else {
           /* kill the old value */
@@ -4525,6 +4634,7 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
   }
 
   // kit_arnfree(cfg->arena, copy_map);
+  return changed;
 }
 
 static void
@@ -4806,27 +4916,6 @@ era_compute_ranges(kit_compiler* cc, era_state* ra)
     }
 #undef WRITES_TO
 #undef READS_FROM
-  }
-
-  /**
-   * Extend the life of any register inside a backward jump
-   * so that loop conditions (and the like) aren't overwritten.
-   */
-  for (u32 i = 0; i < cc->ninstructions; i++) {
-    kit_ins ins    = cc->instructions[i];
-    u32     target = UINT32_MAX;
-    if (ins.opcode == EIR_OPCODE_JMP) {
-      target = ins.jmp.target;
-    } else if (ins.opcode == EIR_OPCODE_JZ || ins.opcode == EIR_OPCODE_JNZ) {
-      target = ins.cj.target;
-    }
-    if (target != UINT32_MAX && target < i) { // backward jump
-      for (u32 r = 0; r < vreg_count; r++) {
-        if (ra->ranges[r].start != UINT32_MAX && ra->ranges[r].start <= target && ra->ranges[r].end >= target) {
-          if (i > ra->ranges[r].end) ra->ranges[r].end = i;
-        }
-      }
-    }
   }
 
   // collect only ranges that were actually used
@@ -5156,18 +5245,18 @@ era_register_allocation_pass(struct kit_compiler* cc)
 }
 
 int
-kit_compile(const ecc_info* info, kit_compilation_result* result)
+kit_compile(const kitc_info* info, kit_compilation_result* result)
 {
   int e = 0;
 
-  ecc_namespace_stack         namespace_stack   = { 0 };
-  ecc_literal_table           lit_table         = { 0 };
-  ecc_builtin_variables_table builtin_var_table = { 0 };
-  ecc_function_table          func_table        = { 0 };
-  ecc_struct_table            struct_table      = { 0 };
-  kit_compiler                cc                = { 0 };
+  kitc_namespace_stack         namespace_stack   = { 0 };
+  kitc_literal_table           lit_table         = { 0 };
+  kitc_builtin_variables_table builtin_var_table = { 0 };
+  kitc_function_table          func_table        = { 0 };
+  kitc_struct_table            struct_table      = { 0 };
+  kit_compiler                 cc                = { 0 };
 
-  namespace_stack = (ecc_namespace_stack){
+  namespace_stack = (kitc_namespace_stack){
     .namespaces  = (char**)kit_xalloc(init_namespaces_capacity, sizeof(char*)),
     .nnamespaces = 0,
     .capacity    = init_namespaces_capacity,
@@ -5200,7 +5289,7 @@ kit_compile(const ecc_info* info, kit_compilation_result* result)
     memcpy(&builtin_variables[builtin_var_ctr], &info->hook_vars[i], sizeof(kit_builtin_var));
   }
 
-  lit_table = (ecc_literal_table){
+  lit_table = (kitc_literal_table){
     .literals          = (kit_var*)kit_xalloc(init_literal_capacity, sizeof(kit_var)),
     .literal_hashes    = (u32*)kit_xalloc(init_literal_capacity, sizeof(u32)),
     .literals_count    = 0,
@@ -5211,14 +5300,14 @@ kit_compile(const ecc_info* info, kit_compilation_result* result)
     goto ERR;
   }
 
-  builtin_var_table = (ecc_builtin_variables_table){
+  builtin_var_table = (kitc_builtin_variables_table){
     .builtin_vars       = builtin_variables,
     .builtin_var_hashes = builtin_variable_hashes,
     .builtin_vars_count = total_builtin_variable_count,
   };
 
-  func_table = (ecc_function_table){
-    .functions          = kit_xalloc(init_function_capacity, sizeof(ecc_function)),
+  func_table = (kitc_function_table){
+    .functions          = kit_xalloc(init_function_capacity, sizeof(kitc_function)),
     .functions_capacity = init_function_capacity,
     .functions_count    = 0,
   };
@@ -5227,10 +5316,10 @@ kit_compile(const ecc_info* info, kit_compilation_result* result)
     goto ERR;
   }
 
-  struct_table = (ecc_struct_table){
+  struct_table = (kitc_struct_table){
     .structs_count    = 0,
     .structs_capacity = init_structs_capacity,
-    .structs          = kit_xalloc(init_structs_capacity, sizeof(ecc_struct_information)),
+    .structs          = kit_xalloc(init_structs_capacity, sizeof(kitc_struct_information)),
   };
 
   cc = (kit_compiler){

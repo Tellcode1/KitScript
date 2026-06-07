@@ -45,7 +45,7 @@
   } while (0)
 
 static inline int
-find_func(const char* name, u32 nfuncs, const ecc_function* funcs, ecc_function* out)
+find_func(const char* name, u32 nfuncs, const kitc_function* funcs, kitc_function* out)
 {
   u32 hash = kit_hash(name, strlen(name));
   for (u32 i = 0; i < nfuncs; i++) {
@@ -138,7 +138,7 @@ main(int argc, char* argv[])
     goto RET;
   }
 
-  ecc_function entry_point_func;
+  kitc_function entry_point_func;
   e = find_func(entry_point, r.functions_count, r.functions, &entry_point_func);
   if (e) {
     print_err("File does not have the entry point '%s'\n", entry_point);

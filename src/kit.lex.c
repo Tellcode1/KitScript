@@ -457,6 +457,11 @@ kit_tokenize(const char* input, const char* advertised_file, kit_str_interner* i
         is_compound = false;
         advance(s, line, col);
         advance(s, line, col);
+      } else if (s[0] == '.' && s[1] == '.') {
+        type        = KIT_TOKEN_TYPE_DOTDOT;
+        is_compound = false;
+        advance(s, line, col);
+        advance(s, line, col);
       } else {
         switch (*s) {
           case '+': type = KIT_TOKEN_TYPE_PLUS; break;

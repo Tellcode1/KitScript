@@ -56,11 +56,11 @@ file_from_var(const kit_var* v)
   if (v->type == KIT_VARTYPE_DESCRIPTOR) {
     f = (FILE*)v->val.descriptor;
   } else if (v->type == KIT_VARTYPE_INT) {
-    if (v->val.i == EB_IO_STDOUT) {
+    if (v->val.i == KIT_BUILTIN_CONST_IO_STDOUT) {
       f = stdout; // you can change the stdout/in/err pointer btw!
-    } else if (v->val.i == EB_IO_STDIN) {
+    } else if (v->val.i == KIT_BUILTIN_CONST_IO_STDIN) {
       f = stdin;
-    } else if (v->val.i == EB_IO_STDERR) {
+    } else if (v->val.i == KIT_BUILTIN_CONST_IO_STDERR) {
       f = stderr;
     }
   }
@@ -125,10 +125,10 @@ kit_builtins_io_seek(kit_var* args, u32 nargs)
 
   int c_rel = 0;
   switch (relative_to) {
-    case EB_IO_REL_TO_START: c_rel = SEEK_SET; break;
-    case EB_IO_REL_TO_END: c_rel = SEEK_END; break;
+    case KIT_BUILTIN_CONST_IO_REL_TO_START: c_rel = SEEK_SET; break;
+    case KIT_BUILTIN_CONST_IO_REL_TO_END: c_rel = SEEK_END; break;
     default:
-    case EB_IO_REL_TO_CURR: c_rel = SEEK_CUR; break;
+    case KIT_BUILTIN_CONST_IO_REL_TO_CURR: c_rel = SEEK_CUR; break;
   }
 
   fseek(f, offset, c_rel);
@@ -276,25 +276,25 @@ kit_builtins_io_type(kit_var* args, u32 nargs)
   const char* path = KIT_VAR_AS_STRING(&args[0])->s;
 #ifdef _WIN32
   DWORD attr = GetFileAttributesA(path);
-  if (attr == INVALID_FILE_ATTRIBUTES) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_UNKNOWN }; }
+  if (attr == INVALID_FILE_ATTRIBUTES) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN }; }
 
   if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
-    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_LINK };
+    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_LINK };
   } else if (attr & FILE_ATTRIBUTE_DIRECTORY) {
-    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_DIRECTORY };
+    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_DIRECTORY };
   } else {
-    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_FILE };
+    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_FILE };
   }
 #else
   struct stat sb;
-  if (stat(path, &sb) == -1) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_UNKNOWN }; }
+  if (stat(path, &sb) == -1) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN }; }
 
-  if (S_ISLNK(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_LINK }; }
-  if (S_ISDIR(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_DIRECTORY }; }
-  if (S_ISREG(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_FILE }; }
+  if (S_ISLNK(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_LINK }; }
+  if (S_ISDIR(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_DIRECTORY }; }
+  if (S_ISREG(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_FILE }; }
 #endif
 
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = EB_IO_UNKNOWN };
+  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN };
 }
 
 kit_var

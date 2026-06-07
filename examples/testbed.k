@@ -143,19 +143,19 @@ fn main() {
    assert "I added dynamic execution" == "I added dynamic execution";
    assert [] != false;
    assert "Hello" != "hello";
-   assert kit::type_of("[]") == type::STRING;
-   assert kit::type_of([]) == type::LIST;
-   assert kit::type_of(nested_struct) == type::STRUCT;
+   assert kit::type_of("[]") == kit::type::STRING;
+   assert kit::type_of([]) == kit::type::LIST;
+   assert kit::type_of(nested_struct) == kit::type::STRUCT;
    assert 0 != null; // They're different types. NULL should only be equal to NULL.
    assert [] != "";
 
    const source_file = str::cat(
-   "fn main() {",
-      "let x = 0xDEADBEEF;",
-      "x = -0xDEADBEEF;",
-      "x = 0xDEADBEEF;",
-      "return x;",
-   "}"
+      "fn main() {",
+         "let x = 0xDEADBEEF;",
+         "x = -0xDEADBEEF;",
+         "x = 0xDEADBEEF;",
+         "return x;",
+      "}"
    );
    let exec_info = kit::exec_info(
       /* source_code */ source_file,
@@ -194,8 +194,17 @@ fn main() {
       i = i + 1;
    }
 
-   if (kit::type_of(original) != type::LIST || len(original) != 3 || original[0] != "avx") {
+   if (kit::type_of(original) != kit::type::LIST || len(original) != 3 || original[0] != "avx") {
       io::println(io::STDERR, "loop clobbered our register!");
+      error = true;
+   }
+
+   let synchronize = 0;
+   for (synchronize in 0..3) {
+
+   }
+   if (synchronize != 3) {
+      io::println(io::STDERR, "ranged for loop expected to run 3 times (loop increment counter) = ", synchronize);
       error = true;
    }
 

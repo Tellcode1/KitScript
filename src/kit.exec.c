@@ -641,7 +641,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 dst = ins.mk_struct.dst;
         u32 id  = ins.mk_struct.struct_id;
 
-        const ecc_struct_information* st = NULL;
+        const kitc_struct_information* st = NULL;
         for (u32 i = 0; i < info->nstructs; i++) {
           if (info->structs[i].name_hash == id) {
             st = &info->structs[i];

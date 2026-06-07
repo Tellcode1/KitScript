@@ -727,24 +727,22 @@ parse_ranged_for(kit_parser* p, int node)
   }
 
   /* start..stop */
-  if (peek(p)->type != KIT_TOKEN_TYPE_INT) {
-    asterror(prev(p)->span, "Expected start integer, got '%s'  [ranged for]\n", kit_token_type_to_string(prev(p)->type));
+  int start = kit_ast_expr(p, 0);
+  if (start < 0) {
+    asterror(prev(p)->span, "Expected loop iterator's start value, got '%s'  [ranged for]\n", kit_token_type_to_string(prev(p)->type));
     goto err;
   }
-  int start = peek(p)->val.i;
-  next(p);
 
-  if (kit_ast_expect(p, KIT_TOKEN_TYPE_DOT) || kit_ast_expect(p, KIT_TOKEN_TYPE_DOT)) {
+  if (kit_ast_expect(p, KIT_TOKEN_TYPE_DOTDOT)) {
     asterror(prev(p)->span, "Expected .. after loop iterator start, got '%s'  [ranged for]\n", kit_token_type_to_string(prev(p)->type));
     goto err;
   }
 
-  if (peek(p)->type != KIT_TOKEN_TYPE_INT) {
-    asterror(prev(p)->span, "Expected start integer, got '%s'  [ranged for]\n", kit_token_type_to_string(prev(p)->type));
+  int stop = kit_ast_expr(p, 0);
+  if (stop < 0) {
+    asterror(prev(p)->span, "Expected loop iterator's stop value, got '%s'  [ranged for]\n", kit_token_type_to_string(prev(p)->type));
     goto err;
   }
-  int stop = peek(p)->val.i;
-  next(p);
 
   if (given_open_parenthesis && kit_ast_expect(p, KIT_TOKEN_TYPE_CLOSEPAREN)) {
     asterror(prev(p)->span, "Expected ')' after range expression\n");
