@@ -157,3 +157,12 @@ kit_builtins_list_resize(kit_var* args, u32 nargs)
   (void)kit_list_resize(new_size, l);
   return (kit_var){ .type = KIT_VARTYPE_NULL };
 }
+
+kit_var
+kit_builtins_list_sort(kit_var* args, u32 nargs)
+{
+  kit_list* list = KIT_VAR_AS_LIST(&args[0]);
+  (void)kit_tim_sort(list->vars, list->size);
+
+  return KIT_NULLVAR;
+}

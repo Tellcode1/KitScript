@@ -48,5 +48,7 @@ kit_var kit_builtins_list_reserve(kit_var* args, u32 nargs); // number of new va
 kit_var kit_builtins_list_resize(kit_var* args, u32 nargs);
 // len(list)
 kit_var kit_builtins_list_len(kit_var* args, u32 nargs);
+/* sort a list in place using tim sort */
+kit_var kit_builtins_list_sort(kit_var* args, u32 nargs);
 
 #endif // KIT_LIST_BUILTIN_FUNCTIONS_H

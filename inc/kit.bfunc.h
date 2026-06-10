@@ -295,6 +295,7 @@ static const kit_builtin_func kit_builtins_funcs[] = {
   { "list::exists", "Check if an element exists in the list", "fn list::exists(list, to_find : var) -> bool", KIT_ALL_TYPES, 2, 2, kit_builtins_list_exists },
   { "list::reserve", "Reserve capacity for n elements.", "fn list::reserve(list, elems_to_reserve:int) -> null", KIT_VARTYPE_LIST | KIT_VARTYPE_INT, 2, 2, kit_builtins_list_reserve },
   { "list::resize", "Resize the list to n elements, truncating or adding new if necessary.", "fn list::resize(list, new_size:int) -> null", KIT_VARTYPE_LIST | KIT_VARTYPE_INT, 2, 2, kit_builtins_list_resize },
+  { "list::sort", "Sort a list.", "fn list::sort(list) -> null", KIT_VARTYPE_LIST, 1, 1, kit_builtins_list_sort },
   { "list::len", "Get number of elements in list.", "fn list::len(list) -> int", KIT_VARTYPE_LIST, 1, 1, kit_builtins_list_len },
 
   { "sys::get_cmd_args", "Get the command line arguments passed, as a list", "fn sys::get_cmd_args() -> list|null", KIT_VARTYPE_NULL, 0, 0, kit_builtins_sys_get_cmd_args },

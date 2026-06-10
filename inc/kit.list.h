@@ -52,4 +52,7 @@ void            kit_list_remove(u32 index, kit_list* list);
 int kit_list_reserve(u32 new_capacity, kit_list* list);
 int kit_list_resize(u32 new_size, kit_list* list);
 
+/* Perform tim sort in place on an array */
+int kit_tim_sort(struct kit_var* elems, u32 nelems);
+
 #endif // KIT_LIST_H
