@@ -98,7 +98,14 @@ typedef struct kitc_info {
   const kit_builtin_var* hook_vars;
   u32                    nhooked_vars;
 
-  int              opt_level; // 0 or 1/2/3
+  int opt_level; // 0 or 1/2/3
+
+  /**
+   * Dump the generated IR ("assembly") to stdout
+   * (compiled object will be returned as usual!).
+   */
+  bool dump_assembly;
+
   kitc_feature_set feature_set;
 } kitc_info;
 

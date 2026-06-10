@@ -109,6 +109,7 @@ main(int argc, char* argv[])
   bool                   tokenizer_only      = false;
   bool                   ast_only            = false;
   bool                   print_memory_usage  = false;
+  bool                   dump_asm            = false;
   kit_ast                ast                 = { 0, .root = -1 };
   kit_compilation_result compiled            = { 0 };
   FILE*                  f                   = NULL;
@@ -169,6 +170,8 @@ main(int argc, char* argv[])
       ast_only = true;
     } else if (strcmp(opt, "mem") == 0) {
       print_memory_usage = true;
+    } else if (strcmp(opt, "dump") == 0 || strcmp(opt, "dump-asm") == 0) {
+      dump_asm = true;
     }
 
     /* compiler option flags */
@@ -309,6 +312,7 @@ main(int argc, char* argv[])
     .ast                = &ast,
     .root_node          = ast.root,
     .custom_entry_point = NULL,
+    .dump_assembly      = dump_asm,
     .opt_level          = opt_level,
     .feature_set        = compiler_option_set,
   };
@@ -323,19 +327,23 @@ main(int argc, char* argv[])
 
   if (verbose) fprintf(stderr, "success\n");
 
-  if (out && strcmp(out, "-") != 0) { // out is valid and out is not stdout
-    f = fopen(out, "wb");
-    if (!f) {
-      print_err("Failed to open out file: %s\n", strerror(errno));
-      goto ret;
+  if (!dump_asm) {
+    /* only print result if we didn't dump the assembly */
+
+    if (out && strcmp(out, "-") != 0) { // out is valid and out is not stdout
+      f = fopen(out, "wb");
+      if (!f) {
+        print_err("Failed to open out file: %s\n", strerror(errno));
+        goto ret;
+      }
+      kit_file_write(&compiled, f);
+      if (verbose) fprintf(stderr, "Wrote compilation result to: %s\n", out);
+      fclose(f);
+      f = NULL;
+    } else {
+      kit_file_write(&compiled, stdout);
+      if (verbose) fprintf(stderr, "Wrote compilation result to stdout\n");
     }
-    kit_file_write(&compiled, f);
-    if (verbose) fprintf(stderr, "Wrote compilation result to: %s\n", out);
-    fclose(f);
-    f = NULL;
-  } else {
-    kit_file_write(&compiled, stdout);
-    if (verbose) fprintf(stderr, "Wrote compilation result to stdout\n");
   }
 
   if (print_memory_usage) {

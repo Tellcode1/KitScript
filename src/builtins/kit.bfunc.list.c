@@ -108,7 +108,7 @@ kit_builtins_list_rfind(kit_var* args, u32 nargs)
   (void)nargs;
   kit_list* l      = KIT_VAR_AS_LIST(&args[0]);
   kit_var*  search = &args[1];
-  for (i64 i = l->size - 1; i >= 0; i++) {
+  for (i64 i = l->size - 1; i >= 0; i--) {
     if (kit_var_equal(search, &l->vars[i])) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)i }; }
   }
   return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 };

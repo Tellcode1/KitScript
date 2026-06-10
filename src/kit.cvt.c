@@ -79,7 +79,7 @@ kit_cvt_int(const char* s, const char** end, int* o)
 
     int dig = 0;
     if (is_hex) {
-      dig = (c - 'a');
+      dig = (c - 'a') + 10;
     } else if (is_dec_or_oct) {
       dig = (c - '0');
       if (base == 8 && dig >= 8) { return KIT_CVT_ERROR_MALFORMED_INPUT; }

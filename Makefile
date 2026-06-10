@@ -9,26 +9,21 @@ BUILD_DIR?=build
 
 SOURCES=kit.ast.c kit.ast.free.c kit.lex.c kit.var.c kit.list.c kit.list.sort.c kit.map.c builtins/kit.bfunc.c builtins/kit.bfunc.rt.c builtins/kit.bfunc.str.c builtins/kit.bfunc.list.c builtins/kit.bfunc.io.c builtins/kit.bfunc.sys.c builtins/kit.bfunc.math.c builtins/kit.bfunc.rand.c builtins/kit.bfunc.log.c builtins/kit.bfunc.time.c kit.pool.c kit.ldfile.c kit.arena.c kit.cvt.c kit.struct.c kit.cc.c kit.exec.c
 COMPILER_SOURCES=kit.frontend.c
-DECOMPILER_SOURCES=kit.dc.c
 RUNTIME_SOURCES=kit.execprog.c
 
 OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(SOURCES))
 
 COMPILER_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(COMPILER_SOURCES))
-DECOMPILER_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(DECOMPILER_SOURCES))
 RUNTIME_OBJ = $(patsubst %.c,$(BUILD_DIR)/%.o,$(RUNTIME_SOURCES))
 
 .PHONY: all clean
 
-all: $(BUILD_DIR) $(BUILD_DIR)/libkit.a $(BUILD_DIR)/kitc $(BUILD_DIR)/kitdc $(BUILD_DIR)/kitexec
+all: $(BUILD_DIR) $(BUILD_DIR)/libkit.a $(BUILD_DIR)/kitc $(BUILD_DIR)/kitexec
 
 $(BUILD_DIR)/libkit.a: $(OBJ)
 	$(AR) rcs $@ $^	
 
 $(BUILD_DIR)/kitc: $(COMPILER_OBJ) $(BUILD_DIR)/libkit.a
-	$(CC) $(LDFLAGS) $^ -o $@
-
-$(BUILD_DIR)/kitdc: $(DECOMPILER_OBJ) $(BUILD_DIR)/libkit.a
 	$(CC) $(LDFLAGS) $^ -o $@
 
 $(BUILD_DIR)/kitexec: $(RUNTIME_OBJ) $(BUILD_DIR)/libkit.a

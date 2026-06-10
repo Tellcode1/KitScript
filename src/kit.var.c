@@ -488,8 +488,8 @@ kit_var_equal(const kit_var* a, const kit_var* b)
 
   switch (a->type) {
     default: {
-      printf("%i\n", a->type);
-      assert(0);
+      /* SHOULD NEVER REACH HERE!! */
+      return false;
     }
 
     case KIT_VARTYPE_INT: return is_integral(b->type) && (a->val.i == kit_cast_to_int(b));
@@ -518,6 +518,7 @@ kit_var_equal(const kit_var* a, const kit_var* b)
           if (KIT_VAR_AS_MAT3(a)->m[j][i] != KIT_VAR_AS_MAT3(b)->m[j][i]) { return false; }
         }
       }
+      return true;
     }
     case KIT_VARTYPE_MAT4: {
       if (b->type != a->type) return false;
@@ -526,6 +527,7 @@ kit_var_equal(const kit_var* a, const kit_var* b)
           if (KIT_VAR_AS_MAT4(a)->m[j][i] != KIT_VAR_AS_MAT4(b)->m[j][i]) { return false; }
         }
       }
+      return true;
     }
 
     case KIT_VARTYPE_LIST:
@@ -535,6 +537,7 @@ kit_var_equal(const kit_var* a, const kit_var* b)
         if (!kit_var_equal(&KIT_VAR_AS_LIST(a)->vars[i], &KIT_VAR_AS_LIST(b)->vars[i])) return false;
       }
       return true;
+
     case KIT_VARTYPE_STRUCT:
       if (b->type != KIT_VARTYPE_STRUCT) return false;
       if (KIT_VAR_AS_STRUCT(a)->member_count != KIT_VAR_AS_STRUCT(b)->member_count) return false;
@@ -543,6 +546,7 @@ kit_var_equal(const kit_var* a, const kit_var* b)
         if (!kit_var_equal(&KIT_VAR_AS_STRUCT(a)->members[i], &KIT_VAR_AS_STRUCT(b)->members[i])) return false;
       }
       return true;
+
     case KIT_VARTYPE_MAP:
       if (b->type != KIT_VARTYPE_MAP) return false;
 
