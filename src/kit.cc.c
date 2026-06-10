@@ -1268,9 +1268,9 @@ compile_function_definition(kit_compiler* cc, int node)
 
       // codegraph_preliminary_dead_store_elimination(&fork, &cfg);
 
-      // if (!fork.info->feature_set.disable_local_copy_propagation) {
-      //   if (codegraph_local_copy_propagation(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
-      // }
+      if (!fork.info->feature_set.disable_local_copy_propagation) {
+        if (codegraph_local_copy_propagation(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      }
       // if (!fork.info->feature_set.disable_dead_store_elimination) {
       //   if (codegraph_dead_store_elimination(&fork, &cfg)) codegraph_rebuild(&fork, &cfg);
       // }
@@ -1283,20 +1283,20 @@ compile_function_definition(kit_compiler* cc, int node)
       // if (!fork.info->feature_set.disable_redundant_move_elimination) {
       //   if (codegraph_redundant_move_elimination(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
       // }
-      // if (!fork.info->feature_set.disable_dead_branch_elimination) {
-      //   if (codegraph_eliminate_unreachable_code(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
-      // }
+      if (!fork.info->feature_set.disable_dead_branch_elimination) {
+        if (codegraph_eliminate_unreachable_code(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      }
 
       /* codegraph invalidated after these calls */
-      // if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
-      // if (!fork.info->feature_set.disable_noop_stripping) { strip_noops(&fork); }
+      if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
+      if (!fork.info->feature_set.disable_noop_stripping) { strip_noops(&fork); }
       // if (!fork.info->feature_set.disable_dead_move_forwarding) { forward_dead_moves(&fork); }
+
       codegraph_free(&fork, &cfg);
     }
 
     /* OUT OF THE LOOP!!!  */
     kit_arena_free(&codegraph_arena);
-    /* do not perform register allocation or the label pass here, we'll do it at the end */
   }
 
   if (!fork.info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(&fork);

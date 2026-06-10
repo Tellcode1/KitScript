@@ -151,22 +151,20 @@ fn main() {
 
    const source_file = str::cat(
       "fn main() {",
-         "let x = 0xDEADBEEF;",
-         "x = -0xDEADBEEF;",
-         "x = 0xDEADBEEF;",
-         "return x;",
+         "let x = sys::get_cmd_args();",
+         "return int(x[0]);",
       "}"
    );
    let exec_info = kit::exec_info(
       /* source_code */ source_file,
       /* entry_point */ "main",
-      /* optimization_level */ 3,
+      /* optimization_level */ 0,
       /* arguments */ [],
-      /* command_line_arguments */ [],
+      /* command_line_arguments */ [ "-123456789" ],
    );
    let r = kit::compile_and_exec(exec_info);
-   if (r != 0xDEADBEEF) {
-      io::println(io::STDERR, "JIT compilation failed... Expected 0xDEADBEEF, got:  ", r);
+   if (r != -123456789) {
+      io::println(io::STDERR, "JIT compilation failed... Expected -123456789, got:  ", r);
       error = true;
    }
 
@@ -200,7 +198,7 @@ fn main() {
    }
 
    let synchronize = 0;
-   for (synchronize in 0..3) {
+   for (synchronize in 0..3) { /* should run [0,1,2] */
 
    }
    if (synchronize != 3) {

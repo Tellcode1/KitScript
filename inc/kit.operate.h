@@ -48,15 +48,19 @@ is_float(kit_var v)
 
 #define COERCE_BINOP(l, r, op)                                                                                                                       \
   (l).type == KIT_VARTYPE_NULL || (r).type == KIT_VARTYPE_NULL ? KIT_NULLVAR                                                                         \
-      : (is_float(l) || is_float(r)) ? (kit_var){ .type = KIT_VARTYPE_FLOAT, .val.f = kit_cast_to_float(&(l)) op kit_cast_to_float(&(r)) }           \
+      : (is_float(l) || is_float(r)) ? (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = kit_cast_to_float(&(l)) op kit_cast_to_float(&(r)) } }    \
                                      : (kit_var)                                                                                                     \
-  { .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&(l)) op kit_cast_to_int(&(r)) }
+  {                                                                                                                                                  \
+    .type = KIT_VARTYPE_INT, .val = {.i = kit_cast_to_int(&(l)) op kit_cast_to_int(&(r)) }                                                           \
+  }
 
 #define COERCE_BOOLEAN_BINOP(l, r, op)                                                                                                               \
   (l).type == KIT_VARTYPE_NULL || (r).type == KIT_VARTYPE_NULL ? KIT_NULLVAR                                                                         \
-      : (is_float(l) || is_float(r)) ? (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = kit_cast_to_float(&(l)) op kit_cast_to_float(&(r)) }            \
+      : (is_float(l) || is_float(r)) ? (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = kit_cast_to_float(&(l)) op kit_cast_to_float(&(r)) } }     \
                                      : (kit_var)                                                                                                     \
-  { .type = KIT_VARTYPE_BOOL, .val.b = kit_cast_to_int(&(l)) op kit_cast_to_int(&(r)) }
+  {                                                                                                                                                  \
+    .type = KIT_VARTYPE_BOOL, .val = {.b = kit_cast_to_int(&(l)) op kit_cast_to_int(&(r)) }                                                          \
+  }
 
 static inline bool
 is_vector(const kit_var* v)
@@ -242,7 +246,7 @@ operate(kit_var l, kit_var r, eir_opcode op)
 {
   if (is_vector(&l) || is_vector(&r)) { return vector_operate(l, r, op); }
 
-  if (op == EIR_OPCODE_NOT) return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = (bool)!kit_var_to_bool(r) };
+  if (op == EIR_OPCODE_NOT) return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = !kit_var_to_bool(r) } };
 
   switch (op) {
     case EIR_OPCODE_ADD: return COERCE_BINOP(l, r, +);

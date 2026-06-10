@@ -124,12 +124,18 @@ kit_var_to_int(kit_var v)
     case KIT_VARTYPE_CHAR: return (int)v.val.c;
     case KIT_VARTYPE_BOOL: return (int)v.val.b;
     case KIT_VARTYPE_STRING: {
-      const int base = 10;
+      /**
+       * TIL, if you pass 0 to the base argument
+       * for strtol or its kind, they will automatically
+       * handle the base.
+       */
+      const int base = 0;
 
-      char* end = NULL;
-      int   x   = (int)strtol(KIT_VAR_AS_STRING(&v)->s, &end, base);
+      char*     end = NULL;
+      long long x   = strtol(KIT_VAR_AS_STRING(&v)->s, &end, base);
       if (KIT_VAR_AS_STRING(&v)->s == end) return -1;
-      return x;
+
+      return (int)x;
     }
     case KIT_VARTYPE_LIST: return KIT_VAR_AS_LIST(&v)->size;
     case KIT_VARTYPE_MAP: return KIT_VAR_AS_MAP(&v)->size;

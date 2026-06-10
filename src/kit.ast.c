@@ -411,7 +411,7 @@ parse_variable_decleration(kit_parser* p, bool is_const, int node)
       next(p); // consume =
       initializer = kit_ast_expr(p, 0);
       if (initializer < 0) {
-        asterror(peek(p)->span, "Error parsing initializer [variable decleration]\n");
+        asterror(peek(p)->span, "Failed to parse initializer [variable decleration]\n");
         kit_ast_node_free(p->ast, decl_node);
         goto err;
       }
@@ -1936,7 +1936,7 @@ kit_parse(kit_parser* p)
 
     node = kit_ast_expr(p, 0);
     if (node < 0) {
-      asterror(take_span, "Error parsing expression [Root statement compilation failed, retreating]\n");
+      asterror(take_span, "Failed to parse expression [Root statement compilation failed, retreating]\n");
       goto ERR;
     }
 
