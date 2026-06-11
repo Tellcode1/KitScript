@@ -2,7 +2,7 @@
 #include "../inc/kit.opt.h"
 #include "../inc/kit.var.h"
 
-kit_vartype
+kit_var_type
 kit_infer_node_type(const kit_ast* ast, int node)
 {
   switch (KIT_GET_NODE(ast, node)->type) {

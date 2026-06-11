@@ -469,7 +469,7 @@ kit_var_hash(const kit_var* var)
 }
 
 static inline bool
-is_integral(kit_vartype type)
+is_integral(kit_var_type type)
 {
   switch (type) {
     case KIT_VARTYPE_INT:

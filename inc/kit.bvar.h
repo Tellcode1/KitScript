@@ -38,9 +38,9 @@
  * Any occurence of these variables are replaced with their values.
  */
 typedef struct kit_builtin_var {
-  const char* name;
-  kit_vartype type;
-  kit_varval  value;
+  const char*     name;
+  kit_var_type    type;
+  kit_var_payload value;
 } kit_builtin_var;
 
 typedef enum kit_builtins_io_constants {

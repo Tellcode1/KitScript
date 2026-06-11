@@ -372,10 +372,10 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         kit_var* d = &regs[dst];
         kit_var* r = &regs[rhs];
 
-        kit_vartype type  = r->type;
-        int         ival  = kit_cast_to_int(r);
-        double      fval  = kit_cast_to_float(r);
-        int         delta = (ins.opcode == EIR_OPCODE_INC) ? 1 : -1;
+        kit_var_type type  = r->type;
+        int          ival  = kit_cast_to_int(r);
+        double       fval  = kit_cast_to_float(r);
+        int          delta = (ins.opcode == EIR_OPCODE_INC) ? 1 : -1;
 
         remove(d);
 

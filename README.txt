@@ -119,10 +119,10 @@ bytesMemNeeded : u32 // << The number of bytes of memory required to load the wh
                          Explanation below
 nLiterals : u32
 Literals : kit_var[nLiterals]{
-   Type : kit_vartype
-   value : kit_varval
+   Type : kit_var_type
+   value : kit_var_payload
  For strings:
-   Type : kit_vartype
+   Type : kit_var_type
    Len : u32
    String : u8[Len]
 }

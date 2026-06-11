@@ -420,7 +420,7 @@ kit_file_load(kit_compilation_result* r, void** root_allocation, FILE* f)
   alloc += sizeof(u32) * r->literals_count;
 
   for (u32 i = 0; i < r->literals_count; i++) {
-    if (fread(&r->literals[i].type, sizeof(kit_vartype), 1, f) != 1) goto ERR;
+    if (fread(&r->literals[i].type, sizeof(kit_var_type), 1, f) != 1) goto ERR;
 
     kit_var* lit = &r->literals[i];
     switch (lit->type) {

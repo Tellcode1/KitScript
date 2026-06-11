@@ -58,7 +58,7 @@ struct kit_refdobj_pool;
  * the masks. No variable can have more than one
  * bit set though.
  */
-typedef enum kit_vartype {
+typedef enum kit_var_type {
   KIT_VARTYPE_NULL       = 1 << 0, // only type tag matters for this
   KIT_VARTYPE_INT        = 1 << 2,
   KIT_VARTYPE_BOOL       = 1 << 3,
@@ -74,13 +74,12 @@ typedef enum kit_vartype {
   KIT_VARTYPE_MAT3       = 1 << 13,
   KIT_VARTYPE_MAT4       = 1 << 14,
   KIT_VARTYPE_DESCRIPTOR = 1 << 15, // pointer, internally
-} kit_vartype;
-// typedef u32 kit_vartype;
+} kit_var_type;
 
 /**
  * Variable payload
  */
-typedef union kit_varval {
+typedef union kit_var_payload {
   int  i;
   char c;
   bool b;
@@ -101,18 +100,20 @@ typedef union kit_varval {
   struct kit_refdobj* struc; // Use KIT_VAR_AS_STRUCT to access as kit_struct*
 
   void* descriptor;
-} kit_varval;
+} kit_var_payload;
 
 typedef struct kit_var {
-  kit_vartype type;
-  kit_varval  val;
+  kit_var_type    type;
+  kit_var_payload val;
 } kit_var;
 
+/* defined here since we need definition of kit_var */
 typedef struct kit_struct_member_pair {
   const char*    name;
   struct kit_var value;
 } kit_struct_member_pair;
 
+/* Constant */
 #define KIT_NULLVAR                                                                                                                                  \
   (kit_var) { .type = KIT_VARTYPE_NULL }
 
@@ -161,7 +162,7 @@ int kit_create_vec4(const kit_var* v, kit_vec4 out);
 kit_var evector_length(const kit_var* v);
 
 static inline const char*
-kit_var_type_to_string(kit_vartype type)
+kit_var_type_to_string(kit_var_type type)
 {
   switch (type) {
     case KIT_VARTYPE_INT: return "int";

@@ -17,7 +17,7 @@ vector_cmp(const double* va, const double* vb, u32 nelems)
 }
 
 static inline u32
-vector_dims(kit_vartype type)
+vector_dims(kit_var_type type)
 {
   switch (type) {
     case KIT_VARTYPE_VEC2: return 2;

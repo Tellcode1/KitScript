@@ -57,7 +57,7 @@ find_func(const char* name, u32 nfuncs, const kitc_function* funcs, kitc_functio
   return -1;
 }
 
-static const char* const help = "eexec: [-e/r] [--entry ENTRYPOINT] <FILE/->\n"
+static const char* const help = "kitexec: [-e/r] [--entry ENTRYPOINT] <FILE/->\n"
                                 "The following options can be used:\n"
                                 "-e/error Interpret integral return values from the script as error, and exit with the error code\n"
                                 "-r/return Print return value\n"
