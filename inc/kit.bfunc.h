@@ -118,6 +118,7 @@ kit_builtins_var_dup(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
   (void)nargs;
   kit_var v;
   kit_var_deep_cpy(vm->pool, &args[0], &v);
+
   *result = v;
   return KIT_OK;
 }

@@ -22,35 +22,40 @@
  * SOFTWARE.
  */
 
-#ifndef KIT_VM_H
-#define KIT_VM_H
+#include "../inc/kit.vm.h"
 
-#include "kit.pool.h"
-#include "kit.reg.h"
-#include "kit.stdafx.h"
-#include "kit.var.h"
+int
+kit_vm_init(int argc, const char** argv, kit_refdobj_pool* pool, u32 function_id, kit_vm* vm)
+{
+  *vm = (kit_vm){
+    .instruction_idx = 0,
+    .curr_func_hash  = function_id,
+    .argc            = argc,
+    .argv            = argv,
+    .log_file        = stderr,
+    .pool            = pool,
+  };
+  for (u32 i = 0; i < KIT_ARRLEN(vm->hash_state); i++) { vm->hash_state[i] = rand(); }
 
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
+  return 0;
+}
 
-typedef struct kit_vm {
-  u32 instruction_idx; /* The next instruction to be executed. Initialize to 0. */
-  u32 curr_func_hash;  /* The hash of the function being executed (set by caller). 0 if not applicable. */
+void
+kit_vm_free(kit_vm* vm)
+{ memset(vm, 0, sizeof(*vm)); }
 
-  int          argc; /* the arguments passed to the program */
-  const char** argv;
+int
+kit_vm_fork(u32 new_function_id, const kit_vm* old_vm, kit_vm* new_vm)
+{
+  *new_vm = (kit_vm){
+    .instruction_idx = 0,
+    .curr_func_hash  = new_function_id,
+    .argc            = old_vm->argc,
+    .argv            = old_vm->argv,
+    .log_file        = old_vm->log_file,
+    .pool            = old_vm->pool,
+  };
+  memcpy(new_vm->hash_state, old_vm->hash_state, sizeof(new_vm->hash_state));
 
-  FILE* log_file; /* where the log::* functions output, must not be NULL */
-
-  u32 hash_state[4]; /* Initialize to random integers */
-
-  kit_refdobj_pool* pool;
-} kit_vm;
-
-int  kit_vm_init(int argc, const char** argv, kit_refdobj_pool* pool, u32 function_id, kit_vm* vm);
-void kit_vm_free(kit_vm* vm);
-int  kit_vm_fork(u32 new_function_id, const kit_vm* old_vm, kit_vm* new_vm);
-
-#endif // KIT_VM_H
+  return 0;
+}

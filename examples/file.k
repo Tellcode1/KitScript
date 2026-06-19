@@ -2,8 +2,7 @@ fn open(path,mode) {
   let fd = io::open(path, mode);
   io::println(io::STDOUT, "Opened file: ", path, " with mode: ", mode);
   io::println(io::STDOUT, "Recieved file descriptor: ", fd);
-  *result = fd;
-return KIT_OK;
+  return fd;
 }
 
 fn close(fd) {

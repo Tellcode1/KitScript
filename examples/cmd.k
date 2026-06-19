@@ -14,20 +14,17 @@ fn main() {
     if (len(args) < 2)
     {
       println("Expected argument");
-      *result = null;
-return KIT_OK;
+      return null;
     }
     let r = math::sqrt(float(op));
     println(r);
-    *result = null;
-return KIT_OK;
+    return null;
   }
   
   if (len(args) < 3)
   {
     println("Expected argument");
-    *result = null;
-return KIT_OK;
+    return null;
   }
 
   if (str::equal(x, "pow"))
@@ -35,8 +32,7 @@ return KIT_OK;
     let x = float(args[1]);
     let y = float(args[2]);
     println(math::pow(x,y));
-    *result = null;
-return KIT_OK;
+    return null;
   }
 
   let y = args[2];
@@ -56,6 +52,5 @@ return KIT_OK;
     r = float(x) / float(y);
   }
   println(r);
-  *result = null;
-return KIT_OK;
+  return null;
 }
