@@ -25,7 +25,9 @@
 #ifndef KIT_RUNTIME_BUILTIN_FUNCTIONS_H
 #define KIT_RUNTIME_BUILTIN_FUNCTIONS_H
 
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 /**
  * Compile and execute the source code (code must be given as a string).
@@ -33,28 +35,28 @@
  * Execution does not inherit the stack frame of the caller.
  * However, arguments can be passed to the entry point.
  */
-kit_var kit_builtins_rt_compile_and_exec(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 /**
  * Perform lexical analysis on the text using the builtin E lexicalizer.
  * Returned is a list of tokens (See kit::token structure in bstructs.h)
  */
-kit_var kit_builtins_rt_tokenize(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_rt_tokenize(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
-kit_var kit_builtins_rt_ast_init(kit_var* args, u32 nargs);
-kit_var kit_builtins_rt_ast_free(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_rt_ast_init(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rt_ast_free(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 /**
  * Parse a token stream into an AST.
  */
-kit_var kit_builtins_rt_parse(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_rt_parse(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 /**
  * Parse and compile the given list of tokens (from kit::lex).
  * Returned is a list containing the bytecode.
  */
-kit_var kit_builtins_rt_compile(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_rt_compile(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
-kit_var kit_builtins_rt_eval(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_rt_eval(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 #endif // KIT_STR_BUILTIN_FUNCTIONS_H

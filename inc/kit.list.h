@@ -25,6 +25,7 @@
 #ifndef KIT_LIST_H
 #define KIT_LIST_H
 
+#include "kit.pool.h"
 #include "kit.stdafx.h"
 
 struct kit_var;
@@ -35,22 +36,22 @@ typedef struct kit_list {
   u32             capacity;
 } kit_list;
 
-int  kit_list_init(struct kit_var* vars, u32 nvars, struct kit_list* list);
-void kit_list_free(struct kit_list* list);
+int  kit_list_init(kit_refdobj_pool* object_pool, struct kit_var* vars, u32 nvars, struct kit_list* list);
+void kit_list_free(kit_refdobj_pool* object_pool, struct kit_list* list);
 
 int kit_list_init_from_int_array(const int* arr, u32 nelems, kit_list* list);
 int kit_list_init_from_float_array(const double* arr, u32 nelems, kit_list* list);
 int kit_list_init_from_bool_array(const bool* arr, u32 nelems, kit_list* list);
 int kit_list_init_from_char_array(const char* arr, u32 nelems, kit_list* list);
 
-struct kit_var* kit_list_index(const struct kit_list* list, u32 index);
-int             kit_list_append(const struct kit_var* v, kit_list* list);
-void            kit_list_pop(kit_list* list);
-int             kit_list_insert(u32 index, const struct kit_var* v, kit_list* list);
-void            kit_list_remove(u32 index, kit_list* list);
+struct kit_var* kit_list_index(kit_refdobj_pool* object_pool, const struct kit_list* list, u32 index);
+int             kit_list_append(kit_refdobj_pool* object_pool, const struct kit_var* v, kit_list* list);
+void            kit_list_pop(kit_refdobj_pool* object_pool, kit_list* list);
+int             kit_list_insert(kit_refdobj_pool* object_pool, u32 index, const struct kit_var* v, kit_list* list);
+void            kit_list_remove(kit_refdobj_pool* object_pool, u32 index, kit_list* list);
 
 int kit_list_reserve(u32 new_capacity, kit_list* list);
-int kit_list_resize(u32 new_size, kit_list* list);
+int kit_list_resize(kit_refdobj_pool* object_pool, u32 new_size, kit_list* list);
 
 /* Perform tim sort in place on an array */
 int kit_tim_sort(struct kit_var* elems, u32 nelems);

@@ -25,6 +25,7 @@
 #ifndef KIT_STRUCT_H
 #define KIT_STRUCT_H
 
+#include "kit.pool.h"
 #include "kit.stdafx.h"
 
 struct kit_var;
@@ -38,7 +39,7 @@ typedef struct kit_struct {
   u32             member_count;
 } kit_struct;
 
-int  kit_struct_init_from(const kit_struct* from, kit_struct* s);
+int  kit_struct_init_from(kit_refdobj_pool* object_pool, const kit_struct* from, kit_struct* s);
 int  kit_struct_init_paired(const char* name, u32 nmembers, const char** member_names, const struct kit_struct_member_pair* pairs, kit_struct* s);
 int  kit_struct_init(const char* name, u32 nmembers, const char** member_names, kit_struct* s); // All variables initialized to NULL
 void kit_struct_free(kit_struct* s);

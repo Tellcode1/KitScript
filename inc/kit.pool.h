@@ -87,15 +87,6 @@ typedef struct kit_refdobj_pool {
   u32                  nbranches;
 } kit_refdobj_pool;
 
-/**
- * TODO: Eliminate the global variables.
- * This script is designed to be used in games!
- * Using global variables will just make it harder to
- * integrate this into long running programs, like say, games.
- * Or not?? Check it out.
- */
-extern kit_refdobj_pool kit_g_obj_pool;
-
 /* Returns 0 on success. */
 int  kit_refdobj_pool_init(u32 nbranches, kit_refdobj_pool* pool);
 void kit_refdobj_pool_free(kit_refdobj_pool* pool);

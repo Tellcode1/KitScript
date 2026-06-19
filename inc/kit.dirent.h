@@ -216,15 +216,18 @@ static __ino_t __inode(const wchar_t* name)
 
 	HANDLE hKernel32 = GetModuleHandleW(L"kernel32.dll");
 	if (!hKernel32)
-		return value;
+		*result = value;
+return KIT_E_OK;
 
 	pfnGetFileInformationByHandleEx fnGetFileInformationByHandleEx = (pfnGetFileInformationByHandleEx) GetProcAddress(hKernel32, "GetFileInformationByHandleEx");
 	if (!fnGetFileInformationByHandleEx)
-		return value;
+		*result = value;
+return KIT_E_OK;
 
 	HANDLE hFile = CreateFileW(name, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0);
 	if (hFile == INVALID_HANDLE_VALUE)
-		return value;
+		*result = value;
+return KIT_E_OK;
 
 	result = fnGetFileInformationByHandleEx(hFile, dirent_FileIdInfo, &fileid, sizeof(fileid));
 	if (result)
@@ -243,7 +246,8 @@ static __ino_t __inode(const wchar_t* name)
 		}
 	}
 	CloseHandle(hFile);
-	return value;
+	*result = value;
+return KIT_E_OK;
 }
 
 static DIR* __internal_opendir(wchar_t* wname, int size)
@@ -273,7 +277,8 @@ static DIR* __internal_opendir(wchar_t* wname, int size)
 	if (INVALID_HANDLE_VALUE == hFindFile)
 	{
 		__seterrno(ENOENT);
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 
 	data = (struct __dir*) malloc(sizeof(struct __dir));
@@ -338,7 +343,8 @@ out_of_memory:
 	if (INVALID_HANDLE_VALUE != hFindFile)
 		FindClose(hFindFile);
 	__seterrno(ENOMEM);
-	return NULL;
+	*result = NULL;
+return KIT_E_OK;
 }
 
 static wchar_t* __get_buffer()
@@ -346,7 +352,8 @@ static wchar_t* __get_buffer()
 	wchar_t* name = malloc(sizeof(wchar_t) * (NTFS_MAX_PATH + NAME_MAX + 8));
 	if (name)
 		memcpy(name, L"\\\\?\\", sizeof(wchar_t) * 4);
-	return name;
+	*result = name;
+return KIT_E_OK;
 }
 
 static DIR* opendir(const char* name)
@@ -357,17 +364,20 @@ static DIR* opendir(const char* name)
 	if (!wname)
 	{
 		errno = ENOMEM;
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 	size = MultiByteToWideChar(CP_UTF8, 0, name, -1, wname + 4, NTFS_MAX_PATH);
 	if (0 == size)
 	{
 		free(wname);
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 	dirp = __internal_opendir(wname, size + 4);
 	free(wname);
-	return dirp;
+	*result = dirp;
+return KIT_E_OK;
 }
 
 static DIR* _wopendir(const wchar_t* name)
@@ -378,18 +388,21 @@ static DIR* _wopendir(const wchar_t* name)
 	if (!wname)
 	{
 		errno = ENOMEM;
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 	size = (int)wcslen(name);
 	if (size > NTFS_MAX_PATH)
 	{
 		free(wname);
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 	memcpy(wname + 4, name, sizeof(wchar_t) * (size + 1));
 	dirp = __internal_opendir(wname, size + 5);
 	free(wname);
-	return dirp;
+	*result = dirp;
+return KIT_E_OK;
 }
 
 static DIR* fdopendir(intptr_t fd)
@@ -403,32 +416,37 @@ static DIR* fdopendir(intptr_t fd)
 	if (!hKernel32)
 	{
 		errno = EINVAL;
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 
 	pfnGetFinalPathNameByHandleW fnGetFinalPathNameByHandleW = (pfnGetFinalPathNameByHandleW) GetProcAddress(hKernel32, "GetFinalPathNameByHandleW");
 	if (!fnGetFinalPathNameByHandleW)
 	{
 		errno = EINVAL;
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 
 	int size = 0;
 	if (!wname)
 	{
 		errno = ENOMEM;
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 	size = fnGetFinalPathNameByHandleW((HANDLE) fd, wname + 4, NTFS_MAX_PATH, FILE_NAME_NORMALIZED);
 	if (0 == size)
 	{
 		free(wname);
 		errno = ENOTDIR;
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 	dirp = __internal_opendir(wname, size + 5);
 	free(wname);
-	return dirp;
+	*result = dirp;
+return KIT_E_OK;
 }
 
 static struct dirent* readdir(DIR* dirp)
@@ -436,20 +454,23 @@ static struct dirent* readdir(DIR* dirp)
 	struct __dir* data = (struct __dir*) dirp;
 	if (!data) {
 		errno = EBADF;
-		return NULL;
+		*result = NULL;
+return KIT_E_OK;
 	}
 	if (data->index < data->count)
 	{
 		return &data->entries[data->index++];
 	}
-	return NULL;
+	*result = NULL;
+return KIT_E_OK;
 }
 
 static int readdir_r(DIR* dirp, struct dirent* entry, struct dirent**result)
 {
 	struct __dir* data = (struct __dir*) dirp;
 	if (!data) {
-		return EBADF;
+		*result = EBADF;
+return KIT_E_OK;
 	}
 	if (data->index < data->count)
 	{
@@ -552,7 +573,8 @@ static int scandir(const char* dirp, struct dirent*** namelist,
 	if (namelist)
 		*namelist = entries;
 	closedir(d);
-	return index;
+	*result = index;
+return KIT_E_OK;
 }
 
 static int alphasort(const void* a, const void* b)

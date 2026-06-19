@@ -28,7 +28,6 @@
 #include "../inc/kit.ast.h"
 #include "../inc/kit.cc.h"
 #include "../inc/kit.lex.h"
-#include "../inc/kit.pool.h"
 #include "../inc/kit.rwhelp.h"
 #include "../inc/kit.stdafx.h"
 #include "../inc/kit.strint.h"
@@ -125,8 +124,6 @@ main(int argc, char* argv[])
     print_err("Failed to initialize arena\n");
     goto ret;
   }
-
-  if (kit_refdobj_pool_init(16, &kit_g_obj_pool)) goto ret;
 
   if (kit_str_interner_init(256, &interner)) goto ret;
 
@@ -359,7 +356,6 @@ main(int argc, char* argv[])
 ret:
   kit_ast_free(&ast);
   kit_compilation_result_free(&compiled);
-  kit_refdobj_pool_free(&kit_g_obj_pool);
   kit_str_interner_free(&interner);
   kit_arena_free(&arena);
   return e;

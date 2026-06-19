@@ -26,10 +26,12 @@
 
 #include "../../inc/kit.cast.h"
 #include "../../inc/kit.list.h"
+#include "../../inc/kit.perr.h"
 #include "../../inc/kit.pool.h"
 #include "../../inc/kit.stdafx.h"
 #include "../../inc/kit.sysexpose.h"
 #include "../../inc/kit.var.h"
+#include "../../inc/kit.vm.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,27 +41,28 @@
 char** kit_argv = NULL;
 int    kit_argc = 0;
 
-kit_var
-kit_builtins_sys_get_cmd_args(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_sys_get_cmd_args(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
 
   kit_var l = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.list = kit_refdobj_pool_acquire(vm->pool),
   };
-  kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&l));
+  kit_list_init(vm->pool, NULL, 0, KIT_VAR_AS_LIST(&l));
 
   /* Start from 2. We don't need to expose the executor and script file */
   for (u32 i = 2; i < kit_argc; i++) {
-    kit_var arg = kit_make_var_from_string(kit_strdup(kit_argv[i]));
-    kit_list_append(&arg, KIT_VAR_AS_LIST(&l));
+    kit_var arg = kit_make_var_from_string(vm->pool, kit_strdup(kit_argv[i]));
+    kit_list_append(vm->pool, &arg, KIT_VAR_AS_LIST(&l));
 
-    kit_var_release(&arg);
+    kit_var_release(vm->pool, &arg);
   }
 
-  return l;
+  *result = l;
+  return KIT_OK;
 }
 
 #ifdef _WIN32
@@ -71,17 +74,19 @@ kit_builtins_sys_get_cmd_args(kit_var* args, u32 nargs)
 #  define NO_CWD_SUPPORT
 #endif
 
-kit_var
-kit_builtins_sys_get_cwd(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_sys_get_cwd(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
 #ifdef NO_CWD_SUPPORT
-  return KIT_NULLVAR;
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 #endif
 
   char buffer[FILENAME_MAX];
   if (!getcwd(buffer, sizeof(buffer))) {
     perror("Failed to get current working directory");
-    return KIT_NULLVAR;
+    *result = KIT_NULLVAR;
+    return KIT_OK;
   }
 
   const size_t len = strlen(buffer);
@@ -94,21 +99,23 @@ kit_builtins_sys_get_cwd(kit_var* args, u32 nargs)
 
   kit_var cwd = {
     .type  = KIT_VARTYPE_STRING,
-    .val.s = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.s = kit_refdobj_pool_acquire(vm->pool),
   };
   KIT_VAR_AS_STRING(&cwd)->s = s;
 
-  return cwd;
+  *result = cwd;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_sys_shell(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_sys_shell(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* cmd = KIT_VAR_AS_STRING(&args[0])->s;
-  return (kit_var){
+  *result         = (kit_var){
     .type  = KIT_VARTYPE_INT,
     .val.i = system(cmd),
   };
+  return KIT_OK;
 }
 
 void
@@ -126,23 +133,26 @@ sleep_ms(int milliseconds)
 #endif
 }
 
-kit_var
-kit_builtins_sys_sleep(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_sys_sleep(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   int ms = kit_cast_to_int(&args[0]);
   sleep_ms(ms);
-  return KIT_NULLVAR;
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_sys_getenv(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_sys_getenv(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* s = KIT_VAR_AS_STRING(&args[0])->s;
-  return kit_make_var_from_string(kit_strdup(getenv(s)));
+
+  *result = kit_make_var_from_string(vm->pool, kit_strdup(getenv(s)));
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_sys_setenv(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_sys_setenv(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* name  = KIT_VAR_AS_STRING(&args[0])->s;
   const char* value = KIT_VAR_AS_STRING(&args[1])->s;
@@ -153,5 +163,6 @@ kit_builtins_sys_setenv(kit_var* args, u32 nargs)
   setenv(name, value, 1);
 #endif
 
-  return KIT_NULLVAR;
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }

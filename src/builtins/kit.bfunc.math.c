@@ -24,85 +24,95 @@
 
 #include "../../inc/kit.cast.h"
 #include "../../inc/kit.mathstrucs.h"
+#include "../../inc/kit.perr.h"
 #include "../../inc/kit.pool.h"
 #include "../../inc/kit.stdafx.h"
 #include "../../inc/kit.var.h"
+#include "../../inc/kit.vm.h"
 
 #include <assert.h>
 #include <math.h>
 
-kit_var
-kit_builtins_vec2(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_vec2(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_VEC2, .val.vec2 = { [0] = kit_cast_to_float(&args[0]), [1] = kit_cast_to_float(&args[1]) } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC2, .val.vec2 = { [0] = kit_cast_to_float(&args[0]), [1] = kit_cast_to_float(&args[1]) } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_vec3(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_vec3(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type     = KIT_VARTYPE_VEC3,
-                    .val.vec3 = { [0] = kit_cast_to_float(&args[0]), [1] = kit_cast_to_float(&args[1]), [2] = kit_cast_to_float(&args[2]) } };
+  *result = (kit_var){ .type     = KIT_VARTYPE_VEC3,
+                       .val.vec3 = { [0] = kit_cast_to_float(&args[0]), [1] = kit_cast_to_float(&args[1]), [2] = kit_cast_to_float(&args[2]) } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_vec4(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_vec4(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type     = KIT_VARTYPE_VEC4,
-                    .val.vec4 = { [0] = kit_cast_to_float(&args[0]),
-                                  [1] = kit_cast_to_float(&args[1]),
-                                  [2] = kit_cast_to_float(&args[2]),
-                                  [3] = kit_cast_to_float(&args[3]) } };
+  *result = (kit_var){ .type     = KIT_VARTYPE_VEC4,
+                       .val.vec4 = { [0] = kit_cast_to_float(&args[0]),
+                                     [1] = kit_cast_to_float(&args[1]),
+                                     [2] = kit_cast_to_float(&args[2]),
+                                     [3] = kit_cast_to_float(&args[3]) } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_vec2_zero(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_vec2_zero(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_VEC2, .val.vec4 = { 0 } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC2, .val.vec4 = { 0 } };
+  return KIT_OK;
 }
-kit_var
-kit_builtins_vec3_zero(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_vec3_zero(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_VEC3, .val.vec4 = { 0 } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC3, .val.vec4 = { 0 } };
+  return KIT_OK;
 }
-kit_var
-kit_builtins_vec4_zero(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_vec4_zero(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_VEC4, .val.vec4 = { 0 } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC4, .val.vec4 = { 0 } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_mat3(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_mat3(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
   kit_var m = {
     .type     = KIT_VARTYPE_MAT3,
-    .val.mat3 = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.mat3 = kit_refdobj_pool_acquire(vm->pool),
   };
   for (u32 i = 0; i < 3; i++) { memcpy(KIT_VAR_AS_MAT3(&m)->m[i], &args[i].val.vec3, sizeof(kit_vec3)); }
-  return m;
+  *result = m;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_mat4(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_mat4(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
   kit_var m = {
     .type     = KIT_VARTYPE_MAT4,
-    .val.mat4 = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.mat4 = kit_refdobj_pool_acquire(vm->pool),
   };
   for (u32 i = 0; i < 4; i++) { memcpy(KIT_VAR_AS_MAT4(&m)->m[i], &args[i].val.vec4, sizeof(kit_vec4)); }
-  return m;
+  *result = m;
+  return KIT_OK;
 }
 
 int
@@ -121,7 +131,7 @@ evector_zero_extend(const kit_var* v, kit_vec4 out)
     memcpy(out, x, sizeof(kit_vec4));
   }
 
-  return 0;
+  return KIT_OK;
 }
 
 int
@@ -146,7 +156,7 @@ kit_create_vec4(const kit_var* v, kit_vec4 out)
     kit_vec4 x = { 0.0, 0.0, 0.0, 0.0 };
     memcpy(out, x, sizeof(kit_vec4));
   }
-  return 0;
+  return KIT_OK;
 }
 
 kit_var
@@ -185,8 +195,8 @@ larp_vec(const kit_vec4 a, const kit_vec4 b, kit_vec4 r, double x)
   for (int i = 0; i < 4; i++) { r[i] = a[i] + ((b[i] - a[i]) * x); }
 }
 
-kit_var
-kit_builtins_smoothstep(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_smoothstep(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_vec4 a;
   kit_vec4 b;
@@ -198,11 +208,12 @@ kit_builtins_smoothstep(kit_var* args, u32 nargs)
   kit_var x = { .type = MAX(args[0].type, args[1].type) };
   memcpy(x.val.vec4, r, sizeof(r));
 
-  return x;
+  *result = x;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_lerp(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_lerp(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -216,5 +227,6 @@ kit_builtins_lerp(kit_var* args, u32 nargs)
   kit_var x = { .type = MAX(args[0].type, args[1].type) };
   memcpy(x.val.vec4, r, sizeof(r));
 
-  return x;
+  *result = x;
+  return KIT_OK;
 }

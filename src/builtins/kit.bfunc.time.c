@@ -82,22 +82,24 @@ pl_mono(void)
 
 #endif
 
-kit_var
-kit_builtins_time_now(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_time_now(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
-  return (kit_var){
+  *result = (kit_var){
     .type  = KIT_VARTYPE_FLOAT,
     .val.f = pl_now(),
   };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_time_mono(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_time_mono(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
-  return (kit_var){
+  *result = (kit_var){
     .type  = KIT_VARTYPE_FLOAT,
     .val.f = pl_mono(),
   };
+  return KIT_OK;
 }
 
 static inline void
@@ -116,20 +118,21 @@ extract_time_from_tm(const struct tm* t, kit_var* s)
   kit_struct_set_member_pairs(KIT_VAR_AS_STRUCT(s), KIT_ARRLEN(pairs), pairs);
 }
 
-kit_var
-kit_builtins_time_local(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_time_local(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   struct tm t   = { 0 };
   time_t    now = time(NULL);
 
   struct tm* tmp = localtime(&now);
-  if (!tmp) return KIT_NULLVAR;
+  if (!tmp) *result = KIT_NULLVAR;
+  return KIT_OK;
 
   memcpy(&t, tmp, sizeof(struct tm));
 
   kit_var s   = { 0 };
   s.type      = KIT_VARTYPE_STRUCT;
-  s.val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+  s.val.struc = kit_refdobj_pool_acquire(vm->pool);
 
   const char* members[]                = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
   KIT_VAR_AS_STRUCT(&s)->name          = "time::timestamp";
@@ -145,23 +148,25 @@ kit_builtins_time_local(kit_var* args, u32 nargs)
 
   extract_time_from_tm(&t, &s);
 
-  return s;
+  *result = s;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_time_utc(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_time_utc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   struct tm t   = { 0 };
   time_t    now = time(NULL);
 
   struct tm* tmp = localtime(&now);
-  if (!tmp) return KIT_NULLVAR;
+  if (!tmp) *result = KIT_NULLVAR;
+  return KIT_OK;
 
   memcpy(&t, tmp, sizeof(struct tm));
 
   kit_var s   = { 0 };
   s.type      = KIT_VARTYPE_STRUCT;
-  s.val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+  s.val.struc = kit_refdobj_pool_acquire(vm->pool);
 
   const char* members[] = { "sec", "min", "hour", "day", "wday", "yday", "mon", "year" };
 
@@ -178,5 +183,6 @@ kit_builtins_time_utc(kit_var* args, u32 nargs)
 
   extract_time_from_tm(&t, &s);
 
-  return s;
+  *result = s;
+  return KIT_OK;
 }

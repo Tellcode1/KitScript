@@ -29,7 +29,7 @@
 #include <string.h>
 
 int
-kit_list_init(kit_var* vars, u32 nvars, struct kit_list* list)
+kit_list_init(kit_refdobj_pool* object_pool, kit_var* vars, u32 nvars, struct kit_list* list)
 {
   if (!list) return -1;
 
@@ -44,14 +44,14 @@ kit_list_init(kit_var* vars, u32 nvars, struct kit_list* list)
 
   for (u32 i = 0; i < nvars; i++) {
     kit_var_shallow_cpy(&vars[i], &list->vars[i]);
-    kit_var_acquire(&list->vars[i]); /* tell the big man we want the variables to outlive the list */
+    kit_var_acquire(object_pool, &list->vars[i]); /* tell the big man we want the variables to outlive the list */
   }
 
   return 0;
 }
 
 int
-kit_list_append(const kit_var* v, struct kit_list* list)
+kit_list_append(kit_refdobj_pool* object_pool, const kit_var* v, struct kit_list* list)
 {
   if (!list || !v) return -1;
 
@@ -61,25 +61,25 @@ kit_list_append(const kit_var* v, struct kit_list* list)
   }
 
   kit_var_shallow_cpy(v, &list->vars[list->size]);
-  kit_var_acquire(&list->vars[list->size]);
+  kit_var_acquire(object_pool, &list->vars[list->size]);
   list->size++;
 
   return 0;
 }
 
 kit_var*
-kit_list_index(const struct kit_list* list, u32 index)
+kit_list_index(kit_refdobj_pool* object_pool, const struct kit_list* list, u32 index)
 {
   if (index >= list->size) return NULL;
   return &list->vars[index];
 }
 
 void
-kit_list_remove(u32 index, struct kit_list* list)
+kit_list_remove(kit_refdobj_pool* object_pool, u32 index, struct kit_list* list)
 {
   if (index >= list->size) return;
 
-  kit_var_release(&list->vars[index]);
+  kit_var_release(object_pool, &list->vars[index]);
 
   // shift elements down. could use memmove but whatever.
   for (u32 i = index; i < list->size - 1; i++) { kit_var_shallow_cpy(&list->vars[i + 1], &list->vars[i]); }
@@ -89,23 +89,23 @@ kit_list_remove(u32 index, struct kit_list* list)
 }
 
 void
-kit_list_free(kit_list* list)
+kit_list_free(kit_refdobj_pool* object_pool, kit_list* list)
 {
-  for (u32 i = 0; i < list->size; i++) { kit_var_release(&list->vars[i]); }
+  for (u32 i = 0; i < list->size; i++) { kit_var_release(object_pool, &list->vars[i]); }
   free(list->vars);
 }
 
 void
-kit_list_pop(struct kit_list* list)
+kit_list_pop(kit_refdobj_pool* object_pool, struct kit_list* list)
 {
   if (list->size != 0) {
-    kit_var_release(&list->vars[list->size - 1]);
+    kit_var_release(object_pool, &list->vars[list->size - 1]);
     list->size--;
   }
 }
 
 int
-kit_list_insert(u32 index, const kit_var* v, struct kit_list* l)
+kit_list_insert(kit_refdobj_pool* object_pool, u32 index, const kit_var* v, struct kit_list* l)
 {
   if (!l || !v || index > l->size) return -1;
 
@@ -116,14 +116,14 @@ kit_list_insert(u32 index, const kit_var* v, struct kit_list* l)
 
   // shr
   for (u32 i = l->size; i > index; i--) {
-    kit_var_release(&l->vars[i]);
+    kit_var_release(object_pool, &l->vars[i]);
     kit_var_shallow_cpy(&l->vars[i - 1], &l->vars[i]);
-    kit_var_acquire(&l->vars[i]); /* need acquire here. */
+    kit_var_acquire(object_pool, &l->vars[i]); /* need acquire here. */
   }
   // I've started to optimize my language... Interesting.
 
   kit_var_shallow_cpy(v, &l->vars[index]);
-  kit_var_acquire(&l->vars[index]);
+  kit_var_acquire(object_pool, &l->vars[index]);
 
   l->size++;
 
@@ -145,7 +145,7 @@ kit_list_reserve(u32 new_capacity, struct kit_list* list)
 }
 
 int
-kit_list_resize(u32 new_size, struct kit_list* list)
+kit_list_resize(kit_refdobj_pool* object_pool, u32 new_size, struct kit_list* list)
 {
   if (new_size > list->capacity) {
     u32      new_capacity = MAX(new_size, list->capacity * 2);
@@ -159,7 +159,7 @@ kit_list_resize(u32 new_size, struct kit_list* list)
     list->capacity = new_capacity;
   } else if (new_size < list->size) {
     /* Truncating, free old elements */
-    for (u32 i = list->size; i > new_size; i--) { kit_var_release(&list->vars[i - 1]); }
+    for (u32 i = list->size; i > new_size; i--) { kit_var_release(object_pool, &list->vars[i - 1]); }
   }
 
   list->size = new_size;

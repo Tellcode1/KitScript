@@ -47,13 +47,13 @@
 
 #define remove(var)                                                                                                                                  \
   do {                                                                                                                                               \
-    kit_var_release(var);                                                                                                                            \
+    kit_var_release(vm->pool, var);                                                                                                                  \
     *(var) = KIT_NULLVAR;                                                                                                                            \
   } while (0)
 
 #define print_err(...)                                                                                                                               \
   do {                                                                                                                                               \
-    fputs("[eexec::vm] [error] ", kit_log_file ? kit_log_file : stderr);                                                                             \
+    fputs("[KitExec::vm] [error] ", kit_log_file ? kit_log_file : stderr);                                                                           \
     fprintf(kit_log_file ? kit_log_file : stderr, __VA_ARGS__);                                                                                      \
   } while (0)
 
@@ -67,13 +67,13 @@ get_builtin_func_hashed(u32 hash)
 }
 
 static kit_ecode
-call(const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, kit_var* ret)
+call(kit_vm* vm, const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, kit_var* ret)
 {
   int e = 0;
 
   // Special handling
   // builtin functions can not return errors...
-  if (hash == kit_hash("PANIC", strlen("PANIC"))) {
+  if (hash == kit_hash(KIT_PANIC_FUNCTION_NAME, strlen(KIT_PANIC_FUNCTION_NAME))) {
     print_err("---> PANIC <---\n");
     return KIT_EPANIC;
   }
@@ -81,7 +81,7 @@ call(const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, kit_var* ret
   // builtins
   const kit_builtin_func* builtin = get_builtin_func_hashed(hash);
   if (builtin != NULL) {
-    *ret = builtin->func(args, nargs);
+    e = builtin->func(vm, args, nargs, ret);
     goto pop_and_ret;
   }
 
@@ -89,7 +89,7 @@ call(const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, kit_var* ret
   for (u32 i = 0; i < info->nextern_funcs; i++) {
     const char* name = info->extern_funcs[i].name;
     if (kit_hash(name, strlen(name)) != hash) continue;
-    if (info->extern_funcs[i].func) { *ret = info->extern_funcs[i].func(args, nargs); }
+    if (info->extern_funcs[i].func) { e = info->extern_funcs[i].func(vm, args, nargs, ret); }
     goto pop_and_ret;
   }
 
@@ -116,7 +116,7 @@ call(const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, kit_var* ret
       .nstructs        = info->nstructs,
     };
 
-    e = kit_exec(&fi, ret);
+    e = kit_exec(vm, &fi, ret);
     if (e) goto pop_and_ret;
 
     goto pop_and_ret;
@@ -137,7 +137,7 @@ call(const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, kit_var* ret
   }
 
   *ret = KIT_NULLVAR;
-  return KIT_ENONEXISTENT;
+  return KIT_EUNDEFINED;
 
 pop_and_ret:
   /* nothing to pop */
@@ -145,7 +145,7 @@ pop_and_ret:
 }
 
 kit_var*
-read_args_vector(kit_var* regs, kit_var* stack, u32 sp, u32 nelems)
+read_args_vector(kit_refdobj_pool* pool, kit_var* regs, kit_var* stack, u32 sp, u32 nelems)
 {
   kit_var* tmp = kit_aligned_malloc(nelems * sizeof(kit_var), 32);
   if (!tmp) return NULL;
@@ -155,20 +155,20 @@ read_args_vector(kit_var* regs, kit_var* stack, u32 sp, u32 nelems)
   /* copy first 16 arguments from registers */
   for (; i < MIN(nelems, KIT_REG_ARG_COUNT); i++) {
     memcpy(&tmp[i], &regs[KIT_REG_ARG0 + i], sizeof(kit_var));
-    kit_var_acquire(&tmp[i]);
+    kit_var_acquire(pool, &tmp[i]);
   }
 
   /* copy rest of the arguments from the stack */
   for (; i < nelems; i++) {
     memcpy(&tmp[i], &stack[sp - nelems + i], sizeof(kit_var));
-    kit_var_acquire(&tmp[i]);
+    kit_var_acquire(pool, &tmp[i]);
   }
 
   return tmp;
 }
 
 kit_ecode
-kit_exec(const kit_exec_info* const info, kit_var* ret)
+kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
 {
   /* Initial state check. */
   if ((info->nargs > 0 && info->args == NULL) || (info->code == NULL && info->code_count != 0)
@@ -198,11 +198,11 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
     u32 dst = KIT_REG_ARG0 + i;
     if (dst < KIT_REG_ARG_COUNT) {
       kit_var_shallow_cpy(&info->args[i], &regs[dst]);
-      kit_var_acquire(&regs[dst]);
+      kit_var_acquire(vm->pool, &regs[dst]);
     } else {
       /* Push to stack */
       stack[sp->val.i] = info->args[i];
-      kit_var_acquire(&stack[sp->val.i]);
+      kit_var_acquire(vm->pool, &stack[sp->val.i]);
       sp->val.i++;
     }
   }
@@ -236,7 +236,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         }
 
         remove(&regs[dst]);
-        kit_var_deep_cpy(&v, &regs[dst]);
+        kit_var_deep_cpy(vm->pool, &v, &regs[dst]);
         break;
       }
       case EIR_OPCODE_RET: {
@@ -244,7 +244,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         /* store return value */
         kit_var_shallow_cpy(&regs[ret_val], ret);
-        kit_var_acquire(ret);
+        kit_var_acquire(vm->pool, ret);
 
         /* return from this procedure */
         e = KIT_OK;
@@ -264,7 +264,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
             }
           }
 
-          print_err("[eexec::vm] ASSERTION FAILED: %s\n", line ? line : "[line debug symbol not found]");
+          print_err("ASSERTION FAILED: %s\n", line ? line : "[line debug symbol not found]");
 
           /* propogate assertion failure to top, it will decide what to do */
           e = KIT_EASSERT;
@@ -281,7 +281,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         remove(&regs[dst]);
         kit_var_shallow_cpy(&regs[src], &regs[dst]);
-        kit_var_acquire(&regs[dst]);
+        kit_var_acquire(vm->pool, &regs[dst]);
         break;
       }
 
@@ -293,7 +293,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         remove(&regs[dst]);
         kit_var_shallow_cpy(&src, &regs[dst]);
-        // kit_var_acquire(&regs[dst]);
+        // kit_var_acquire(vm->pool,&regs[dst]);
         break;
       }
 
@@ -305,7 +305,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         remove(&regs[dst]);
         kit_var_shallow_cpy(&src, &regs[dst]);
-        // kit_var_acquire(&regs[dst]);
+        // kit_var_acquire(vm->pool,&regs[dst]);
         break;
       }
 
@@ -335,7 +335,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         remove(&regs[dst]);
         kit_var result = operate(l, r, ins.opcode);
-        // kit_var_acquire(&result);
+        // kit_var_acquire(vm->pool,&result);
 
         /* removing elements from the stack, free them */
         if (dst == KIT_REG_SP && (result.val.i < sp->val.i)) {
@@ -358,7 +358,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         remove(&regs[dst]);
         regs[dst] = operate(l, r, ins.opcode);
-        kit_var_acquire(&regs[dst]);
+        kit_var_acquire(vm->pool, &regs[dst]);
         break;
       }
       case EIR_OPCODE_INC:
@@ -397,16 +397,16 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 npairs = ins.mk_map.npairs;
 
         /* read every variable */
-        kit_var* tmp = read_args_vector(regs, stack, sp->val.i, npairs * 2);
+        kit_var* tmp = read_args_vector(vm->pool, regs, stack, sp->val.i, npairs * 2);
 
         kit_var* dstp = &regs[dst];
         remove(dstp); // overwriting it
 
         dstp->type    = KIT_VARTYPE_MAP;
-        dstp->val.map = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+        dstp->val.map = kit_refdobj_pool_acquire(vm->pool);
 
         /* Constructing it directly in our register. No need for refcounting here. */
-        if (kit_map_init(tmp, npairs, KIT_VAR_AS_MAP(dstp)) != 0) {
+        if (kit_map_init(vm->pool, tmp, npairs, KIT_VAR_AS_MAP(dstp)) != 0) {
           e = KIT_EMALLOC;
 
           for (u32 i = 0; i < npairs * 2; i++) { remove(&tmp[i]); }
@@ -427,16 +427,16 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 dst    = ins.mk_list.dst;
         u32 nelems = ins.mk_list.nelems;
 
-        kit_var* tmp = read_args_vector(regs, stack, sp->val.i, nelems);
+        kit_var* tmp = read_args_vector(vm->pool, regs, stack, sp->val.i, nelems);
 
         kit_var* dstp = &regs[dst];
         remove(dstp); // overwriting it
 
         dstp->type     = KIT_VARTYPE_LIST;
-        dstp->val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+        dstp->val.list = kit_refdobj_pool_acquire(vm->pool);
 
         /* Constructing it directly in our register. No need for refcounting here. */
-        if (kit_list_init(tmp, nelems, KIT_VAR_AS_LIST(dstp)) != 0) {
+        if (kit_list_init(vm->pool, tmp, nelems, KIT_VAR_AS_LIST(dstp)) != 0) {
           for (u32 i = 0; i < nelems; i++) { remove(&tmp[i]); }
           kit_aligned_free(tmp);
 
@@ -456,14 +456,14 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         kit_var tmp = KIT_NULLVAR;
 
-        if (kit_var_index(&regs[base], &regs[index], &tmp)) {
+        if (kit_var_index(vm->pool, &regs[base], &regs[index], &tmp)) {
           tmp = KIT_NULLVAR;
           break;
         }
 
         remove(&regs[dst]);
         kit_var_shallow_cpy(&tmp, &regs[dst]);
-        kit_var_acquire(&regs[dst]);
+        kit_var_acquire(vm->pool, &regs[dst]);
         break;
       }
 
@@ -478,7 +478,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
           goto RET;
         }
 
-        if (kit_var_index_assign(&regs[base], &regs[index], &regs[value])) {
+        if (kit_var_index_assign(vm->pool, &regs[base], &regs[index], &regs[value])) {
           print_err("kit_var_index_assign (%i): error\n", ip->val.i);
           e = KIT_EMALFORM;
           goto RET;
@@ -491,7 +491,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 function_id = ins.call.function_id;
         u32 nargs       = ins.call.nargs;
 
-        kit_var* args = read_args_vector(regs, stack, sp->val.i, nargs);
+        kit_var* args = read_args_vector(vm->pool, regs, stack, sp->val.i, nargs);
         if (!args) {
           e = KIT_EMALLOC;
           goto RET;
@@ -500,7 +500,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         /* overwriting it */
         remove(&regs[dst]);
 
-        e = call(info, function_id, args, nargs, &regs[dst]);
+        e = call(vm, info, function_id, args, nargs, &regs[dst]);
         /* No need to acquire regs[dst], it's deep copied / preacquired. */
 
         for (u32 i = 0; i < nargs; i++) { remove(&args[i]); }
@@ -566,7 +566,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
           remove(&regs[dst]);
           regs[dst] = kit_var_from_float(component);
-          // kit_var_acquire(&regs[dst]); // useless, vectors are not reference based
+          // kit_var_acquire(vm->pool,&regs[dst]); // useless, vectors are not reference based
           break;
         }
 
@@ -588,7 +588,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         remove(&regs[dst]);
         kit_var_shallow_cpy(&push, &regs[dst]);
-        kit_var_acquire(&regs[dst]);
+        kit_var_acquire(vm->pool, &regs[dst]);
         break;
       }
       /* MEMBER_ASSIGN [value] [base] [member ID : u32] */
@@ -628,7 +628,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
             kit_var* member = &st->members[i];
             remove(member);
             kit_var_shallow_cpy(&regs[value], member);
-            kit_var_acquire(member);
+            kit_var_acquire(vm->pool, member);
             break;
           }
         }
@@ -651,7 +651,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         if (!st) {
           print_err("Structure %u not found in table\n", id);
-          e = KIT_ENONEXISTENT;
+          e = KIT_EUNDEFINED;
           goto RET;
         }
 
@@ -659,19 +659,19 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         remove(dstp);
 
         dstp->type      = KIT_VARTYPE_STRUCT;
-        dstp->val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+        dstp->val.struc = kit_refdobj_pool_acquire(vm->pool);
 
         if (kit_struct_init(st->name, st->fields_count, (const char**)st->field_names, KIT_VAR_AS_STRUCT(dstp)) != 0) {
           e = KIT_EMALLOC;
           goto RET;
         }
 
-        kit_var* args = read_args_vector(regs, stack, sp->val.i, st->fields_count);
+        kit_var* args = read_args_vector(vm->pool, regs, stack, sp->val.i, st->fields_count);
         for (u32 i = 0; i < st->fields_count; i++) {
           kit_var* member = &KIT_VAR_AS_STRUCT(dstp)->members[i];
           remove(member);
           kit_var_shallow_cpy(&args[i], member);
-          kit_var_acquire(member);
+          kit_var_acquire(vm->pool, member);
 
           remove(&args[i]);
         }
@@ -683,7 +683,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 src = ins.getg.src;
         remove(&regs[dst]);
         kit_var_shallow_cpy(&info->gvars[src], &regs[dst]);
-        kit_var_acquire(&regs[dst]);
+        kit_var_acquire(vm->pool, &regs[dst]);
         break;
       }
 
@@ -692,7 +692,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 src = ins.setg.src;
         remove(&info->gvars[dst]);
         kit_var_shallow_cpy(&regs[src], &info->gvars[dst]);
-        kit_var_acquire(&info->gvars[dst]);
+        kit_var_acquire(vm->pool, &info->gvars[dst]);
         break;
       }
 
@@ -701,7 +701,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
         u32 src = ins.movg.src;
         remove(&info->gvars[dst]);
         kit_var_shallow_cpy(&info->gvars[src], &info->gvars[dst]);
-        kit_var_acquire(&info->gvars[dst]);
+        kit_var_acquire(vm->pool, &info->gvars[dst]);
         break;
       }
 
@@ -722,7 +722,7 @@ kit_exec(const kit_exec_info* const info, kit_var* ret)
 
         remove(&stack[sp->val.i]); /* overwriting it. */
         stack[sp->val.i] = regs[reg];
-        kit_var_acquire(&stack[sp->val.i]); /* temporary hold */
+        kit_var_acquire(vm->pool, &stack[sp->val.i]); /* temporary hold */
 
         sp->val.i++;
         break;
@@ -779,7 +779,7 @@ kit_script_call(kit_script* s, const char* func_name, kit_var* args, u32 nargs, 
         return KIT_EBADARG;
       }
 
-      return kit_exec(&info, ret);
+      return kit_exec(s->vm, &info, ret);
     }
   }
 

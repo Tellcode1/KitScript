@@ -311,10 +311,6 @@ typedef struct kit_compilation_result {
   u32*   names_hashes;
 } kit_compilation_result;
 
-/**
- * Uses kit_g_obj_pool, Initialize it using kit_refdobj_pool_init().
- * Free later with kit_refdobj_pool_free();
- */
 int kit_compile(const kitc_info* info, kit_compilation_result* result);
 
 static inline void

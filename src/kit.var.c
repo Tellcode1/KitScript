@@ -54,7 +54,7 @@ kit_var_shallow_cpy(const kit_var* var, kit_var* dst)
 }
 
 int
-kit_var_deep_cpy(const kit_var* var, kit_var* dst)
+kit_var_deep_cpy(kit_refdobj_pool* object_pool, const kit_var* var, kit_var* dst)
 {
   if (!dst || !var) return -1;
 
@@ -75,7 +75,7 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
     case KIT_VARTYPE_FLOAT: dst->val = var->val; break;
 
     case KIT_VARTYPE_STRING:
-      dst->val.s = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+      dst->val.s = kit_refdobj_pool_acquire(object_pool);
       if (!dst->val.s) {
         dst->type = KIT_VARTYPE_NULL;
         return -1;
@@ -83,46 +83,49 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
       KIT_VAR_AS_STRING(dst)->s = kit_strdup(KIT_VAR_AS_STRING(var)->s);
       break;
     case KIT_VARTYPE_LIST: {
-      dst->val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+      dst->val.list = kit_refdobj_pool_acquire(object_pool);
       if (!dst->val.list) {
         dst->type = KIT_VARTYPE_NULL;
         return -1;
       }
 
-      return kit_list_init(KIT_VAR_AS_LIST(var)->vars, KIT_VAR_AS_LIST(var)->size, KIT_VAR_AS_LIST(dst));
+      return kit_list_init(object_pool, KIT_VAR_AS_LIST(var)->vars, KIT_VAR_AS_LIST(var)->size, KIT_VAR_AS_LIST(dst));
     }
     case KIT_VARTYPE_STRUCT: {
       kit_struct* s = KIT_VAR_AS_STRUCT(var);
       if (!s) return -1;
 
-      dst->val.struc = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+      dst->val.struc = kit_refdobj_pool_acquire(object_pool);
       if (!dst->val.struc) return -1;
 
-      if (kit_struct_init_from(s, KIT_VAR_AS_STRUCT(dst))) return -1;
+      if (kit_struct_init_from(object_pool, s, KIT_VAR_AS_STRUCT(dst))) return -1;
 
       return 0;
     }
     case KIT_VARTYPE_MAP: {
-      dst->val.map = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+      dst->val.map = kit_refdobj_pool_acquire(object_pool);
       /**
        * Create an array of all key value pairs as a map
        * And use it to create the map.
        */
       u32      npairs    = KIT_VAR_AS_MAP(var)->size;
       kit_var* flattened = calloc(npairs * 2ULL, sizeof(kit_var));
+
       memcpy(flattened, KIT_VAR_AS_MAP(var)->keys, sizeof(kit_var) * KIT_VAR_AS_MAP(var)->size);
       memcpy(flattened + KIT_VAR_AS_MAP(var)->size, KIT_VAR_AS_MAP(var)->vals, sizeof(kit_var) * KIT_VAR_AS_MAP(var)->size);
-      int e = kit_map_init(flattened, KIT_VAR_AS_MAP(var)->size, KIT_VAR_AS_MAP(dst));
+
+      int e = kit_map_init(object_pool, flattened, KIT_VAR_AS_MAP(var)->size, KIT_VAR_AS_MAP(dst));
+
       free(flattened);
       return e;
     }
     case KIT_VARTYPE_MAT3: {
-      dst->val.mat3 = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+      dst->val.mat3 = kit_refdobj_pool_acquire(object_pool);
       if (dst->val.mat3 && var->val.mat3) { memcpy(dst->val.mat3->data, var->val.mat3->data, sizeof(kit_mat3)); }
       return 0;
     }
     case KIT_VARTYPE_MAT4: {
-      dst->val.mat4 = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+      dst->val.mat4 = kit_refdobj_pool_acquire(object_pool);
       if (dst->val.mat4 && var->val.mat4) { memcpy(dst->val.mat4->data, var->val.mat4->data, sizeof(kit_mat4)); }
       return 0;
     }
@@ -132,7 +135,7 @@ kit_var_deep_cpy(const kit_var* var, kit_var* dst)
 }
 
 i32
-kit_var_acquire(kit_var* v)
+kit_var_acquire(kit_refdobj_pool* object_pool, kit_var* v)
 {
   int* refc = NULL;
   switch (v->type) {
@@ -149,7 +152,7 @@ kit_var_acquire(kit_var* v)
 }
 
 void
-kit_var_release(kit_var* v)
+kit_var_release(kit_refdobj_pool* object_pool, kit_var* v)
 {
   if (!v) return;
   int* refc = NULL;
@@ -165,11 +168,11 @@ kit_var_release(kit_var* v)
 
   (*refc)--;
 
-  if (*refc <= 0) { kit_var_free(v); }
+  if (*refc <= 0) { kit_var_free(object_pool, v); }
 }
 
 void
-kit_var_free(kit_var* var)
+kit_var_free(kit_refdobj_pool* object_pool, kit_var* var)
 {
   if (!var) return;
 
@@ -188,36 +191,36 @@ kit_var_free(kit_var* var)
     case KIT_VARTYPE_STRING: {
       char* s = KIT_VAR_AS_STRING(var)->s;
       free(s);
-      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.s);
+      kit_refdobj_pool_return(object_pool, var->val.s);
       break;
     }
 
     case KIT_VARTYPE_LIST:
-      kit_list_free(KIT_VAR_AS_LIST(var));
-      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.list);
+      kit_list_free(object_pool, KIT_VAR_AS_LIST(var));
+      kit_refdobj_pool_return(object_pool, var->val.list);
       break;
 
     case KIT_VARTYPE_STRUCT:
-      for (u32 i = 0; i < KIT_VAR_AS_STRUCT(var)->member_count; i++) { kit_var_release(&KIT_VAR_AS_STRUCT(var)->members[i]); }
+      for (u32 i = 0; i < KIT_VAR_AS_STRUCT(var)->member_count; i++) { kit_var_release(object_pool, &KIT_VAR_AS_STRUCT(var)->members[i]); }
 
       free(KIT_VAR_AS_STRUCT(var)->members);
       free(KIT_VAR_AS_STRUCT(var)->member_hashes);
       free((void*)KIT_VAR_AS_STRUCT(var)->member_names);
-      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.struc);
+      kit_refdobj_pool_return(object_pool, var->val.struc);
       break;
 
     case KIT_VARTYPE_MAP:
-      kit_map_free(KIT_VAR_AS_MAP(var));
-      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.map);
+      kit_map_free(object_pool, KIT_VAR_AS_MAP(var));
+      kit_refdobj_pool_return(object_pool, var->val.map);
       break;
 
     case KIT_VARTYPE_MAT3: {
-      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.mat3);
+      kit_refdobj_pool_return(object_pool, var->val.mat3);
       break;
     }
 
     case KIT_VARTYPE_MAT4: {
-      kit_refdobj_pool_return(&kit_g_obj_pool, var->val.mat4);
+      kit_refdobj_pool_return(object_pool, var->val.mat4);
       break;
     }
   }
@@ -429,6 +432,11 @@ kit_var_to_string_size(const struct kit_var* v)
 static inline u32
 hash_list(const kit_var* list, u32 nelems)
 {
+  /**
+   * This is needed so that two lists with the
+   * same members but in different order compute
+   * to two different hashes.
+   */
   const u32 seeds[4] = { 256, 35092, 0xDEADBEEF, 1234567890 };
 
   u32 hash = nelems;
@@ -440,7 +448,7 @@ hash_list(const kit_var* list, u32 nelems)
 u32
 kit_var_hash(const kit_var* var)
 {
-  u32 haha = var->type;
+  u32 haha = var->type; /* Include the variable's type in the hash */
   switch (var->type) {
     case KIT_VARTYPE_NULL: return haha ^ kit_hash(&var->type, sizeof(var->type));
     case KIT_VARTYPE_INT: return haha ^ kit_hash(&var->val.i, sizeof(var->val.i));
@@ -561,11 +569,11 @@ kit_var_equal(const kit_var* a, const kit_var* b)
 }
 
 kit_var
-kit_make_var_from_string(char* s)
+kit_make_var_from_string(kit_refdobj_pool* object_pool, char* s)
 {
   if (!s) { return (kit_var){ .type = KIT_VARTYPE_NULL }; }
   kit_var ret                = { .type = KIT_VARTYPE_STRING };
-  ret.val.s                  = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+  ret.val.s                  = kit_refdobj_pool_acquire(object_pool);
   KIT_VAR_AS_STRING(&ret)->s = s; // we just allocated
   return ret;
 }
@@ -581,7 +589,7 @@ kit_struct_get_member(u32 hash, const kit_struct* s)
 }
 
 int
-kit_var_index(const kit_var* base, const kit_var* index, kit_var* result)
+kit_var_index(kit_refdobj_pool* object_pool, const kit_var* base, const kit_var* index, kit_var* result)
 {
   if (result) *result = KIT_NULLVAR;
 
@@ -590,7 +598,7 @@ kit_var_index(const kit_var* base, const kit_var* index, kit_var* result)
       kit_list* list = KIT_VAR_AS_LIST(base);
       int       idx  = kit_cast_to_int(index);
 
-      kit_var* ptr = kit_list_index(list, idx);
+      kit_var* ptr = kit_list_index(object_pool, list, idx);
       if (!ptr) return -1;
 
       if (result) kit_var_shallow_cpy(ptr, result);
@@ -641,34 +649,34 @@ kit_var_index(const kit_var* base, const kit_var* index, kit_var* result)
 }
 
 int
-kit_var_index_assign(kit_var* base, const kit_var* index, const kit_var* value)
+kit_var_index_assign(kit_refdobj_pool* object_pool, kit_var* base, const kit_var* index, const kit_var* value)
 {
   switch (base->type) {
     case KIT_VARTYPE_LIST: {
       kit_list* list = KIT_VAR_AS_LIST(base);
       int       idx  = kit_cast_to_int(index);
 
-      kit_var* ptr = kit_list_index(list, idx);
+      kit_var* ptr = kit_list_index(object_pool, list, idx);
       if (!ptr) {
         fprintf(stderr, "Out of bounds write to list (idx=%i, list->size=%i)\n", idx, list->size);
         return -1;
       }
 
       if (ptr && value) {
-        kit_var_release(ptr);
+        kit_var_release(object_pool, ptr);
         kit_var_shallow_cpy(value, ptr);
-        kit_var_acquire(ptr);
+        kit_var_acquire(object_pool, ptr);
       }
       return 0;
     }
     case KIT_VARTYPE_MAP: {
       kit_map* map    = KIT_VAR_AS_MAP(base);
-      kit_var* search = kit_map_find_or_insert(map, index);
+      kit_var* search = kit_map_find_or_insert(object_pool, map, index);
 
       if (search && value) {
-        kit_var_release(search);
+        kit_var_release(object_pool, search);
         kit_var_shallow_cpy(value, search);
-        kit_var_acquire(search);
+        kit_var_acquire(object_pool, search);
       }
       return 0;
     }

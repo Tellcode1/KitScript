@@ -14,8 +14,8 @@ gettime(char* buffer, size_t size)
   strftime(buffer, size, "%H:%M:%S", tm_info);
 }
 
-kit_var
-kit_builtins_log_err(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_log_err(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   char buffer[32];
   gettime(buffer, sizeof(buffer));
@@ -27,11 +27,12 @@ kit_builtins_log_err(kit_var* args, u32 nargs)
 
   fputc('\n', f);
 
-  return KIT_NULLVAR;
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_log_warn(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_log_warn(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   char buffer[32];
   gettime(buffer, sizeof(buffer));
@@ -43,11 +44,12 @@ kit_builtins_log_warn(kit_var* args, u32 nargs)
 
   fputc('\n', f);
 
-  return KIT_NULLVAR;
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_log_info(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_log_info(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   char buffer[32];
   gettime(buffer, sizeof(buffer));
@@ -59,5 +61,6 @@ kit_builtins_log_info(kit_var* args, u32 nargs)
 
   fputc('\n', f);
 
-  return KIT_NULLVAR;
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }

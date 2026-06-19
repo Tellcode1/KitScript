@@ -22,100 +22,114 @@
  * SOFTWARE.
  */
 
-#include "../../inc/kit.bfunc.h"
+#include "../../inc/kit.cast.h"
+#include "../../inc/kit.perr.h"
 #include "../../inc/kit.pool.h"
 #include "../../inc/kit.var.h"
+#include "../../inc/kit.vm.h"
 
-kit_var
-kit_builtins_list_make(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_make(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_var v = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.list = kit_refdobj_pool_acquire(vm->pool),
   };
 
-  int e = kit_list_init(args, nargs, KIT_VAR_AS_LIST(&v));
+  int e = kit_list_init(vm->pool, args, nargs, KIT_VAR_AS_LIST(&v));
   if (e) {
-    kit_refdobj_pool_return(&kit_g_obj_pool, v.val.list);
-    return KIT_NULLVAR;
+    kit_refdobj_pool_return(vm->pool, v.val.list);
+    *result = KIT_NULLVAR;
+    return KIT_OK;
   }
 
-  return v;
+  *result = v;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_append(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_append(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l = KIT_VAR_AS_LIST(&args[0]);
-  (void)kit_list_append(&args[1], l);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  (void)kit_list_append(vm->pool, &args[1], l);
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_pop(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_pop(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l = KIT_VAR_AS_LIST(&args[0]);
-  kit_list_pop(l);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  kit_list_pop(vm->pool, l);
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_remove(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_remove(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l     = KIT_VAR_AS_LIST(&args[0]);
-  int       index = kit_builtins_cast_int(&args[1], 1).val.i;
+  int       index = kit_cast_to_int(&args[1]);
 
-  if (index >= l->size) { return (kit_var){ .type = KIT_VARTYPE_NULL }; }
+  if (index >= l->size) { *result = (kit_var){ .type = KIT_VARTYPE_NULL }; }
+  return KIT_OK;
 
-  kit_list_remove((u32)index, l);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  kit_list_remove(vm->pool, (u32)index, l);
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_insert(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_insert(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
   kit_list* l     = KIT_VAR_AS_LIST(&args[0]);
-  int       index = kit_builtins_cast_int(&args[1], 1).val.i;
+  int       index = kit_cast_to_int(&args[1]);
   kit_var   value = args[2];
 
-  if (index < 0 || (u32)index > l->size) { return (kit_var){ .type = KIT_VARTYPE_NULL }; }
+  if (index < 0 || (u32)index > l->size) { *result = (kit_var){ .type = KIT_VARTYPE_NULL }; }
+  return KIT_OK;
 
-  kit_list_insert((u32)index, &value, l);
+  kit_list_insert(vm->pool, (u32)index, &value, l);
 
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_find(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_find(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l      = KIT_VAR_AS_LIST(&args[0]);
   kit_var*  search = &args[1];
   for (u32 i = 0; i < l->size; i++) {
-    if (kit_var_equal(search, &l->vars[i])) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)i }; }
+    if (kit_var_equal(search, &l->vars[i])) { *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)i }; }
+    return KIT_OK;
   }
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_rfind(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_rfind(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l      = KIT_VAR_AS_LIST(&args[0]);
   kit_var*  search = &args[1];
   for (i64 i = l->size - 1; i >= 0; i--) {
-    if (kit_var_equal(search, &l->vars[i])) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)i }; }
+    if (kit_var_equal(search, &l->vars[i])) { *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)i }; }
+    return KIT_OK;
   }
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_exists(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_exists(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_list* l      = KIT_VAR_AS_LIST(&args[0]);
   kit_var*  search = &args[1];
@@ -127,42 +141,47 @@ kit_builtins_list_exists(kit_var* args, u32 nargs)
       break;
     }
   }
-  return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = exists };
+  *result = (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = exists };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_len(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_len(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l = KIT_VAR_AS_LIST(&args[0]);
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)l->size };
+  *result     = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)l->size };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_reserve(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_reserve(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l                 = KIT_VAR_AS_LIST(&args[0]);
-  int       nelems_to_reserve = kit_builtins_cast_int(&args[1], 1).val.i;
+  int       nelems_to_reserve = kit_cast_to_int(&args[1]);
   (void)kit_list_reserve(l->capacity + nelems_to_reserve, l);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_resize(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_resize(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_list* l        = KIT_VAR_AS_LIST(&args[0]);
-  int       new_size = kit_builtins_cast_int(&args[1], 1).val.i;
-  (void)kit_list_resize(new_size, l);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  int       new_size = kit_cast_to_int(&args[1]);
+  (void)kit_list_resize(vm->pool, new_size, l);
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_list_sort(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_list_sort(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_list* list = KIT_VAR_AS_LIST(&args[0]);
   (void)kit_tim_sort(list->vars, list->size);
 
-  return KIT_NULLVAR;
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }

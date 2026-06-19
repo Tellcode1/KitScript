@@ -29,7 +29,7 @@
 
 char* kit_fmt_print(const kit_var* args, u32 nargs);
 
-kit_var kit_builtins_fmt_format(kit_var* args, u32 nargs);  // Format and return a string
-kit_var kit_builtins_fmt_extract(kit_var* args, u32 nargs); // Return all variables in a list.
+kit_ecode kit_builtins_fmt_format(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);  // Format and return a string
+kit_ecode kit_builtins_fmt_extract(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // Return all variables in a list.
 
 #endif // KIT_FORMAT_BUILTIN_FUNCTIONS_H

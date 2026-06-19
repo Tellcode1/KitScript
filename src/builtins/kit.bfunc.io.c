@@ -75,13 +75,16 @@ var_from_file(FILE* f)
   return yay;
 }
 
-kit_var
-kit_builtins_io_read(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_read(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK;
+  }
 
   int   nbytes = args[1].val.i;
   char* s      = kit_xalloc(1, nbytes + 1);
@@ -91,34 +94,42 @@ kit_builtins_io_read(kit_var* args, u32 nargs)
 
   kit_var v = {
     .type  = KIT_VARTYPE_STRING,
-    .val.s = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.s = kit_refdobj_pool_acquire(vm->pool),
   };
   KIT_VAR_AS_STRING(&v)->s = s;
 
-  return v;
+  *result = v;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_write(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_write(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = KIT_NULLVAR;
+    return KIT_EMALFORM;
+  }
 
   char* s = KIT_VAR_AS_STRING(&args[1])->s;
   fwrite(s, 1, strlen(s), f);
 
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_seek(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_seek(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK;
+  }
 
   int offset      = kit_cast_to_int(&args[1]);
   int relative_to = kit_cast_to_int(&args[2]);
@@ -133,184 +144,251 @@ kit_builtins_io_seek(kit_var* args, u32 nargs)
 
   fseek(f, offset, c_rel);
 
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_ptell(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_ptell(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_EMALFORM;
+  }
 
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)ftell(f) };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)ftell(f) };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_readln(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_readln(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
 
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_EMALFORM;
+  }
 
-  return kit_make_var_from_string(kit_read_full_line(f));
+  *result = kit_make_var_from_string(vm->pool, kit_read_full_line(f));
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_println(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_println(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_EMALFORM;
+  }
 
   for (u32 i = 1; i < nargs; i++) { kit_var_print(&args[i], f); }
   fputc('\n', f);
 
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_print(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_print(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_EMALFORM;
+  }
 
   for (u32 i = 1; i < nargs; i++) { kit_var_print(&args[i], f); }
 
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_getc(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_getc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
 
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = KIT_NULLVAR;
+    return KIT_OK;
+  }
 
   int i = fgetc(f);
 
-  return (kit_var){
+  *result = (kit_var){
     .type  = i < 0 ? KIT_VARTYPE_NULL : KIT_VARTYPE_CHAR,
     .val.c = (char)i,
   };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_putc(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_putc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
 
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK;
+  }
 
   int ch = kit_cast_to_int(&args[1]);
   fputc(ch, f);
 
-  return (kit_var){
+  *result = (kit_var){
     .type = KIT_VARTYPE_NULL,
   };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_at_eof(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_at_eof(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK;
+  }
 
-  return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = (bool)feof(f) };
+  *result = (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = (bool)feof(f) };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_open(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_open(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   const char* path = KIT_VAR_AS_STRING(&args[0])->s;
   const char* mode = KIT_VAR_AS_STRING(&args[1])->s;
 
   FILE* f = fopen(path, mode);
-  if (!f) { return (kit_var){ .type = KIT_VARTYPE_NULL }; }
+  if (!f) { *result = (kit_var){ .type = KIT_VARTYPE_NULL }; }
+  return KIT_OK;
 
-  return var_from_file(f);
+  *result = var_from_file(f);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_flush(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_flush(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK;
+  }
 
   fflush(f);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_close(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_close(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   FILE* f = file_from_var(&args[0]);
-  if (!f) return (kit_var){ .type = KIT_VARTYPE_NULL };
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK;
+  }
 
   fclose(f);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_error(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_error(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
-  return kit_make_var_from_string(kit_strdup(strerror(errno)));
+  *result = kit_make_var_from_string(vm->pool, kit_strdup(strerror(errno)));
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_type(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_type(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   const char* path = KIT_VAR_AS_STRING(&args[0])->s;
 #ifdef _WIN32
   DWORD attr = GetFileAttributesA(path);
-  if (attr == INVALID_FILE_ATTRIBUTES) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN }; }
+  if (attr == INVALID_FILE_ATTRIBUTES) {
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN };
+    return KIT_OK;
+  }
 
   if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
-    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_LINK };
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_LINK };
+    return KIT_OK;
   } else if (attr & FILE_ATTRIBUTE_DIRECTORY) {
-    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_DIRECTORY };
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_DIRECTORY };
+    return KIT_OK;
   } else {
-    return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_FILE };
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_FILE };
+    return KIT_OK;
   }
 #else
   struct stat sb;
-  if (stat(path, &sb) == -1) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN }; }
+  if (stat(path, &sb) == -1) {
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN };
+    return KIT_OK;
+  }
 
-  if (S_ISLNK(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_LINK }; }
-  if (S_ISDIR(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_DIRECTORY }; }
-  if (S_ISREG(sb.st_mode)) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_FILE }; }
+  if (S_ISLNK(sb.st_mode)) {
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_LINK };
+    return KIT_OK;
+  }
+  if (S_ISDIR(sb.st_mode)) {
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_DIRECTORY };
+    return KIT_OK;
+  }
+  if (S_ISREG(sb.st_mode)) {
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_FILE };
+    return KIT_OK;
+  }
 #endif
 
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = KIT_BUILTIN_CONST_IO_UNKNOWN };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_listdir(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_listdir(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* path = KIT_VAR_AS_STRING(&args[0])->s;
-  if (!path) return KIT_NULLVAR;
+  if (!path) {
+    *result = KIT_NULLVAR;
+    return KIT_OK;
+  }
 
-  kit_var l = { .type = KIT_VARTYPE_LIST, .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool) };
-  if (kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&l))) {
-    kit_refdobj_pool_return(&kit_g_obj_pool, l.val.list);
-    return KIT_NULLVAR;
+  kit_var l = { .type = KIT_VARTYPE_LIST, .val.list = kit_refdobj_pool_acquire(vm->pool) };
+  if (kit_list_init(vm->pool, NULL, 0, KIT_VAR_AS_LIST(&l))) {
+    kit_refdobj_pool_return(vm->pool, l.val.list);
+
+    *result = KIT_NULLVAR;
+    return KIT_OK;
   }
 
   DIR* d = opendir(path);
-  if (!d) return KIT_NULLVAR;
+  if (!d) {
+    *result = KIT_NULLVAR;
+    return KIT_OK;
+  }
 
   struct dirent* ent = NULL;
   while ((ent = readdir(d)) != NULL) {
@@ -320,32 +398,35 @@ kit_builtins_io_listdir(kit_var* args, u32 nargs)
      */
     if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
 
-    kit_var v = kit_make_var_from_string(kit_strdup(ent->d_name));
-    kit_list_append(&v, KIT_VAR_AS_LIST(&l));
-    kit_var_release(&v);
+    kit_var v = kit_make_var_from_string(vm->pool, kit_strdup(ent->d_name));
+    kit_list_append(vm->pool, &v, KIT_VAR_AS_LIST(&l));
+    kit_var_release(vm->pool, &v);
   }
 
   closedir(d);
 
-  return l;
+  *result = l;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_io_exists(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_exists(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* path = KIT_VAR_AS_STRING(&args[0])->s;
 
   /* fopen returns null for directories on windows. won't blame em. */
 #ifdef _WIN32
   DWORD attr = GetFileAttributesA(path);
-  return kit_var_from_bool(attr != INVALID_FILE_ATTRIBUTES);
+  *result    = kit_var_from_bool(attr != INVALID_FILE_ATTRIBUTES);
+  return KIT_OK;
 #else
-  return kit_var_from_bool(access(path, F_OK) == 0);
+  *result = kit_var_from_bool(access(path, F_OK) == 0);
+  return KIT_OK;
 #endif
 }
 
-kit_var
-kit_builtins_io_mkdir(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_io_mkdir(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* path = KIT_VAR_AS_STRING(&args[0])->s;
 
@@ -355,6 +436,7 @@ kit_builtins_io_mkdir(kit_var* args, u32 nargs)
 #  define xmkdir(path) mkdir(path, 0755)
 #endif
 
-  int e = xmkdir(path);
-  return kit_var_from_int(e);
+  int e   = xmkdir(path);
+  *result = kit_var_from_int(e);
+  return KIT_OK;
 }

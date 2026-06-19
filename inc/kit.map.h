@@ -25,6 +25,7 @@
 #ifndef KIT_MAP_H
 #define KIT_MAP_H
 
+#include "kit.pool.h"
 #include "kit.stdafx.h"
 
 struct kit_var;
@@ -37,20 +38,20 @@ typedef struct kit_map {
   u32             capacity;
 } kit_map;
 
-int  kit_map_init(struct kit_var* vars, u32 npairs, kit_map* map);
-void kit_map_free(kit_map* map);
+int  kit_map_init(kit_refdobj_pool* object_pool, struct kit_var* vars, u32 npairs, kit_map* map);
+void kit_map_free(kit_refdobj_pool* object_pool, kit_map* map);
 
 struct kit_var* kit_map_find(kit_map* map, const struct kit_var* key);
-struct kit_var* kit_map_find_or_insert(kit_map* map, const struct kit_var* key);
+struct kit_var* kit_map_find_or_insert(kit_refdobj_pool* object_pool, kit_map* map, const struct kit_var* key);
 
 /**
  * Get all the keys as a list
  */
-struct kit_var kit_map_keys(const kit_map* map);
+struct kit_var kit_map_keys(kit_refdobj_pool* object_pool, const kit_map* map);
 
 /**
  * Get all the values as a list
  */
-struct kit_var kit_map_values(const kit_map* map);
+struct kit_var kit_map_values(kit_refdobj_pool* object_pool, const kit_map* map);
 
 #endif // KIT_MAP_H

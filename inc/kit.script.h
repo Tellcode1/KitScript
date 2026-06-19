@@ -37,6 +37,7 @@
  * Script entity.
  */
 typedef struct kit_script {
+  kit_vm*                 vm;
   kit_compilation_result  compiled;
   const kit_builtin_func* extern_funcs;
   const kit_builtin_var*  extern_vars;
@@ -53,6 +54,7 @@ kit_ecode kit_script_call(kit_script* s, const char* func_name, kit_var* args, u
 
 static inline int
 kit_script_init(
+    kit_vm*                       vm,
     const kit_compilation_result* r,
     const kit_builtin_func*       extern_funcs,
     u32                           nextern_funcs,
@@ -65,6 +67,7 @@ kit_script_init(
   s->extern_vars  = extern_vars;
   s->nextern_vars = nextern_vars;
   s->compiled     = *r;
+  s->vm           = vm;
   return 0;
 }
 

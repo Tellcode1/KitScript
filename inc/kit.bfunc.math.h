@@ -26,7 +26,9 @@
 #define KIT_MATH_BUILTIN_FUNCTIONS_H
 
 #include "kit.cast.h"
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 #include <math.h>
 
@@ -37,48 +39,48 @@ static inline double ex_clamp(double x, double min, double max)  {
 static inline double ex_lerp(double a, double b, double t)  {
    return a + ((b-a) * t);
 }
-static inline kit_var kit_builtins_sin(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = sin(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_cos(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = cos(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_tan(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = tan(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_asin(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = asin(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_acos(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = acos(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_atan(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = atan(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_atan2(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = atan2(kit_cast_to_float(&args[0]),kit_cast_to_float(&args[1]))}}; }
-static inline kit_var kit_builtins_sinh(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = sinh(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_cosh(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = cosh(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_tanh(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = tanh(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_acosh(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = acosh(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_asinh(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = asinh(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_atanh(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = atanh(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_exp(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = exp(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_log(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = log(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_log10(kit_var* args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = log10(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_pow(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = pow(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1]))}}; }
-static inline kit_var kit_builtins_sqrt(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = sqrt(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_ceil(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = ceil(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_floor(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = floor(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_fmod(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = fmod(kit_cast_to_float(&args[0]),kit_cast_to_float(&args[1]))}}; }
-static inline kit_var kit_builtins_round(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = round(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_trunc(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = trunc(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_abs(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = fabs(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_hypot(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = hypot(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1]))}}; }
-static inline kit_var kit_builtins_signbit(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_INT, .val = {.i = signbit(kit_cast_to_float(&args[0]))}}; }
-static inline kit_var kit_builtins_deg2rad(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = kit_cast_to_float(&args[0]) * 3.14159265358979323846 / 180.0}}; }
-static inline kit_var kit_builtins_rad2deg(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = kit_cast_to_float(&args[0]) * 180.0 / 3.14159265358979323846}}; }
-static inline kit_var kit_builtins_min(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = { .f = fmin(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1])) }}; }
-static inline kit_var kit_builtins_max(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = { .f = fmax(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1])) }}; }
-static inline kit_var kit_builtins_clamp(kit_var*args, u32 nargs) { (void)nargs; return (kit_var){.type = KIT_VARTYPE_FLOAT, .val = { .f = ex_clamp(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1]), kit_cast_to_float(&args[2])) }}; }
+static inline kit_ecode kit_builtins_sin(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = sin(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_cos(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = cos(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_tan(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = tan(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_asin(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = asin(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_acos(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = acos(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_atan(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = atan(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_atan2(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = atan2(kit_cast_to_float(&args[0]),kit_cast_to_float(&args[1]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_sinh(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = sinh(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_cosh(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = cosh(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_tanh(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = tanh(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_acosh(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = acosh(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_asinh(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = asinh(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_atanh(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = atanh(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_exp(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = exp(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_log(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = log(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_log10(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = log10(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_pow(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = pow(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_sqrt(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = sqrt(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_ceil(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = ceil(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_floor(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = floor(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_fmod(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = fmod(kit_cast_to_float(&args[0]),kit_cast_to_float(&args[1]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_round(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = round(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_trunc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = trunc(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_abs(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = fabs(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_hypot(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = hypot(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_signbit(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_INT, .val = {.i = signbit(kit_cast_to_float(&args[0]))}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_deg2rad(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = kit_cast_to_float(&args[0]) * 3.14159265358979323846 / 180.0}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_rad2deg(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = {.f = kit_cast_to_float(&args[0]) * 180.0 / 3.14159265358979323846}}; return KIT_OK; }
+static inline kit_ecode kit_builtins_min(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = { .f = fmin(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1])) }}; return KIT_OK; }
+static inline kit_ecode kit_builtins_max(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = { .f = fmax(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1])) }}; return KIT_OK; }
+static inline kit_ecode kit_builtins_clamp(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result) { (void)nargs; *result =  (kit_var){.type = KIT_VARTYPE_FLOAT, .val = { .f = ex_clamp(kit_cast_to_float(&args[0]), kit_cast_to_float(&args[1]), kit_cast_to_float(&args[2])) }}; return KIT_OK; }
 // clang-format on
 
 /* constructors */
-kit_var kit_builtins_vec2(kit_var* args, u32 nargs);
-kit_var kit_builtins_vec3(kit_var* args, u32 nargs);
-kit_var kit_builtins_vec4(kit_var* args, u32 nargs);
-kit_var kit_builtins_mat3(kit_var* args, u32 nargs);
-kit_var kit_builtins_mat4(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_vec2(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_vec3(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_vec4(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_mat3(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_mat4(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 /* interpolation */
-kit_var kit_builtins_smoothstep(kit_var* args, u32 nargs);
-kit_var kit_builtins_lerp(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_smoothstep(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_lerp(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 #endif // KIT_MATH_BUILTIN_FUNCTIONS_H

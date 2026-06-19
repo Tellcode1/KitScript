@@ -1,7 +1,9 @@
 #include "../../inc/kit.cast.h"
 #include "../../inc/kit.list.h"
+#include "../../inc/kit.perr.h"
 #include "../../inc/kit.stdafx.h"
 #include "../../inc/kit.var.h"
+#include "../../inc/kit.vm.h"
 
 #include <time.h>
 
@@ -40,10 +42,8 @@ static inline uint32_t
 rotl(const uint32_t x, int k)
 { return (x << k) | (x >> (32 - k)); }
 
-static uint32_t s[4];
-
 uint32_t
-next(void)
+next(u32 s[4])
 {
   const uint32_t result = rotl(s[0] + s[3], 7) + s[0];
 
@@ -66,7 +66,7 @@ next(void)
    non-overlapping subsequences for parallel computations. */
 
 void
-jump(void)
+jump(u32 s[4])
 {
   static const uint32_t JUMP[] = { 0x8764000b, 0xf542d2d3, 0x6fa035c3, 0x77f2db5b };
 
@@ -82,7 +82,7 @@ jump(void)
         s2 ^= s[2];
         s3 ^= s[3];
       }
-      next();
+      next(s);
     }
 
   s[0] = s0;
@@ -97,7 +97,7 @@ jump(void)
    subsequences for parallel distributed computations. */
 
 void
-long_jump(void)
+long_jump(u32 s[4])
 {
   static const uint32_t LONG_JUMP[] = { 0xb523952e, 0x0b6f099f, 0xccf5a0ef, 0x1c580662 };
 
@@ -113,7 +113,7 @@ long_jump(void)
         s2 ^= s[2];
         s3 ^= s[3];
       }
-      next();
+      next(s);
     }
 
   s[0] = s0;
@@ -125,7 +125,7 @@ long_jump(void)
 // END -- Xoshiro128++
 
 static inline void
-seed_xoshiro(const char* str)
+seed_xoshiro(u32 s[4], const char* str)
 {
   u64 h1 = 0xdeadbeef;
   u64 h2 = 0x41c6ce57;
@@ -154,71 +154,82 @@ seed_xoshiro(const char* str)
   s[3] = (h2 >> 32) & 0xFFFFFFFF;
 }
 
-kit_var
-kit_builtins_rand_seed(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_seed(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
-  seed_xoshiro(KIT_VAR_AS_STRING(&args[0])->s);
-  return KIT_NULLVAR;
+  seed_xoshiro(vm->hash_state, KIT_VAR_AS_STRING(&args[0])->s);
+  *result = KIT_NULLVAR;
+  return KIT_OK;
 }
 
 static inline u32
-xrand(void)
-{ return next(); }
+xrand(u32 s[4])
+{ return next(s); }
 
-kit_var
-kit_builtins_rand_int(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_int(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = (int)xrand() } };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = (int)xrand(vm->hash_state) } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_rand_range(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_range(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   int min = kit_cast_to_int(&args[0]);
   int max = kit_cast_to_int(&args[1]);
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = ((int)xrand() * (max - min + 1)) + min } };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = ((int)xrand(vm->hash_state) * (max - min + 1)) + min } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_rand_float(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_float(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = (double)xrand() / (double)UINT32_MAX } };
+  *result = (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = (double)xrand(vm->hash_state) / (double)UINT32_MAX } };
+  return KIT_OK;
 }
 
-#include "../../inc/kit.bfunc.h"
-kit_var
-kit_builtins_rand_vec2(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_vec2(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_VEC2, .val = { .vec2 = { (double)xrand() / (double)UINT32_MAX, (double)xrand() / (double)UINT32_MAX } } };
+  *result =
+      (kit_var){ .type = KIT_VARTYPE_VEC2,
+                 .val  = { .vec2 = { (double)xrand(vm->hash_state) / (double)UINT32_MAX, (double)xrand(vm->hash_state) / (double)UINT32_MAX } } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_rand_vec3(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_vec3(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){
+  *result = (kit_var){
+
     .type = KIT_VARTYPE_VEC3,
-    .val  = { .vec3 = { (double)xrand() / (double)UINT32_MAX, (double)xrand() / (double)UINT32_MAX, (double)xrand() / (double)UINT32_MAX } }
+    .val  = { .vec3 = { (double)xrand(vm->hash_state) / (double)UINT32_MAX,
+                        (double)xrand(vm->hash_state) / (double)UINT32_MAX,
+                        (double)xrand(vm->hash_state) / (double)UINT32_MAX } }
   };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_rand_vec4(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_vec4(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_VEC4,
-                    .val  = { .vec4 = { (double)xrand() / (double)UINT32_MAX,
-                                        (double)xrand() / (double)UINT32_MAX,
-                                        (double)xrand() / (double)UINT32_MAX,
-                                        (double)xrand() / (double)UINT32_MAX } } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC4,
+                       .val  = { .vec4 = { (double)xrand(vm->hash_state) / (double)UINT32_MAX,
+                                           (double)xrand(vm->hash_state) / (double)UINT32_MAX,
+                                           (double)xrand(vm->hash_state) / (double)UINT32_MAX,
+                                           (double)xrand(vm->hash_state) / (double)UINT32_MAX } } };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_rand_list(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rand_list(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -232,19 +243,21 @@ kit_builtins_rand_list(kit_var* args, u32 nargs)
   }
 
   kit_var v  = (kit_var){ .type = KIT_VARTYPE_LIST };
-  v.val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+  v.val.list = kit_refdobj_pool_acquire(vm->pool);
 
-  kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&v));
+  kit_list_init(vm->pool, NULL, 0, KIT_VAR_AS_LIST(&v));
 
   u64 range = (u64)(i64)max - (u64)(i64)min + 1;
   for (i32 i = 0; i < num; i++) {
     kit_var e = {
       .type  = KIT_VARTYPE_INT,
-      .val.i = (int)((i64)min + (i64)(xrand() % range)),
+      .val.i = (int)((i64)min + (i64)(xrand(vm->hash_state) % range)),
     };
-    int err = kit_list_append(&e, KIT_VAR_AS_LIST(&v));
-    if (err) return KIT_NULLVAR;
+    int err = kit_list_append(vm->pool, &e, KIT_VAR_AS_LIST(&v));
+    if (err) *result = KIT_NULLVAR;
+    return KIT_OK;
   }
 
-  return v;
+  *result = v;
+  return KIT_OK;
 }

@@ -72,7 +72,7 @@ kit_str_intern(const char* s, kit_str_interner* table)
   if (table->strings_count >= table->strings_capacity) {
     u32 new_capacity = MAX(table->strings_capacity * 2, 4);
 
-    u32* new_hashes = realloc(table->string_hashes, sizeof(u32) * new_capacity);
+    u32* new_hashes = (u32*)realloc(table->string_hashes, sizeof(u32) * new_capacity);
     if (!new_hashes) return NULL;
 
     char** new_strings = (char**)realloc((void*)table->strings, sizeof(char*) * new_capacity);

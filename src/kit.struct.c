@@ -7,14 +7,14 @@
 #include <string.h>
 
 int
-kit_struct_init_from(const kit_struct* from, kit_struct* s)
+kit_struct_init_from(kit_refdobj_pool* object_pool, const kit_struct* from, kit_struct* s)
 {
   kit_var*     members = calloc(from->member_count, sizeof(kit_var));
   const char** names   = (const char**)calloc(from->member_count, sizeof(char*));
   u32*         hashes  = calloc(from->member_count, sizeof(u32));
 
   for (u32 i = 0; i < from->member_count; i++) {
-    kit_var_deep_cpy(&from->members[i], &members[i]);
+    kit_var_deep_cpy(object_pool, &from->members[i], &members[i]);
     hashes[i] = from->member_hashes[i];
     names[i]  = from->member_names[i];
   }

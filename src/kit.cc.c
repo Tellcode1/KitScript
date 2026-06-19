@@ -846,11 +846,12 @@ emit_lvalue_load(kit_compiler* cc, val_t* lv)
 }
 
 static inline RETURNS_ERRCODE int
-make_string_variable(char* s, kit_var* v) // s will be onwed by variable after this
+make_string_variable(kit_arena* a, char* s, kit_var* v) // s will be onwed by variable after this
 {
-  kit_refdobj* obj = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+  kit_refdobj* obj = kit_arnalloc(a, sizeof(kit_refdobj));
   if (!obj) return -1;
 
+  obj->refc                 = 1;
   KIT_OBJ_AS_STRING(obj)->s = s;
 
   *v = (kit_var){ .type = KIT_VARTYPE_STRING, .val.s = obj };
@@ -892,7 +893,7 @@ convert_node_to_literal(kit_compiler* cc, int node, kit_var* o)
     case KIT_AST_NODE_FLOAT: *o = (kit_var){ .type = KIT_VARTYPE_FLOAT, .val.f = KIT_GET_NODE(p, node)->f.f }; return 0;
     case KIT_AST_NODE_CHAR: *o = (kit_var){ .type = KIT_VARTYPE_CHAR, .val.c = KIT_GET_NODE(p, node)->c.c }; return 0;
     case KIT_AST_NODE_BOOL: *o = (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = KIT_GET_NODE(p, node)->b.b }; return 0;
-    case KIT_AST_NODE_STRING: return make_string_variable(kit_arnstrdup(cc->arena, KIT_GET_NODE(p, node)->s.s), o);
+    case KIT_AST_NODE_STRING: return make_string_variable(cc->arena, kit_arnstrdup(cc->arena, KIT_GET_NODE(p, node)->s.s), o);
 
     case KIT_AST_NODE_CALL: {
       const char* function_name = KIT_GET_NODE(cc->ast, node)->call.function_name;
@@ -2856,7 +2857,9 @@ compile(kit_compiler* cc, int node)
         return -1;
       }
 
-      kit_var line_str = kit_make_var_from_string(line);
+      kit_var line_str = KIT_NULLVAR;
+      if (make_string_variable(cc->arena, line, &line_str) < 0) return -1;
+
       if (add_literal_to_track(cc, &line_str) < 0) return -1;
 
       kit_emit_ins(cc, (kit_ins){ .assertion = { .opcode = EIR_OPCODE_ASSERT, .cond = cond, .line_id = kit_var_hash(&line_str) } });
@@ -3752,7 +3755,6 @@ get_instruction_constant_result(const kit_compiler* cc, const kit_ins* i, kit_va
         if (cc->lit_table->literal_hashes[j] != id) continue;
 
         kit_var_shallow_cpy(lit, result);
-        kit_var_acquire(result);
 
         return 0;
       }

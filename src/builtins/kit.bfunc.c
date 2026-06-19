@@ -77,51 +77,57 @@ kit_read_full_line(FILE* fp)
   return line;
 }
 
-kit_var
-kit_builtins_print(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_print(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   for (u32 i = 0; i < nargs; i++) kit_var_print(&args[i], stdout);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_readln(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_readln(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)args;
   (void)nargs;
-  return kit_make_var_from_string(kit_read_full_line(stdin));
+  *result = kit_make_var_from_string(vm->pool, kit_read_full_line(stdin));
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_cast_int(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_cast_int(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_var_to_int(args[0]) };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_var_to_int(args[0]) };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_cast_char(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_cast_char(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_CHAR, .val.c = (char)kit_var_to_int(args[0]) };
+  *result = (kit_var){ .type = KIT_VARTYPE_CHAR, .val.c = (char)kit_var_to_int(args[0]) };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_cast_bool(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_cast_bool(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = kit_var_to_bool(args[0]) };
+  *result = (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = kit_var_to_bool(args[0]) };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_cast_float(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_cast_float(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val.f = kit_var_to_float(args[0]) };
+  *result = (kit_var){ .type = KIT_VARTYPE_FLOAT, .val.f = kit_var_to_float(args[0]) };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_cast_string(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_cast_string(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -131,34 +137,44 @@ kit_builtins_cast_string(kit_var* args, u32 nargs)
 
   kit_var_to_string(&args[0], s, len + 1);
 
-  kit_refdobj* obj = kit_refdobj_pool_acquire(&kit_g_obj_pool);
+  kit_refdobj* obj = kit_refdobj_pool_acquire(vm->pool);
 
   KIT_OBJ_AS_STRING(obj)->s = s;
 
-  return (kit_var){ .type = KIT_VARTYPE_STRING, .val.s = obj };
+  *result = (kit_var){ .type = KIT_VARTYPE_STRING, .val.s = obj };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_cast_list(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_cast_list(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_var new_list = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.list = kit_refdobj_pool_acquire(vm->pool),
   };
 
-  if (!new_list.val.list || kit_list_init(args, nargs, KIT_OBJ_AS_LIST(new_list.val.list))) // acquires the elements. Stack frees them later.
+  if (!new_list.val.list
+      || kit_list_init(vm->pool, args, nargs, KIT_OBJ_AS_LIST(new_list.val.list))) // acquires the elements. Stack frees them later.
   {
-    kit_refdobj_pool_return(&kit_g_obj_pool, new_list.val.list);
-    return (kit_var){ .type = KIT_VARTYPE_NULL };
+    kit_refdobj_pool_return(vm->pool, new_list.val.list);
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK;
   }
 
-  return new_list;
+  *result = new_list;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_struct_name(kit_var* args, u32 nargs)
-{ return kit_make_var_from_string(kit_strdup(KIT_VAR_AS_STRUCT(&args[0])->name)); }
+kit_ecode
+kit_builtins_struct_name(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = kit_make_var_from_string(vm->pool, kit_strdup(KIT_VAR_AS_STRUCT(&args[0])->name));
+  return KIT_OK;
+}
 
-kit_var
-kit_builtins_struct_member_count(kit_var* args, u32 nargs)
-{ return kit_var_from_int(KIT_VAR_AS_STRUCT(&args[0])->member_count); }
+kit_ecode
+kit_builtins_struct_member_count(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = kit_var_from_int(KIT_VAR_AS_STRUCT(&args[0])->member_count);
+  return KIT_OK;
+}

@@ -25,30 +25,32 @@
 #ifndef KIT_LIST_BUILTIN_FUNCTIONS_H
 #define KIT_LIST_BUILTIN_FUNCTIONS_H
 
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 // Make list from elements
-kit_var kit_builtins_list_make(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_list_make(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 // append(list, value)
-kit_var kit_builtins_list_append(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_list_append(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 // pop(list)
-kit_var kit_builtins_list_pop(kit_var* args, u32 nargs); // fast
+kit_ecode kit_builtins_list_pop(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // fast
 // remove(list, index)
-kit_var kit_builtins_list_remove(kit_var* args, u32 nargs); // expensive
+kit_ecode kit_builtins_list_remove(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // expensive
 // insert(list, index, value)
-kit_var kit_builtins_list_insert(kit_var* args, u32 nargs); // Replaces value if it exists!
+kit_ecode kit_builtins_list_insert(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // Replaces value if it exists!
 // find(list, value) => -1 if non existent
-kit_var kit_builtins_list_find(kit_var* args, u32 nargs);  // Returns index, -1 if it doesn't exist.
-kit_var kit_builtins_list_rfind(kit_var* args, u32 nargs); // Returns index, -1 if it doesn't exist.
+kit_ecode kit_builtins_list_find(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);  // Returns index, -1 if it doesn't exist.
+kit_ecode kit_builtins_list_rfind(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // Returns index, -1 if it doesn't exist.
 // exists(list, val) => false if not in list
-kit_var kit_builtins_list_exists(kit_var* args, u32 nargs); // Returns if element is in list
+kit_ecode kit_builtins_list_exists(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // Returns if element is in list
 // reserve(list, elements_to_reserve)
-kit_var kit_builtins_list_reserve(kit_var* args, u32 nargs); // number of new variables to reserve
+kit_ecode kit_builtins_list_reserve(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // number of new variables to reserve
 // resize(list, new_size)
-kit_var kit_builtins_list_resize(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_list_resize(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 // len(list)
-kit_var kit_builtins_list_len(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_list_len(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 /* sort a list in place using tim sort */
-kit_var kit_builtins_list_sort(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_list_sort(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 #endif // KIT_LIST_BUILTIN_FUNCTIONS_H

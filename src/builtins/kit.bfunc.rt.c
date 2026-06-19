@@ -2,6 +2,7 @@
 
 #include "../../inc/kit.arena.h"
 #include "../../inc/kit.ast.h"
+#include "../../inc/kit.cc.h"
 #include "../../inc/kit.cerr.h"
 #include "../../inc/kit.exec.h"
 #include "../../inc/kit.list.h"
@@ -25,10 +26,12 @@ find_func(const char* name, const kit_compilation_result* r, kitc_function* out)
   return -1;
 }
 
-kit_var
-kit_builtins_rt_compile_and_exec(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_var ret = KIT_NULLVAR;
+
+  kit_vm fork_vm = { 0 };
 
   kit_ast                ast      = { 0, .root = -1 };
   kit_parser             parser   = { 0 };
@@ -121,6 +124,12 @@ kit_builtins_rt_compile_and_exec(kit_var* args, u32 nargs)
     goto RET;
   }
 
+  e = kit_vm_fork(entry_func.name_hash, vm, &fork_vm);
+  if (e) {
+    kit_xerror("kit::exec: VM Fork failed\n");
+    goto RET;
+  }
+
   kit_exec_info exec_info = {
     .args            = NULL,
     .nargs           = 0,
@@ -139,7 +148,7 @@ kit_builtins_rt_compile_and_exec(kit_var* args, u32 nargs)
     .nstructs        = compiled.structs_count,
     .structs         = compiled.structs,
   };
-  kit_ecode err = kit_exec(&exec_info, &ret); // Global variable initialization.
+  kit_ecode err = kit_exec(vm, &exec_info, &ret); // Global variable initialization.
 
   exec_info.code       = entry_func.code;
   exec_info.code_count = entry_func.code_count;
@@ -148,7 +157,7 @@ kit_builtins_rt_compile_and_exec(kit_var* args, u32 nargs)
   exec_info.args  = arguments->vars;
 
   /* Execute main function. */
-  err = kit_exec(&exec_info, &ret);
+  err = kit_exec(vm, &exec_info, &ret);
   if (err) { kit_xerror("kit::compile_and_exec(): Function returned error: %s\n", kit_ecode_str(err)); }
 
   kit_argc = save_argc;
@@ -160,26 +169,43 @@ RET:
   kit_compilation_result_free(&compiled);
   kit_str_interner_free(&interner);
   kit_arena_free(&arena);
+  kit_vm_free(&fork_vm);
   // kit_stack_free(&stack);
-  return ret;
+  *result = ret;
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_rt_tokenize(kit_var* args, u32 nargs)
-{ return KIT_NULLVAR; }
+kit_ecode
+kit_builtins_rt_tokenize(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = KIT_NULLVAR;
+  return KIT_OK;
+}
 
-kit_var
-kit_builtins_rt_ast_init(kit_var* args, u32 nargs)
-{ return KIT_NULLVAR; }
+kit_ecode
+kit_builtins_rt_ast_init(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = KIT_NULLVAR;
+  return KIT_OK;
+}
 
-kit_var
-kit_builtins_rt_ast_free(kit_var* args, u32 nargs)
-{ return KIT_NULLVAR; }
+kit_ecode
+kit_builtins_rt_ast_free(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = KIT_NULLVAR;
+  return KIT_OK;
+}
 
-kit_var
-kit_builtins_rt_parse(kit_var* args, u32 nargs)
-{ return KIT_NULLVAR; }
+kit_ecode
+kit_builtins_rt_parse(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = KIT_NULLVAR;
+  return KIT_OK;
+}
 
-kit_var
-kit_builtins_rt_compile(kit_var* args, u32 nargs)
-{ return KIT_NULLVAR; }
+kit_ecode
+kit_builtins_rt_compile(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = KIT_NULLVAR;
+  return KIT_OK;
+}

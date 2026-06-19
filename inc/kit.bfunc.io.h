@@ -25,27 +25,29 @@
 #ifndef KIT_IO_BUILTIN_FUNCTIONS_H
 #define KIT_IO_BUILTIN_FUNCTIONS_H
 
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 char* kit_read_full_line(FILE* f);
 
-kit_var kit_builtins_io_read(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_write(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_seek(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_ptell(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_error(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_flush(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_readln(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_println(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_print(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_type(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_at_eof(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_open(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_close(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_getc(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_putc(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_listdir(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_exists(kit_var* args, u32 nargs);
-kit_var kit_builtins_io_mkdir(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_io_read(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_write(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_seek(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_ptell(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_error(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_flush(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_readln(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_println(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_print(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_type(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_at_eof(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_open(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_close(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_getc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_putc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_listdir(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_exists(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_io_mkdir(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 #endif // KIT_IO_BUILTIN_FUNCTIONS_H

@@ -117,17 +117,17 @@ typedef struct kit_struct_member_pair {
 #define KIT_NULLVAR                                                                                                                                  \
   (kit_var) { .type = KIT_VARTYPE_NULL }
 
-kit_var kit_make_var_from_string(char* s);
+kit_var kit_make_var_from_string(kit_refdobj_pool* object_pool, char* s);
 
 int kit_var_shallow_cpy(const kit_var* var, kit_var* dst);
-int kit_var_deep_cpy(const kit_var* var, kit_var* dst);
+int kit_var_deep_cpy(kit_refdobj_pool* object_pool, const kit_var* var, kit_var* dst);
 
 void   kit_var_print(const struct kit_var* v, FILE* f);
 void   kit_var_to_string(const struct kit_var* v, char* buffer, size_t buffer_size);
 size_t kit_var_to_string_size(const struct kit_var* v);
 
-i32  kit_var_acquire(kit_var* v);
-void kit_var_release(kit_var* v);
+i32  kit_var_acquire(kit_refdobj_pool* object_pool, kit_var* v);
+void kit_var_release(kit_refdobj_pool* object_pool, kit_var* v);
 
 u32  kit_var_hash(const kit_var* var);
 bool kit_var_equal(const kit_var* a, const kit_var* b);
@@ -136,15 +136,15 @@ bool kit_var_equal(const kit_var* a, const kit_var* b);
  * Index a container (excluding strings).
  * Strings *are* supported.
  */
-int kit_var_index(const kit_var* base, const kit_var* index, kit_var* result);
+int kit_var_index(kit_refdobj_pool* object_pool, const kit_var* base, const kit_var* index, kit_var* result);
 
 /**
  * Set the element at the index given to the specified value.
  * Strings are *not* supported (they are immutable).
  */
-int kit_var_index_assign(kit_var* base, const kit_var* index, const kit_var* value);
+int kit_var_index_assign(kit_refdobj_pool* object_pool, kit_var* base, const kit_var* index, const kit_var* value);
 
-void kit_var_free(kit_var* var);
+void kit_var_free(kit_refdobj_pool* object_pool, kit_var* var);
 
 /**
  * Extend the given vector to be a vec4.

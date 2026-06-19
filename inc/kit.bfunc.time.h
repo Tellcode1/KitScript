@@ -25,16 +25,18 @@
 #ifndef KIT_TIME_BUILTIN_FUNCTIONS_H
 #define KIT_TIME_BUILTIN_FUNCTIONS_H
 
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 /* We don't get millisecond time by default in C??? WHY???? */
 
 /* Seconds since unix epoch. */
-kit_var kit_builtins_time_now(kit_var* args, u32 nargs);
-kit_var kit_builtins_time_mono(kit_var* args, u32 nargs); // Higher resolution than now() and stable.
+kit_ecode kit_builtins_time_now(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_time_mono(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // Higher resolution than now() and stable.
 
 /* Returns time::timestamp structure. See bstruct.h */
-kit_var kit_builtins_time_local(kit_var* args, u32 nargs);
-kit_var kit_builtins_time_utc(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_time_local(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_time_utc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 #endif // KIT_TIME_BUILTIN_FUNCTIONS_H

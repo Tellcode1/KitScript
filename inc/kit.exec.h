@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 
-#ifndef KIT_VM_H
-#define KIT_VM_H
+#ifndef KIT_EXEC_H
+#define KIT_EXEC_H
 
 #include "kit.bfunc.h"
 #include "kit.bvar.h"
@@ -32,6 +32,7 @@
 #include "kit.perr.h"
 #include "kit.stdafx.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 #include <stddef.h>
 
@@ -66,7 +67,9 @@ typedef struct kit_exec_info {
  *
  * Arguments can also be passed using the args member
  * of info.
+ *
+ * Initialize the VM as per the rules on its decleration.
  */
-kit_ecode kit_exec(const kit_exec_info* info, kit_var* ret);
+kit_ecode kit_exec(kit_vm* vm, const kit_exec_info* info, kit_var* ret);
 
-#endif // KIT_VM_H
+#endif // KIT_EXEC_H

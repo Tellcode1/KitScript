@@ -25,26 +25,29 @@
 #ifndef KIT_STR_BUILTIN_FUNCTIONS_H
 #define KIT_STR_BUILTIN_FUNCTIONS_H
 
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 // Form a string from a list of characters
-kit_var kit_builtins_str_from_list(kit_var* args, u32 nargs);
-static inline kit_var
-kit_builtins_str_equal(kit_var* args, u32 nargs)
+kit_ecode kit_builtins_str_from_list(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+static inline kit_ecode
+kit_builtins_str_equal(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = strcmp(KIT_VAR_AS_STRING(&args[0])->s, KIT_VAR_AS_STRING(&args[1])->s) == 0 } };
+  *result = (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = strcmp(KIT_VAR_AS_STRING(&args[0])->s, KIT_VAR_AS_STRING(&args[1])->s) == 0 } };
+  return KIT_OK;
 }
-kit_var kit_builtins_str_cat(kit_var* args, u32 nargs);
-kit_var kit_builtins_str_substr(kit_var* args, u32 nargs); // substring: string, int start, int length
-kit_var kit_builtins_str_repeat(kit_var* args, u32 nargs); // repeat: string, int times
-kit_var kit_builtins_str_replace(kit_var* args, u32 nargs);
-kit_var kit_builtins_str_ltrim(kit_var* args, u32 nargs);
-kit_var kit_builtins_str_rtrim(kit_var* args, u32 nargs);
-kit_var kit_builtins_str_trim(kit_var* args, u32 nargs);
-kit_var kit_builtins_str_split(kit_var* args, u32 nargs); // Get list of strings partition by args[1] (string)
-kit_var kit_builtins_str_len(kit_var* args, u32 nargs);
-kit_var kit_builtins_str_find(kit_var* args, u32 nargs);
-kit_var kit_builtins_str_rfind(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_str_cat(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_str_substr(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // substring: string, int start, int length
+kit_ecode kit_builtins_str_repeat(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // repeat: string, int times
+kit_ecode kit_builtins_str_replace(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_str_ltrim(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_str_rtrim(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_str_trim(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_str_split(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result); // Get list of strings partition by args[1] (string)
+kit_ecode kit_builtins_str_len(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_str_find(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_str_rfind(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 #endif // KIT_STR_BUILTIN_FUNCTIONS_H

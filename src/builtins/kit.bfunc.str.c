@@ -35,8 +35,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-kit_var
-kit_builtins_str_cat(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_cat(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -48,18 +48,22 @@ kit_builtins_str_cat(kit_var* args, u32 nargs)
   char* p = big_s;
   p[0]    = 0;
   for (u32 i = 0; i < nargs; i++) {
-    kit_var s = kit_builtins_cast_string(&args[i], 1);
+    kit_var s = KIT_NULLVAR;
+
+    kit_ecode e = kit_builtins_cast_string(vm, &args[i], 1, &s);
+    if (e < 0) return e;
 
     p = kit_strlpcat(p, KIT_VAR_AS_STRING(&s)->s, big_s, total_len + 1);
 
-    kit_var_release(&s);
+    kit_var_release(vm->pool, &s);
   }
 
-  return kit_make_var_from_string(big_s);
+  *result = kit_make_var_from_string(vm->pool, big_s);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_substr(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_substr(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -68,7 +72,10 @@ kit_builtins_str_substr(kit_var* args, u32 nargs)
   int         len   = kit_cast_to_int(&args[2]);
 
   size_t s_len = strlen(s);
-  if (start > s_len) { return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 }; }
+  if (start > s_len) {
+    *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 };
+    return KIT_OK;
+  }
 
   size_t copy_len = MIN(len, s_len - start);
 
@@ -76,11 +83,12 @@ kit_builtins_str_substr(kit_var* args, u32 nargs)
   strncpy(new_s, s + start, copy_len);
   new_s[copy_len] = 0;
 
-  return kit_make_var_from_string(new_s);
+  *result = kit_make_var_from_string(vm->pool, new_s);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_repeat(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_repeat(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -95,11 +103,12 @@ kit_builtins_str_repeat(kit_var* args, u32 nargs)
   char* p = new_s;
   for (int i = 0; i < times; i++) { p = kit_strlpcat(p, s, new_s, new_len + 1); }
 
-  return kit_make_var_from_string(new_s);
+  *result = kit_make_var_from_string(vm->pool, new_s);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_ltrim(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_ltrim(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -108,11 +117,12 @@ kit_builtins_str_ltrim(kit_var* args, u32 nargs)
   while (*s && isspace(*s)) { s++; }
   char* new_s = kit_strdup(s);
 
-  return kit_make_var_from_string(new_s);
+  *result = kit_make_var_from_string(vm->pool, new_s);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_rtrim(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_rtrim(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -126,11 +136,12 @@ kit_builtins_str_rtrim(kit_var* args, u32 nargs)
   strncpy(new_s, s, len);
   new_s[len] = 0;
 
-  return kit_make_var_from_string(new_s);
+  *result = kit_make_var_from_string(vm->pool, new_s);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_trim(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_trim(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -145,18 +156,20 @@ kit_builtins_str_trim(kit_var* args, u32 nargs)
   strncpy(new_s, s, len);
   new_s[len] = 0;
 
-  return kit_make_var_from_string(new_s);
+  *result = kit_make_var_from_string(vm->pool, new_s);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_len(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_len(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)strlen(KIT_VAR_AS_STRING(&args[0])->s) };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = (int)strlen(KIT_VAR_AS_STRING(&args[0])->s) };
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_split(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_split(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -165,26 +178,27 @@ kit_builtins_str_split(kit_var* args, u32 nargs)
 
   kit_var returned_list = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.list = kit_refdobj_pool_acquire(vm->pool),
   };
 
-  kit_list_init(NULL, 0, KIT_VAR_AS_LIST(&returned_list));
+  kit_list_init(vm->pool, NULL, 0, KIT_VAR_AS_LIST(&returned_list));
 
   char* to_split_copy = kit_strdup(to_split);
   char* tok           = strtok(to_split_copy, split_by);
 
   while (tok) {
-    kit_var s = kit_make_var_from_string(kit_strdup(tok));
-    kit_list_append(&s, KIT_VAR_AS_LIST(&returned_list));
+    kit_var s = kit_make_var_from_string(vm->pool, kit_strdup(tok));
+    kit_list_append(vm->pool, &s, KIT_VAR_AS_LIST(&returned_list));
 
     // Hand over ownership to list.
-    kit_var_release(&s);
+    kit_var_release(vm->pool, &s);
 
     tok = strtok(NULL, split_by);
   }
 
   free(to_split_copy);
-  return returned_list;
+  *result = returned_list;
+  return KIT_OK;
 }
 
 /* https://creativeandcritical.net/str-replace-c : Released under the public domain */
@@ -276,8 +290,8 @@ end_repl_str:
   return ret;
 }
 
-kit_var
-kit_builtins_str_replace(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_replace(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* str          = KIT_VAR_AS_STRING(&args[0])->s;
   const char* replace_this = KIT_VAR_AS_STRING(&args[1])->s;
@@ -285,17 +299,22 @@ kit_builtins_str_replace(kit_var* args, u32 nargs)
 
   char* s = repl_str(str, replace_this, replace_with);
 
-  return kit_make_var_from_string(s);
+  *result = kit_make_var_from_string(vm->pool, s);
+  return KIT_OK;
 }
 
-kit_var
-kit_builtins_str_find(kit_var* args, u32 nargs)
+kit_ecode
+kit_builtins_str_find(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* hay    = KIT_VAR_AS_STRING(&args[0])->s;
   const char* needle = KIT_VAR_AS_STRING(&args[1])->s;
 
   const char* find = strstr(hay, needle);
-  if (!find) return kit_var_from_int(-1);
+  if (!find) {
+    *result = kit_var_from_int(-1);
+    return KIT_OK; /* substring does not exist in string, this is successful */
+  }
 
-  return kit_var_from_int((int)(find - hay));
+  *result = kit_var_from_int((int)(find - hay));
+  return KIT_OK;
 }

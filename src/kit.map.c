@@ -31,7 +31,7 @@
 #include <stdlib.h>
 
 int
-kit_map_init(struct kit_var* vars, u32 npairs, kit_map* map)
+kit_map_init(kit_refdobj_pool* object_pool, struct kit_var* vars, u32 npairs, kit_map* map)
 {
   if (!map) return -1;
   memset(map, 0, sizeof(*map));
@@ -49,8 +49,8 @@ kit_map_init(struct kit_var* vars, u32 npairs, kit_map* map)
     if (kit_var_shallow_cpy(&vars[i], &map->keys[j])) goto err;
     if (kit_var_shallow_cpy(&vars[i + 1], &map->vals[j])) goto err;
 
-    kit_var_acquire(&map->keys[j]);
-    kit_var_acquire(&map->vals[j]);
+    kit_var_acquire(object_pool, &map->keys[j]);
+    kit_var_acquire(object_pool, &map->vals[j]);
 
     map->hashes[j] = kit_var_hash(&vars[i]);
 
@@ -68,11 +68,11 @@ err:
 }
 
 void
-kit_map_free(kit_map* map)
+kit_map_free(kit_refdobj_pool* object_pool, kit_map* map)
 {
   for (u32 i = 0; i < map->size; i++) {
-    kit_var_release(&map->keys[i]);
-    kit_var_release(&map->vals[i]);
+    kit_var_release(object_pool, &map->keys[i]);
+    kit_var_release(object_pool, &map->vals[i]);
   }
   free(map->keys);
   free(map->vals);
@@ -91,7 +91,7 @@ kit_map_find(kit_map* map, const kit_var* key)
 }
 
 kit_var*
-kit_map_find_or_insert(kit_map* map, const struct kit_var* key)
+kit_map_find_or_insert(kit_refdobj_pool* object_pool, kit_map* map, const struct kit_var* key)
 {
   u32 hash = kit_var_hash(key);
 
@@ -117,8 +117,8 @@ kit_map_find_or_insert(kit_map* map, const struct kit_var* key)
 
   kit_var_shallow_cpy(key, &map->keys[j]);
   kit_var_shallow_cpy(&v, &map->vals[j]);
-  kit_var_acquire(&map->keys[j]);
-  kit_var_acquire(&map->vals[j]);
+  kit_var_acquire(object_pool, &map->keys[j]);
+  kit_var_acquire(object_pool, &map->vals[j]);
 
   map->hashes[j] = kit_var_hash(key);
 
@@ -128,19 +128,19 @@ kit_map_find_or_insert(kit_map* map, const struct kit_var* key)
 }
 
 struct kit_var
-kit_map_keys(const kit_map* map)
+kit_map_keys(kit_refdobj_pool* object_pool, const kit_map* map)
 {
   kit_list l;
-  kit_list_init(NULL, 0, &l);
+  kit_list_init(object_pool, NULL, 0, &l);
 
   for (u32 i = 0; i < map->size; i++) {
-    kit_var_acquire(&map->keys[i]);
-    kit_list_append(&map->keys[i], &l);
+    kit_var_acquire(object_pool, &map->keys[i]);
+    kit_list_append(object_pool, &map->keys[i], &l);
   }
 
   kit_var v = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.list = kit_refdobj_pool_acquire(object_pool),
   };
   memcpy(v.val.list, &l, sizeof(kit_list));
 
@@ -148,19 +148,19 @@ kit_map_keys(const kit_map* map)
 }
 
 struct kit_var
-kit_map_values(const kit_map* map)
+kit_map_values(kit_refdobj_pool* object_pool, const kit_map* map)
 {
   kit_list l;
-  kit_list_init(NULL, 0, &l);
+  kit_list_init(object_pool, NULL, 0, &l);
 
   for (u32 i = 0; i < map->size; i++) {
-    kit_var_acquire(&map->vals[i]);
-    kit_list_append(&map->vals[i], &l);
+    kit_var_acquire(object_pool, &map->vals[i]);
+    kit_list_append(object_pool, &map->vals[i], &l);
   }
 
   kit_var v = {
     .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(&kit_g_obj_pool),
+    .val.list = kit_refdobj_pool_acquire(object_pool),
   };
   memcpy(v.val.list, &l, sizeof(kit_list));
 

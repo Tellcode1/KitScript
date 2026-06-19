@@ -26,17 +26,16 @@
 #define KIT_PROGRAM_ERROR_H
 
 typedef enum kit_ecode {
-  KIT_OK           = 0,
-  KIT_EMALLOC      = -1,
-  KIT_EMALFORM     = -2, // Malformed input
-  KIT_EILLINS      = -3, // Illegal instruction
-  KIT_ENONEXISTENT = -4, // Non existent variable / structure.
-  KIT_EUNDEFINED   = -5, // Undefined function
-  KIT_EUNKNOWN     = -6,
-  KIT_EPANIC       = -7,
-  KIT_EBADARG      = -8,  // Bad arguments to executor
-  KIT_ERANGE       = -9,  //  Out of range. JMP, etc.
-  KIT_EASSERT      = -10, // Assertion failed
+  KIT_OK         = 0,
+  KIT_EMALLOC    = -1,
+  KIT_EMALFORM   = -2, // Malformed input to (builtin) function
+  KIT_EILLINS    = -3, // Illegal instruction
+  KIT_EUNDEFINED = -5, // Undefined function/variable/type
+  KIT_EUNKNOWN   = -6, /* unknown error */
+  KIT_EPANIC     = -7,
+  KIT_EBADARG    = -8,  // Bad arguments to executor
+  KIT_ERANGE     = -9,  //  Out of range. JMP, etc.
+  KIT_EASSERT    = -10, // Assertion failed
 } kit_ecode;
 
 static inline const char*
@@ -47,8 +46,7 @@ kit_ecode_str(kit_ecode e)
     case KIT_EMALLOC: return "Allocation failed, Out of memory";
     case KIT_EMALFORM: return "Malformed or invalid input";
     case KIT_EILLINS: return "Illegal instruction";
-    case KIT_ENONEXISTENT: return "Undeclared variable";
-    case KIT_EUNDEFINED: return "Undefined function";
+    case KIT_EUNDEFINED: return "Undefined structure, variable or function";
     case KIT_EUNKNOWN: return "Unknown error";
     case KIT_EPANIC: return "PANIC was called";
     case KIT_EBADARG: return "Invalid arguments passed to executor";

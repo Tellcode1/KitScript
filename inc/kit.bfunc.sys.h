@@ -25,13 +25,15 @@
 #ifndef KIT_SYS_BUILTIN_FUNCTIONS_H
 #define KIT_SYS_BUILTIN_FUNCTIONS_H
 
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
-kit_var kit_builtins_sys_get_cmd_args(kit_var* args, u32 nargs);
-kit_var kit_builtins_sys_get_cwd(kit_var* args, u32 nargs);
-kit_var kit_builtins_sys_shell(kit_var* args, u32 nargs);
-kit_var kit_builtins_sys_sleep(kit_var* args, u32 nargs);
-kit_var kit_builtins_sys_getenv(kit_var* args, u32 nargs);
-kit_var kit_builtins_sys_setenv(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_sys_get_cmd_args(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_sys_get_cwd(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_sys_shell(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_sys_sleep(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_sys_getenv(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_sys_setenv(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 #endif // KIT_SYS_BUILTIN_FUNCTIONS_H

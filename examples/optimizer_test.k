@@ -1,5 +1,6 @@
 fn opaque(arg) {
-   return arg;
+   *result = arg;
+return KIT_OK;
 }
 
 fn sum(l) {
@@ -7,7 +8,8 @@ fn sum(l) {
    for (let i = 0; i < len(l); i++) {
       s += l[i];
    }
-   return s;
+   *result = s;
+return KIT_OK;
 }
 
 fn main() {

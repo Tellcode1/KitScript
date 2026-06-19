@@ -85,6 +85,8 @@ main(int argc, char* argv[])
   kit_var time_now    = KIT_NULLVAR;
   kit_var time_as_str = KIT_NULLVAR;
 
+  kit_refdobj_pool object_pool = { 0 };
+
   int e = 0;
 
   kit_argv = argv;
@@ -154,7 +156,7 @@ main(int argc, char* argv[])
 
   const u32 init_branches = 8;
 
-  e = kit_refdobj_pool_init(init_branches, &kit_g_obj_pool);
+  e = kit_refdobj_pool_init(init_branches, &object_pool);
   if (e) goto RET;
 
   kit_var gvars[128] = { 0 };
@@ -180,11 +182,15 @@ main(int argc, char* argv[])
     .nstructs        = r.structs_count,
   };
 
-  /* Initialize PRNG subroutine */
-  time_now    = kit_builtins_time_now(NULL, 0);
-  time_as_str = kit_builtins_cast_string(&time_now, 1);
+  kit_vm vm = { 0 };
+  kit_vm_init(argc, (const char**)argv, &object_pool, entry_point_func.name_hash, &vm);
 
-  kit_builtins_rand_seed(&time_as_str, 1);
+  /* Initialize PRNG subroutine */
+  kit_builtins_time_now(&vm, NULL, 0, &time_now);
+  kit_builtins_cast_string(&vm, &time_now, 1, &time_as_str);
+
+  kit_var discard;
+  kit_builtins_rand_seed(&vm, &time_as_str, 1, &discard);
 
   // e = kit_stack_push_frame(&stack);
   // if (e) return e;
@@ -192,7 +198,7 @@ main(int argc, char* argv[])
   /**
    * Global variable initialization
    */
-  e = kit_exec(&info, &v);
+  e = kit_exec(&vm, &info, &v);
   if (e) {
     print_err("Program initialization failed: %s\n", kit_ecode_str(e));
     goto RET;
@@ -205,8 +211,11 @@ main(int argc, char* argv[])
   info.code_count = entry_point_func.code_count;
   info.nargs      = 0;
 
+  vm.curr_func_hash  = entry_point_func.name_hash;
+  vm.instruction_idx = 0;
+
   /* Execute main function. */
-  e = kit_exec(&info, &v);
+  e = kit_exec(&vm, &info, &v);
   if (e) {
     print_err("Entry point execution failed: %s\n", kit_ecode_str(e));
     goto RET;
@@ -215,7 +224,7 @@ main(int argc, char* argv[])
   // kit_stack_pop_frame(&stack);
   // kit_stack_pop_frame(&stack);
 
-  if (wants_to_print_return_value) { kit_builtins_println(&v, 1); }
+  if (wants_to_print_return_value) { kit_builtins_println(NULL, &v, 1, &discard); }
 
   if (interpret_return_value_as_error) {
     if (v.type == KIT_VARTYPE_INT) e = v.val.i;
@@ -224,12 +233,14 @@ main(int argc, char* argv[])
   }
 
 RET:
-  kit_var_free(&time_as_str);
-  kit_var_free(&time_now);
+  kit_var_free(&object_pool, &time_as_str);
+  kit_var_free(&object_pool, &time_now);
 
   if (!run_from_stdin && f) fclose(f);
-  kit_var_release(&v);
-  kit_refdobj_pool_free(&kit_g_obj_pool);
+  kit_var_release(&object_pool, &v);
+  kit_refdobj_pool_free(&object_pool);
+
+  kit_vm_free(&vm);
 
   /* No need to free anything else */
   free(root_allocation);

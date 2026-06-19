@@ -34,12 +34,18 @@
 #include "kit.bfunc.time.h"
 #include "kit.bfunc.vec.h"
 #include "kit.cast.h"
+#include "kit.perr.h"
 #include "kit.stdafx.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#ifndef KIT_PANIC_FUNCTION_NAME
+#  define KIT_PANIC_FUNCTION_NAME "PANIC"
+#endif
 
 typedef struct kit_builtin_func {
   /**
@@ -77,7 +83,7 @@ typedef struct kit_builtin_func {
    * Returned variables must have a reference counter
    * initialized to 1, except void.
    */
-  kit_var (*func)(kit_var* args, u32 nargs);
+  kit_ecode (*func)(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 } kit_builtin_func;
 
 // COPYPASTA
@@ -85,61 +91,63 @@ typedef struct kit_builtin_func {
   { "name", "desc", "fn name() -> returns", 0xFFFFFFFF, min_args, max_args, funcp },
 */
 
-kit_var kit_builtins_print(kit_var* args, u32 nargs);
-kit_var kit_builtins_readln(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_print(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_readln(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
-static inline kit_var
-kit_builtins_println(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_println(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
-  kit_builtins_print(args, nargs);
+  kit_ecode e = kit_builtins_print(vm, args, nargs, result);
   fputc('\n', stdout);
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  return e;
 }
 
-kit_var kit_builtins_cast_int(kit_var* args, u32 nargs);
-kit_var kit_builtins_cast_char(kit_var* args, u32 nargs);
-kit_var kit_builtins_cast_bool(kit_var* args, u32 nargs);
-kit_var kit_builtins_cast_float(kit_var* args, u32 nargs);
-kit_var kit_builtins_cast_string(kit_var* args, u32 nargs);
-kit_var kit_builtins_cast_list(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_cast_int(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_cast_char(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_cast_bool(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_cast_float(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_cast_string(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_cast_list(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
 /**
  * Duplicate a variable.
  */
-static inline kit_var
-kit_builtins_var_dup(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_var_dup(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_var v;
-  kit_var_deep_cpy(&args[0], &v);
-  return v;
+  kit_var_deep_cpy(vm->pool, &args[0], &v);
+  *result = v;
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_var_hash(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_var_hash(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
-  return kit_var_from_int((int)kit_hash(&args[0], sizeof(kit_var)));
+  *result = kit_var_from_int((int)kit_hash(&args[0], sizeof(kit_var)));
+  return KIT_OK;
 }
 
-kit_var kit_builtins_struct_name(kit_var* args, u32 nargs);
-kit_var kit_builtins_struct_member_count(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_struct_name(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_struct_member_count(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
-kit_var kit_builtins_rand_seed(kit_var* args, u32 nargs);
-kit_var kit_builtins_rand_int(kit_var* args, u32 nargs);
-kit_var kit_builtins_rand_range(kit_var* args, u32 nargs);
-kit_var kit_builtins_rand_float(kit_var* args, u32 nargs);
-kit_var kit_builtins_rand_vec2(kit_var* args, u32 nargs);
-kit_var kit_builtins_rand_vec3(kit_var* args, u32 nargs);
-kit_var kit_builtins_rand_vec4(kit_var* args, u32 nargs);
-kit_var kit_builtins_rand_list(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_rand_seed(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rand_int(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rand_range(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rand_float(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rand_vec2(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rand_vec3(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rand_vec4(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_rand_list(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
-kit_var kit_builtins_log_err(kit_var* args, u32 nargs);
-kit_var kit_builtins_log_warn(kit_var* args, u32 nargs);
-kit_var kit_builtins_log_info(kit_var* args, u32 nargs);
+kit_ecode kit_builtins_log_err(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_log_warn(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
+kit_ecode kit_builtins_log_info(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result);
 
-static inline kit_var
-kit_builtins_len(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_len(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
 
@@ -151,11 +159,16 @@ kit_builtins_len(kit_var* args, u32 nargs)
   } else if (args[0].type == KIT_VARTYPE_MAP) {
     len = (int)KIT_VAR_AS_MAP(&args[0])->size;
   }
-  return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = len } };
+  *result = (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = len } };
+  return KIT_OK;
 }
-static inline kit_var
-kit_builtins_type_of(kit_var* args, u32 nargs)
-{ return kit_var_from_int(args[0].type); }
+
+static inline kit_ecode
+kit_builtins_type_of(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
+{
+  *result = kit_var_from_int(args[0].type);
+  return KIT_OK;
+}
 
 #define KIT_ALL_TYPES                                                                                                                                \
   (KIT_VARTYPE_INT | KIT_VARTYPE_CHAR | KIT_VARTYPE_BOOL | KIT_VARTYPE_FLOAT | KIT_VARTYPE_LIST | KIT_VARTYPE_MAP | KIT_VARTYPE_STRING)
@@ -173,7 +186,7 @@ static const kit_builtin_func kit_builtins_funcs[] = {
 
   // If you intend to change the name here, goto exec.c and replace the name there too. 
   // Only kept here for signature.
-  { "PANIC", "Error out and stop execution", "fn PANIC() -> null (noreturn)", 0, 0, 0, NULL }, // Function pointer is NULL, handled by VM itself.
+  { KIT_PANIC_FUNCTION_NAME, "Error out and stop execution", "fn " KIT_PANIC_FUNCTION_NAME "() -> null (noreturn)", 0, 0, 0, NULL }, // Function pointer is NULL, handled by VM itself.
 
   { "log::info", "Print an informational message to either the log file (or stderr if unset)", "fn log::info(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_log_info },
   { "log::error", "Print an error message to either the log file (or stderr if unset)", "fn log::err(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_log_err },
@@ -188,11 +201,11 @@ static const kit_builtin_func kit_builtins_funcs[] = {
   {"mat4", "Cast three vector4's into a mat3", "fn mat4(row0, row1, row2, row3) -> mat4", KIT_VARTYPE_VEC4, 4, 4, kit_builtins_mat4},
   
   
-  { "kit::type_of", "Get the type of the input, as an enumerator (see bvar.h, KIT_TYPE_* constants)", "fn kat::type_of(input) -> int", 0xFFFFFFFF, 1, 1, kit_builtins_type_of },
-  { "kit::struct::name", "Get the name of the structure, as a string", "fn kat::struct_name(input) -> string", 0xFFFFFFFF, 1, 1, kit_builtins_struct_name },
-  { "kit::struct::member_count", "Get the number of members in the given structure", "fn kat::struct::member_count(struc) -> int", 0xFFFFFFFF, 1, 1, kit_builtins_struct_member_count },
-  { "kit::dup", "Duplicate the given variable, performing a deep copy, and return it", "fn kat::dup(x : any) -> any", 0xFFFFFFFF, 1, 1, kit_builtins_var_dup },
-  { "kit::hash", "Hash a given variable. This is not a cryptographic hash.", "fn kat::hash(x : any) -> int", 0xFFFFFFFF, 1, 1, kit_builtins_var_hash },
+  { "kit::type_of", "Get the type of the input, as an enumerator (see bvar.h, KIT_TYPE_* constants)", "fn kit::type_of(input) -> int", 0xFFFFFFFF, 1, 1, kit_builtins_type_of },
+  { "kit::struct::name", "Get the name of the structure, as a string", "fn kit::struct::name(input) -> string", 0xFFFFFFFF, 1, 1, kit_builtins_struct_name },
+  { "kit::struct::member_count", "Get the number of members in the given structure", "fn kit::struct::member_count(struc) -> int", 0xFFFFFFFF, 1, 1, kit_builtins_struct_member_count },
+  { "kit::dup", "Duplicate the given variable, performing a deep copy, and return it", "fn kit::dup(x : any) -> any", 0xFFFFFFFF, 1, 1, kit_builtins_var_dup },
+  { "kit::hash", "Hash a given variable. This is not a cryptographic hash.", "fn kit::hash(x : any) -> int", 0xFFFFFFFF, 1, 1, kit_builtins_var_hash },
 
   /* Can convert anything to string. */
   { "string", "Cast a variable to a string", "fn string(v) -> string", 0xFFFFFFFF, 1, 1, kit_builtins_cast_string },

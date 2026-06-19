@@ -25,13 +25,16 @@
 #ifndef KIT_VECTOR_BUILTINS_H
 #define KIT_VECTOR_BUILTINS_H
 
+#include "kit.cast.h"
 #include "kit.mathstrucs.h"
+#include "kit.perr.h"
 #include "kit.var.h"
+#include "kit.vm.h"
 
 #include <math.h>
 
-static inline kit_var
-kit_builtins_vec_norm(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec_norm(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   double len = evector_length(&args[0]).val.f;
 
@@ -40,45 +43,48 @@ kit_builtins_vec_norm(kit_var* args, u32 nargs)
 
   (void)nargs;
   switch (args[0].type) {
-    case KIT_VARTYPE_VEC2: return kit_make_vec2(zx[0] / len, zx[1] / len);
-    case KIT_VARTYPE_VEC3: return kit_make_vec3(zx[0] / len, zx[1] / len, zx[2] / len);
-    case KIT_VARTYPE_VEC4: return kit_make_vec4(zx[0] / len, zx[1] / len, zx[2] / len, zx[3] / len);
+    case KIT_VARTYPE_VEC2: *result = kit_make_vec2(zx[0] / len, zx[1] / len); return KIT_OK;
+    case KIT_VARTYPE_VEC3: *result = kit_make_vec3(zx[0] / len, zx[1] / len, zx[2] / len); return KIT_OK;
+    case KIT_VARTYPE_VEC4: *result = kit_make_vec4(zx[0] / len, zx[1] / len, zx[2] / len, zx[3] / len); return KIT_OK;
     default: break;
   }
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec_len(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec_len(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   switch (args[0].type) {
     case KIT_VARTYPE_VEC2:
     case KIT_VARTYPE_VEC3:
-    case KIT_VARTYPE_VEC4: return evector_length(&args[0]);
+    case KIT_VARTYPE_VEC4: *result = evector_length(&args[0]); return KIT_OK;
     default: break;
   }
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec_len2(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec_len2(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_vec4 zx;
   evector_zero_extend(&args[0], zx);
 
   switch (args[0].type) {
-    case KIT_VARTYPE_VEC2: return kit_var_from_float((zx[0] * zx[0]) + (zx[1] * zx[1]));
-    case KIT_VARTYPE_VEC3: return kit_var_from_float((zx[0] * zx[0]) + (zx[1] * zx[1]) + (zx[2] * zx[2]));
-    case KIT_VARTYPE_VEC4: return kit_var_from_float((zx[0] * zx[0]) + (zx[1] * zx[1]) + (zx[2] * zx[2]) + (zx[3] * zx[3]));
+    case KIT_VARTYPE_VEC2: *result = kit_var_from_float((zx[0] * zx[0]) + (zx[1] * zx[1])); return KIT_OK;
+    case KIT_VARTYPE_VEC3: *result = kit_var_from_float((zx[0] * zx[0]) + (zx[1] * zx[1]) + (zx[2] * zx[2])); return KIT_OK;
+    case KIT_VARTYPE_VEC4: *result = kit_var_from_float((zx[0] * zx[0]) + (zx[1] * zx[1]) + (zx[2] * zx[2]) + (zx[3] * zx[3])); return KIT_OK;
     default: break;
   }
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec_dist(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec_dist(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_vec4 x;
@@ -95,14 +101,15 @@ kit_builtins_vec_dist(kit_var* args, u32 nargs)
   switch (args[0].type) {
     case KIT_VARTYPE_VEC2:
     case KIT_VARTYPE_VEC3:
-    case KIT_VARTYPE_VEC4: return kit_var_from_float(sqrt(xl + yl + zl + wl));
+    case KIT_VARTYPE_VEC4: *result = kit_var_from_float(sqrt(xl + yl + zl + wl)); return KIT_OK;
     default: break;
   }
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec_dist2(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec_dist2(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   (void)nargs;
   kit_vec4 x;
@@ -118,30 +125,33 @@ kit_builtins_vec_dist2(kit_var* args, u32 nargs)
   switch (args[0].type) {
     case KIT_VARTYPE_VEC2:
     case KIT_VARTYPE_VEC3:
-    case KIT_VARTYPE_VEC4: return kit_var_from_float(xl + yl + zl + wl);
+    case KIT_VARTYPE_VEC4: *result = kit_var_from_float(xl + yl + zl + wl); return KIT_OK;
     default: break;
   }
-  return (kit_var){ .type = KIT_VARTYPE_NULL };
+  *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec3_zx(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec3_zx(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_vec4 x;
   evector_zero_extend(&args[0], x);
-  return (kit_var){ .type = KIT_VARTYPE_VEC3, .val = { .vec3 = KIT_VEC3_INIT(x) } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC3, .val = { .vec3 = KIT_VEC3_INIT(x) } };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec4_zx(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec4_zx(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_vec4 x;
   evector_zero_extend(&args[0], x);
-  return (kit_var){ .type = KIT_VARTYPE_VEC3, .val = { .vec4 = KIT_VEC4_INIT(x) } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC3, .val = { .vec4 = KIT_VEC4_INIT(x) } };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec_dot(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec_dot(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_vec4 x;
   evector_zero_extend(&args[0], x);
@@ -151,11 +161,12 @@ kit_builtins_vec_dot(kit_var* args, u32 nargs)
   double r = 0.0;
   for (u32 i = 0; i < 4; i++) { r += x[i] * y[i]; }
 
-  return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = r } };
+  *result = (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = r } };
+  return KIT_OK;
 }
 
-static inline kit_var
-kit_builtins_vec3_cross(kit_var* args, u32 nargs)
+static inline kit_ecode
+kit_builtins_vec3_cross(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   kit_vec3 x;
   kit_vec3 y;
@@ -167,7 +178,8 @@ kit_builtins_vec3_cross(kit_var* args, u32 nargs)
   r[1] = (x[2] * y[0]) - (x[0] * y[2]);
   r[2] = (x[0] * y[1]) - (x[1] * y[0]);
 
-  return (kit_var){ .type = KIT_VARTYPE_VEC3, .val = { .vec3 = KIT_VEC3_INIT(r) } };
+  *result = (kit_var){ .type = KIT_VARTYPE_VEC3, .val = { .vec3 = KIT_VEC3_INIT(r) } };
+  return KIT_OK;
 }
 
 #endif // KIT_VECTOR_BUILTINS_H

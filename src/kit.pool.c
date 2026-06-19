@@ -29,8 +29,6 @@
 #include <stdint.h>
 #include <string.h>
 
-kit_refdobj_pool kit_g_obj_pool = { 0 };
-
 static int
 branch_init(kit_refdobj_pool* pool, kit_refdobj_branch* b)
 {

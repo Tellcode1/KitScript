@@ -1,5 +1,4 @@
 #include "../inc/kit.ast.h"
-#include "../inc/kit.opt.h"
 #include "../inc/kit.var.h"
 
 kit_var_type

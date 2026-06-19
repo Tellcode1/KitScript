@@ -4,6 +4,8 @@ fn edit_refer(r) {
    r[2] = 1;
 }
 
+let global = 0;
+
 fn main() {
    let error = false;
 
@@ -203,6 +205,18 @@ fn main() {
    }
    if (synchronize != 3) {
       io::println(io::STDERR, "ranged for loop expected to run 3 times (loop increment counter) = ", synchronize);
+      error = true;
+   }
+
+   for (i in 0..100) {
+      global++;
+   }
+
+   for (i in 0..100) {
+      global = 0;
+   }
+   if (global != 0) {
+      io::println(io::STDERR, "Global variable has invalid value, expected 0, got: ", global);
       error = true;
    }
 
