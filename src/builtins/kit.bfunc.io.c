@@ -275,7 +275,6 @@ kit_builtins_io_open(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 
   FILE* f = fopen(path, mode);
   if (!f) { *result = (kit_var){ .type = KIT_VARTYPE_NULL }; }
-  return KIT_OK;
 
   *result = var_from_file(f);
   return KIT_OK;

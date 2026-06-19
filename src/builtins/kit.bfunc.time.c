@@ -125,8 +125,10 @@ kit_builtins_time_local(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
   time_t    now = time(NULL);
 
   struct tm* tmp = localtime(&now);
-  if (!tmp) *result = KIT_NULLVAR;
-  return KIT_OK;
+  if (!tmp) {
+    *result = KIT_NULLVAR;
+    return KIT_OK;
+  }
 
   memcpy(&t, tmp, sizeof(struct tm));
 
@@ -159,8 +161,10 @@ kit_builtins_time_utc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
   time_t    now = time(NULL);
 
   struct tm* tmp = localtime(&now);
-  if (!tmp) *result = KIT_NULLVAR;
-  return KIT_OK;
+  if (!tmp) {
+    *result = KIT_NULLVAR;
+    return KIT_OK;
+  }
 
   memcpy(&t, tmp, sizeof(struct tm));
 

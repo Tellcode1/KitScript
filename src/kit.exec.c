@@ -82,6 +82,7 @@ call(kit_vm* vm, const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, 
   const kit_builtin_func* builtin = get_builtin_func_hashed(hash);
   if (builtin != NULL) {
     e = builtin->func(vm, args, nargs, ret);
+    if (e) { print_err("builtin %s returned %s\n", builtin->name, kit_ecode_str(e)); }
     goto pop_and_ret;
   }
 
@@ -96,6 +97,12 @@ call(kit_vm* vm, const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, 
   // user defined
   for (u32 f = 0; f < info->nfuncs; f++) {
     if (info->funcs[f].name_hash != hash) continue;
+
+    kit_vm fork_vm = { 0 };
+    if (kit_vm_fork(hash, vm, &fork_vm) < 0) {
+      e = KIT_EMALLOC;
+      goto pop_and_ret;
+    }
 
     kit_exec_info fi = {
       .gvars           = info->gvars,
@@ -116,7 +123,9 @@ call(kit_vm* vm, const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, 
       .nstructs        = info->nstructs,
     };
 
-    e = kit_exec(vm, &fi, ret);
+    e = kit_exec(&fork_vm, &fi, ret);
+    kit_vm_free(&fork_vm);
+
     if (e) goto pop_and_ret;
 
     goto pop_and_ret;
