@@ -256,11 +256,11 @@ static int
 get_cost_for_inlining_function(const kit_compiler* cc, int bias, const kitc_function* fn)
 {
   int cost = bias;
-  if (cc->info->opt_level == 0) {
-    cost = INT32_MAX; /* never inline with optimizations disabled */
-  } else if (cc->info->opt_level == 3) {
-    cost -= 1000; /* make it much more likely to be inlined */
-  }
+
+  /* never inline with optimizations disabled */
+  if (cc->info->opt_level == 0) { return INT32_MAX; }
+
+  if (cc->info->opt_level == 3) { cost -= 1000; /* make it much more likely to be inlined */ }
 
   cost += (int)(fn->code_count > INT32_MAX ? INT32_MAX : fn->code_count) / 30;
   cost += (int)fn->nargs * 10; /* each further argument increases register pressure in loops */
@@ -1258,7 +1258,7 @@ compile_function_definition(kit_compiler* cc, int node)
     if (kit_arena_init(1, &codegraph_arena) < 0) return -1;
 
     /* constant folding needs a clean instruction stream */
-    // if (!fork.info->feature_set.disable_function_inlining) { opt_inline_function_calls(&fork); }
+    if (!fork.info->feature_set.disable_function_inlining) { opt_inline_function_calls(&fork); }
 
     for (u32 pass = 0; pass < 4; pass++) {
       if (kit_arena_reset(&codegraph_arena) < 0) return -1;
@@ -1300,8 +1300,8 @@ compile_function_definition(kit_compiler* cc, int node)
     kit_arena_free(&codegraph_arena);
   }
 
-  if (!fork.info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(&fork);
-  fork.ninstructions = label_pass(fork.arena, fork.instructions, fork.ninstructions, fork.next_label);
+  // if (!fork.info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(&fork);
+  // fork.ninstructions = label_pass(fork.arena, fork.instructions, fork.ninstructions, fork.next_label);
 
   compiler_join_fork(&fork, cc);
 
@@ -2595,8 +2595,8 @@ compile_root(kit_compiler* cc, int node)
   kit_vreg_t nilvar = compile_and_push_literal_variable(cc, &v);
   kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
 
-  if (!cc->info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(cc);
-  cc->ninstructions = label_pass(cc->arena, cc->instructions, cc->ninstructions, cc->next_label);
+  // if (!cc->info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(cc);
+  // cc->ninstructions = label_pass(cc->arena, cc->instructions, cc->ninstructions, cc->next_label);
 
   return 0; // Done!
 }
@@ -3498,9 +3498,6 @@ is_instruction_noop(eir_opcode opcode)
 static bool
 codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
 {
-  codegraph_build_successor_list(cc, cfg);
-  codegraph_liveliness_analysis(cc, cfg);
-
   /**
    * Find the pattern:
    * mov a, x
@@ -3675,7 +3672,7 @@ codegraph_preliminary_dead_store_elimination(kit_compiler* cc, const codegraph* 
     }
   }
 
-  return 0;
+  return changed;
 }
 
 static int
@@ -3974,7 +3971,9 @@ label_pass(kit_arena* arena, kit_ins* instructions, u32 ninstructions, u32 label
     kit_ins* ins = &instructions[i];
 
     if (copy[i].opcode == EIR_OPCODE_NOP) continue;
+
     if (ins->opcode == EIR_OPCODE_LABEL) {
+      // fprintf(stderr, "defined %u vs %u\n", ins->label.id, label_count);
       label_map[ins->label.id] = ctr;
       continue;
     }
@@ -3988,9 +3987,15 @@ label_pass(kit_arena* arena, kit_ins* instructions, u32 ninstructions, u32 label
   for (u32 i = 0; i < ninstructions; i++) {
     kit_ins* ins = &instructions[i];
     switch (ins->opcode) {
-      case EIR_OPCODE_JMP: ins->jmp.target = label_map[ins->jmp.target]; break;
+      case EIR_OPCODE_JMP:
+        // fprintf(stderr, "jmp %u vs %u\n", ins->jmp.target, label_count);
+        ins->jmp.target = label_map[ins->jmp.target];
+        break;
       case EIR_OPCODE_JZ:
-      case EIR_OPCODE_JNZ: ins->cj.target = label_map[ins->cj.target]; break;
+      case EIR_OPCODE_JNZ:
+        // fprintf(stderr, "cj %u vs %u\n", ins->cj.target, label_count);
+        ins->cj.target = label_map[ins->cj.target];
+        break;
       default: break;
     }
   }
@@ -4244,6 +4249,8 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
       case EIR_OPCODE_ASSERT: {
         u32 cond = ins->assertion.cond;
+
+        /* assertion is always true, noop it. */
         if (values_known[cond] && kit_var_to_bool(regs[cond])) { ins->opcode = EIR_OPCODE_NOP; }
 
         break;
@@ -4264,7 +4271,8 @@ update_reg(kit_reg_t* ptr, u32 offset)
 
 /* add the offset to each register in ins and pass it to kit_emit_ins */
 static inline void
-inline_function_instruction(kit_compiler* cc, kit_ins* ins, u32 register_offset, u32 label_offset, kit_vreg_t return_register, u32 exit_label)
+patch_instruction_for_function_inlining(
+    kit_compiler* cc, kit_ins* ins, u32 register_offset, u32 label_offset, kit_vreg_t return_register, u32 exit_label)
 {
   switch (ins->opcode) {
     case EIR_OPCODE_LABEL: {
@@ -4425,11 +4433,13 @@ opt_inline_function_calls(kit_compiler* cc)
   for (u32 i = 0; i < old_instruction_count; i++) {
     kit_ins* ins = &old_instructions[i];
 
+    /* normal instruction, push it to our stream. */
     if (ins->opcode != EIR_OPCODE_CALL) {
       kit_emit_ins(cc, *ins);
       continue;
     }
 
+    /* CALL: replace call contents with our stored bytecode */
     u32            hash   = ins->call.function_id;
     kitc_function* lookup = NULL;
 
@@ -4470,16 +4480,7 @@ opt_inline_function_calls(kit_compiler* cc)
     for (u32 j = 0; j < lookup->code_count; j++) {
       kit_ins sdf = lookup->code[j];
 
-      if (sdf.opcode == EIR_OPCODE_RET) {
-        /* move return value to our register */
-        kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = call_dst, .src = sdf.ret.return_value } });
-
-        /* convert this ret into a jump to the exit label */
-        kit_emit_ins(cc, (kit_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = exit_label } });
-        continue;
-      }
-
-      inline_function_instruction(cc, &sdf, register_offset, label_offset, call_dst, exit_label);
+      patch_instruction_for_function_inlining(cc, &sdf, register_offset, label_offset, call_dst, exit_label);
 
       kit_emit_ins(cc, sdf);
     }
@@ -4490,6 +4491,7 @@ opt_inline_function_calls(kit_compiler* cc)
 
     /* return instructions jump here */
     define_and_emit_label(cc, exit_label);
+    cc->next_label++;
   }
 
   // kit_arnfree(cc->arena, old_instructions);
@@ -5510,18 +5512,18 @@ kit_print_instruction_stream(const kit_compilation_result* r, const kit_ins* ins
 }
 
 static void
-dump_asm(kit_compilation_result r)
+dump_asm(const kit_compilation_result* r)
 {
-  kit_print_instruction_stream(&r, r.instructions, r.instructions_count, 0, stdout);
-  for (u32 i = 0; i < r.functions_count; i++) {
-    const kitc_function* func = &r.functions[i];
-    fprintf(stdout, "[%s|%u](%u):\n", lookup(&r, func->name_hash), func->name_hash, func->nargs);
-    kit_print_instruction_stream(&r, func->code, func->code_count, 4, stdout);
+  kit_print_instruction_stream(r, r->instructions, r->instructions_count, 0, stdout);
+  for (u32 i = 0; i < r->functions_count; i++) {
+    const kitc_function* func = &r->functions[i];
+    fprintf(stdout, "[%s|%u](%u):\n", lookup(r, func->name_hash), func->name_hash, func->nargs);
+    kit_print_instruction_stream(r, func->code, func->code_count, 4, stdout);
   }
 
   fprintf(stdout, "\nstructures:\n");
-  for (u32 i = 0; i < r.structs_count; i++) {
-    const kitc_struct_information* info = &r.structs[i];
+  for (u32 i = 0; i < r->structs_count; i++) {
+    const kitc_struct_information* info = &r->structs[i];
     fprintf(stdout, "[%s] = {", info->name);
     for (u32 j = 0; j < info->fields_count; j++) {
       fprintf(stdout, "%s/%u", info->field_names[j], info->field_hashes[j]);
@@ -5532,9 +5534,9 @@ dump_asm(kit_compilation_result r)
   fprintf(stdout, "\n");
 
   fprintf(stdout, "literals:\n");
-  for (u32 i = 0; i < r.literals_count; i++) {
-    fprintf(stdout, "[%u | %u] = ", i, kit_var_hash(&r.literals[i]));
-    kit_var_print(&r.literals[i], stdout);
+  for (u32 i = 0; i < r->literals_count; i++) {
+    fprintf(stdout, "[%u | %u] = ", i, kit_var_hash(&r->literals[i]));
+    kit_var_print(&r->literals[i], stdout);
     fputc('\n', stdout);
   }
 }
@@ -5653,6 +5655,31 @@ kit_compile(const kitc_info* info, kit_compilation_result* result)
 
   defer_pop_scope(&cc);
 
+  if (!cc.info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(&cc);
+  cc.ninstructions = label_pass(cc.arena, cc.instructions, cc.ninstructions, cc.next_label);
+
+  for (u32 i = 0; i < func_table.functions_count; i++) {
+    kitc_function* f = &func_table.functions[i];
+
+    u32      ninstructions = cc.ninstructions;
+    kit_ins* instructions  = cc.instructions;
+    u32      next_label    = cc.next_label;
+    u32      next_vreg     = cc.next_vreg;
+
+    cc.ninstructions = f->code_count;
+    cc.instructions  = f->code;
+    cc.next_label    = f->labels_used;
+    cc.next_vreg     = (kit_vreg_t)f->vregs_used;
+
+    if (!cc.info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(&cc);
+    f->code_count = label_pass(cc.arena, f->code, f->code_count, f->labels_used);
+
+    cc.ninstructions = ninstructions;
+    cc.instructions  = instructions;
+    cc.next_label    = next_label;
+    cc.next_vreg     = (kit_vreg_t)next_vreg;
+  }
+
   if (result) {
     result->literals           = cc.lit_table->literals;
     result->literals_count     = cc.lit_table->literals_count;
@@ -5670,19 +5697,28 @@ kit_compile(const kitc_info* info, kit_compilation_result* result)
     result->names_count = strings_count;
 
     result->names_hashes = (u32*)kit_xalloc(strings_count, sizeof(u32));
-    if (!result->names_hashes) goto RET;
+    if (!result->names_hashes) {
+      e = -1;
+      goto RET;
+    }
 
     result->names = (char**)kit_xalloc(strings_count, sizeof(char*));
-    if (!result->names) goto RET;
+    if (!result->names) {
+      e = -1;
+      goto RET;
+    }
 
     for (u32 i = 0; i < strings_count; i++) {
       result->names[i] = kit_strdup(strings[i]);
-      if (!result->names[i]) { goto RET; }
+      if (!result->names[i]) {
+        e = -1;
+        goto RET;
+      }
     }
   }
 
   /* everything done. dump the assembly and return. */
-  if (info->dump_assembly) { dump_asm(*result); }
+  if (info->dump_assembly) { dump_asm(result); }
 
   kit_xfree((void**)&namespace_stack.namespaces);
   // scope_pop(&cc);
@@ -5694,16 +5730,26 @@ RET: /* Seperate from successful return path. We free everything here, indiscrim
   for (u32 i = 0; i < struct_table.structs_count; i++) {
     free((void*)struct_table.structs[i].field_names);
     free(struct_table.structs[i].field_hashes);
+
+    memset(&struct_table.structs[i], 0, sizeof(kitc_struct_information));
   }
   free(struct_table.structs);
+  memset(&struct_table, 0, sizeof(struct_table));
+
   free((void*)namespace_stack.namespaces);
+  memset(&namespace_stack, 0, sizeof(namespace_stack));
+
   free(lit_table.literal_hashes);
   free(lit_table.literals);
+  memset(&lit_table, 0, sizeof(lit_table));
+
   for (u32 i = 0; i < func_table.functions_count; i++) {
     // arg_slots is arena allocated
     free(func_table.functions[i].code);
   }
   free(func_table.functions);
+  memset(&func_table, 0, sizeof(func_table));
+
   free(cc.instructions);
   return e ? e : -1;
 }
