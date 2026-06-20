@@ -4,7 +4,7 @@
 #include "kit.stdafx.h"
 
 typedef int kit_vreg_t;
-typedef u32 kit_reg_t; /* register when it is in memory, u8 is disk */
+typedef u32 kit_reg_t; /* register when it is in memory, u8 on disk */
 
 typedef enum eir_opcode_bits {
   EIR_OPCODE_NOP = 0,

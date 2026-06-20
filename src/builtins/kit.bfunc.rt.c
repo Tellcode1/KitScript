@@ -10,7 +10,6 @@
 #include "../../inc/kit.stdafx.h"
 #include "../../inc/kit.strint.h"
 #include "../../inc/kit.struct.h"
-#include "../../inc/kit.sysexpose.h"
 #include "../../inc/kit.var.h"
 
 static inline int
@@ -50,8 +49,8 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
     goto RET;
   }
 
-  const int    save_argc = kit_argc;
-  char** const save_argv = kit_argv;
+  const int          save_argc = vm->argc;
+  const char** const save_argv = vm->argv;
 
 #define strhash(s) (kit_hash(s, strlen(s)))
 
@@ -64,18 +63,18 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
   kit_list* arguments     = KIT_VAR_AS_LIST(kit_struct_get_member(strhash("arguments"), st));
   kit_list* cmd_arguments = KIT_VAR_AS_LIST(kit_struct_get_member(strhash("command_line_arguments"), st));
 
-  kit_argv = (char**)kit_arnalloc(&arena, (cmd_arguments->size + 3) * sizeof(char*));
+  vm->argv = (const char**)kit_arnalloc(&arena, (cmd_arguments->size + 3) * sizeof(char*));
 
   // +2 because we have to expose the ./build/eexec FILE
   // too
-  kit_argc    = 2 + (int)cmd_arguments->size;
-  kit_argv[0] = "<RT compiler>";
-  kit_argv[1] = "<RT compiled code>";
+  vm->argc    = 2 + (int)cmd_arguments->size;
+  vm->argv[0] = "<RT compiler>";
+  vm->argv[1] = "<RT compiled code>";
   for (int i = 0; i < cmd_arguments->size; i++) {
     const char* cmd_arg = KIT_VAR_AS_STRING(&cmd_arguments->vars[i])->s;
-    kit_argv[2 + i]     = kit_arnstrdup(&arena, cmd_arg);
+    vm->argv[2 + i]     = kit_arnstrdup(&arena, cmd_arg);
   }
-  kit_argv[kit_argc] = NULL;
+  vm->argv[vm->argc] = NULL;
 
   e = kit_tokenize(code, "<RT compiled>", &interner, &tokens, &ntoks);
   if (e) {
@@ -160,8 +159,8 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
   err = kit_exec(vm, &exec_info, &ret);
   if (err) { kit_xerror("kit::compile_and_exec(): Function returned error: %s\n", kit_ecode_str(err)); }
 
-  kit_argc = save_argc;
-  kit_argv = save_argv;
+  vm->argc = save_argc;
+  vm->argv = save_argv;
 
 RET:
   if (ntoks > 0 && tokens) kit_freetoks(tokens, ntoks);

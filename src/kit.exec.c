@@ -35,7 +35,6 @@
 #include "../inc/kit.script.h"
 #include "../inc/kit.stdafx.h"
 #include "../inc/kit.struct.h"
-#include "../inc/kit.sysexpose.h"
 #include "../inc/kit.var.h"
 
 #include <assert.h>
@@ -53,8 +52,8 @@
 
 #define print_err(...)                                                                                                                               \
   do {                                                                                                                                               \
-    fputs("[KitExec::vm] [error] ", kit_log_file ? kit_log_file : stderr);                                                                           \
-    fprintf(kit_log_file ? kit_log_file : stderr, __VA_ARGS__);                                                                                      \
+    fputs("[KitExec::vm] [error] ", vm->log_file ? vm->log_file : stderr);                                                                           \
+    fprintf(vm->log_file ? vm->log_file : stderr, __VA_ARGS__);                                                                                      \
   } while (0)
 
 static inline const kit_builtin_func*
@@ -516,7 +515,7 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
         kit_aligned_free(args);
 
         if (e) {
-          print_err("call() returned error: %s\n", kit_ecode_str(e));
+          print_err("[%i] call() returned error: %s\n", ip->val.i, kit_ecode_str(e));
           goto RET;
         }
 
@@ -784,6 +783,7 @@ kit_script_call(kit_script* s, const char* func_name, kit_var* args, u32 nargs, 
       };
 
       if (s->compiled.functions[i].nargs != nargs) {
+        kit_vm* vm = s->vm;
         print_err("Function expects %u arguments (%u were provided)\n", s->compiled.functions[i].nargs, nargs);
         return KIT_EBADARG;
       }

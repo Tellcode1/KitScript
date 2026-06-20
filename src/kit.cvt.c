@@ -1,7 +1,9 @@
 #include "../inc/kit.cvt.h"
 
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
+#include <math.h>
 #include <stdbool.h>
 
 static inline bool
@@ -105,4 +107,20 @@ kit_cvt_int(const char* s, const char** end, int* o)
 
 kit_cvt_err
 kit_cvt_double(const char* s, const char** end, double* o)
-{ return KIT_CVT_ERROR_EOF; }
+{
+  errno = 0;
+
+  char*  endptr = NULL;
+  double value  = strtod(s, &endptr);
+
+  if (errno == ERANGE) {
+    if (value == HUGE_VAL || value == -HUGE_VAL) { return KIT_CVT_ERROR_OVERFLOW; }
+
+    if (value == 0.0) { return KIT_CVT_ERROR_UNDERFLOW; }
+  }
+
+  if (end) *end = endptr;
+  if (o) *o = value;
+
+  return KIT_CVT_OK;
+}

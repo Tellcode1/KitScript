@@ -231,6 +231,17 @@ kit_tokenize(const char* input, const char* advertised_file, kit_str_interner* i
 
       double f = strtod(s, &end);
 
+      kit_cvt_err cvt_err = kit_cvt_double(s, (const char**)&end, &f);
+      if (cvt_err != KIT_CVT_OK) {
+        switch (cvt_err) {
+          case KIT_CVT_ERROR_MALFORMED_INPUT: lexerror(span.line, span.col, "Malformed floating point literal\n"); goto err;
+          case KIT_CVT_ERROR_OVERFLOW: lexerror(span.line, span.col, "Can not convert to floating point: will overflow\n"); goto err;
+          case KIT_CVT_ERROR_UNDERFLOW: lexerror(span.line, span.col, "Can not convert to floating point: will underflow\n"); goto err;
+          case KIT_CVT_ERROR_EOF: goto err;
+          case KIT_CVT_OK: break;
+        }
+      }
+
       if (end == s) {
         lexerror(span.line, span.col, "Invalid numeric literal\n");
         goto err;

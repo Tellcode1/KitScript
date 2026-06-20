@@ -30,7 +30,6 @@
 #include "../inc/kit.pool.h"
 #include "../inc/kit.rwhelp.h"
 #include "../inc/kit.stdafx.h"
-#include "../inc/kit.sysexpose.h"
 #include "../inc/kit.var.h"
 
 #include <errno.h>
@@ -88,9 +87,6 @@ main(int argc, char* argv[])
   kit_refdobj_pool object_pool = { 0 };
 
   int e = 0;
-
-  kit_argv = argv;
-  kit_argc = argc;
 
   const char* file = NULL;
   for (int i = 1; i < argc; i++) {

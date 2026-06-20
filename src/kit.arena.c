@@ -74,7 +74,7 @@ kit_arena_add_free_page(kit_arena* a, size_t size)
 void*
 kit_arnalloc(kit_arena* a, size_t size)
 {
-  size_t total = size;
+  size_t total = MAX(size, 8); /* hand out a minimum of 8 bytes per allocation */
   total        = align_up(total, KIT_ARENA_MINIMUM_ALIGNMENT);
 
   /* can't fit in regular page. */

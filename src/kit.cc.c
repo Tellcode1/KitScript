@@ -88,7 +88,7 @@ typedef struct codegraph {
 static ATTR_NODISCARD char* qualify_name(const kit_compiler* cc, const char* name);
 
 static ATTR_NODISCARD int codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst);
-static int                codegraph_liveliness_analysis(kit_compiler* cc, codegraph* dst);
+static int                codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst);
 static int                codegraph_build_successor_list(kit_compiler* cc, codegraph* dst);
 static void               codegraph_free(kit_compiler* cc, codegraph* graph);
 
@@ -99,6 +99,7 @@ static bool codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cf
 static bool codegraph_eliminate_unreachable_code(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_local_dead_store_elimination(kit_compiler* cc, codegraph* cfg);
 
 static void opt_inline_function_calls(kit_compiler* cc);
 
@@ -1168,7 +1169,7 @@ codegraph_rebuild(kit_compiler* cc, codegraph* cfg)
   int e = codegraph_build_successor_list(cc, cfg);
   if (e < 0) return e;
 
-  e = codegraph_liveliness_analysis(cc, cfg);
+  e = codegraph_block_level_liveliness_analysis(cc, cfg);
   if (e < 0) return e;
 
   return 0;
@@ -1271,6 +1272,9 @@ compile_function_definition(kit_compiler* cc, int node)
 
       if (!fork.info->feature_set.disable_local_copy_propagation) {
         if (codegraph_local_copy_propagation(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      }
+      if (!fork.info->feature_set.disable_dead_store_elimination) {
+        if (codegraph_local_dead_store_elimination(&fork, &cfg)) codegraph_rebuild(&fork, &cfg);
       }
       // if (!fork.info->feature_set.disable_dead_store_elimination) {
       //   if (codegraph_dead_store_elimination(&fork, &cfg)) codegraph_rebuild(&fork, &cfg);
@@ -3241,13 +3245,13 @@ codegraph_build_successor_list(kit_compiler* cc, codegraph* dst)
 }
 
 static int
-codegraph_liveliness_analysis(kit_compiler* cc, codegraph* dst)
+codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
 {
   const kit_ins* code      = cc->instructions;
   u32            code_size = cc->ninstructions;
 
   const u32 nvregs = cc->next_vreg;
-  assert(nvregs != 0);
+  if (nvregs == 0) return 0; /* nothing to do. */
 
   for (u32 i = 0; i < dst->nblocks; i++) {
     codeblock* blk = &dst->blocks[i];
@@ -3448,7 +3452,7 @@ codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
 
   for (u32 pass = 0; pass < 4; pass++) {
     /* reparse liveliness information */
-    codegraph_liveliness_analysis(cc, cfg);
+    codegraph_block_level_liveliness_analysis(cc, cfg);
 
     for (u32 i = 0; i < cfg->nblocks; i++) {
       codeblock* blk = &cfg->blocks[i];
@@ -4640,7 +4644,69 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
     }
   }
 
-  kit_arnfree(cfg->arena, copy_map);
+  // kit_arnfree(cfg->arena, copy_map);
+  return changed;
+}
+
+static inline bool
+codegraph_local_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
+{
+  bool changed = false;
+
+  for (u32 b = 0; b < cfg->nblocks; b++) {
+    codeblock* blk = &cfg->blocks[b];
+
+    for (u32 ip = blk->start; ip <= blk->end; ip++) {
+      kit_ins* ins = &cc->instructions[ip];
+      if (ins->opcode == EIR_OPCODE_NOP || ins->opcode == EIR_OPCODE_LABEL) continue;
+
+      if (is_instruction_impure(ins->opcode)) continue; /* can't modify instructions with side effects */
+
+      u32 dst = get_destination_reg(ins);
+      if (dst < KIT_REG_GENERAL_BEGIN || dst == UINT32_MAX) continue; /* can't modify non general registers | can't remove instructions with no dst */
+
+      /**
+       * Check if the register is used (read)
+       * later.
+       */
+      bool is_read_after = false;
+      for (u32 jp = ip + 1; jp <= blk->end; jp++) {
+        /* if jp is impure, assume we can't optimize */
+        if (is_instruction_impure(cc->instructions[jp].opcode)) {
+          is_read_after = true;
+          break;
+        }
+
+        u32 sources[32];
+        u32 nsources = get_source_registers(&cc->instructions[jp], sources);
+
+        for (u32 k = 0; k < nsources; k++) {
+          if (sources[k] == dst) {
+            is_read_after = true;
+            break;
+          }
+        }
+
+        if (is_read_after) break;
+
+        /* check if register is overwritten. That means we can remove this instruction. */
+        u32 lookahead_dst = get_destination_reg(&cc->instructions[jp]);
+        if (lookahead_dst == dst) {
+          is_read_after = false;
+          break;
+        }
+      }
+
+      /* check if it is in the live_out set. If it is, we can't optimize. */
+      if (!is_read_after && blk->live_out[dst]) { is_read_after = true; }
+
+      if (!is_read_after) {
+        changed     = true;
+        ins->opcode = EIR_OPCODE_NOP;
+      }
+    }
+  }
+
   return changed;
 }
 
@@ -5152,7 +5218,7 @@ era_compute_ranges_from_cfg(kit_compiler* cc, era_state* ra)
   codegraph cfg = { 0 };
   if (codegraph_init(&cfg_arena, cc, &cfg) < 0) goto die;
   if (codegraph_build_successor_list(cc, &cfg) < 0) goto die;
-  if (codegraph_liveliness_analysis(cc, &cfg) < 0) goto die;
+  if (codegraph_block_level_liveliness_analysis(cc, &cfg) < 0) goto die;
 
   const u32 nvregs = cc->next_vreg;
 
@@ -5542,6 +5608,9 @@ dump_asm(const kit_compilation_result* r)
     kit_var_print(&r->literals[i], stdout);
     fputc('\n', stdout);
   }
+
+  fprintf(stdout, "symtab:\n");
+  for (u32 i = 0; i < r->names_count; i++) { fprintf(stdout, "%i: %u = %s\n", i, r->names_hashes[i], r->names[i]); }
 }
 
 int
@@ -5717,6 +5786,7 @@ kit_compile(const kitc_info* info, kit_compilation_result* result)
         e = -1;
         goto RET;
       }
+      result->names_hashes[i] = kit_hash(strings[i], strlen(strings[i]));
     }
   }
 

@@ -29,7 +29,6 @@
 #include "../../inc/kit.perr.h"
 #include "../../inc/kit.pool.h"
 #include "../../inc/kit.stdafx.h"
-#include "../../inc/kit.sysexpose.h"
 #include "../../inc/kit.var.h"
 #include "../../inc/kit.vm.h"
 
@@ -37,9 +36,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-char** kit_argv = NULL;
-int    kit_argc = 0;
 
 kit_ecode
 kit_builtins_sys_get_cmd_args(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
@@ -54,8 +50,8 @@ kit_builtins_sys_get_cmd_args(kit_vm* vm, kit_var* args, u32 nargs, kit_var* res
   kit_list_init(vm->pool, NULL, 0, KIT_VAR_AS_LIST(&l));
 
   /* Start from 2. We don't need to expose the executor and script file */
-  for (u32 i = 2; i < kit_argc; i++) {
-    kit_var arg = kit_make_var_from_string(vm->pool, kit_strdup(kit_argv[i]));
+  for (u32 i = 2; i < vm->argc; i++) {
+    kit_var arg = kit_make_var_from_string(vm->pool, kit_strdup(vm->argv[i]));
     kit_list_append(vm->pool, &arg, KIT_VAR_AS_LIST(&l));
 
     kit_var_release(vm->pool, &arg);

@@ -184,6 +184,10 @@ kit_builtins_io_println(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   FILE* f = file_from_var(&args[0]);
   if (!f) {
+    // fprintf(stderr, "Invalid file handle: ");
+    // kit_var_print(&args[0], stderr);
+    // fputc('\n', stderr);
+
     *result = (kit_var){ .type = KIT_VARTYPE_NULL };
     return KIT_EMALFORM;
   }
