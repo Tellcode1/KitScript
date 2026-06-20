@@ -1085,7 +1085,7 @@ compile_list(kit_compiler* cc, int node)
 
   /* remove spilled elements from the stack */
   kit_vreg_t tmp = vreg_alloc(cc);
-  for (u32 i = 16; i < nelems; i++) {
+  for (u32 i = KIT_REG_ARG_END + 1; i < nelems; i++) {
     /* pop repeatedly into tmp */
     kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
   }
@@ -1716,11 +1716,11 @@ compile_function_call(kit_compiler* cc, int node)
   kit_emit_ins(cc, (kit_ins){ .call = { .opcode = EIR_OPCODE_CALL, .dst = dst, .function_id = hash, .nargs = nargs } });
 
   /* Cleanup the stack. */
-  kit_vreg_t tmp = vreg_alloc(cc);
-  for (u32 i = KIT_REG_ARG_COUNT; i < nargs; i++) {
-    /* pop repeatedly into tmp */
-    kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
-  }
+  // kit_vreg_t tmp = vreg_alloc(cc);
+  // for (u32 i = KIT_REG_ARG_COUNT; i < nargs; i++) {
+  //   /* pop repeatedly into tmp */
+  //   kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
+  // }
 
   return dst;
 }
@@ -4406,9 +4406,12 @@ patch_instruction_for_function_inlining(
       break;
     }
 
-    case EIR_OPCODE_PUSH:
-    case EIR_OPCODE_POP: {
+    case EIR_OPCODE_PUSH: {
       update_reg(&ins->push.reg, register_offset);
+      break;
+    }
+    case EIR_OPCODE_POP: {
+      update_reg(&ins->pop.reg, register_offset);
       break;
     }
 
@@ -4637,7 +4640,7 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
     }
   }
 
-  // kit_arnfree(cfg->arena, copy_map);
+  kit_arnfree(cfg->arena, copy_map);
   return changed;
 }
 
