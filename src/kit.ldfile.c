@@ -19,144 +19,144 @@ read_ins(FILE* f)
 {
   kit_ins i = { 0 };
   read(&i.opcode, f);
-  switch ((eir_opcode_bits)i.opcode) {
-    case EIR_OPCODE_LOADK: {
+  switch ((kit_ir_opcode_bits)i.opcode) {
+    case KIT_IR_OPCODE_LOADK: {
       read_reg(&i.loadk.dst, f);
       read(&i.loadk.id, f);
       break;
     }
-    case EIR_OPCODE_MOVG:
-    case EIR_OPCODE_GETG:
-    case EIR_OPCODE_SETG:
-    case EIR_OPCODE_MOV: {
+    case KIT_IR_OPCODE_MOVG:
+    case KIT_IR_OPCODE_GETG:
+    case KIT_IR_OPCODE_SETG:
+    case KIT_IR_OPCODE_MOV: {
       read_reg(&i.mov.dst, f);
       read_reg(&i.mov.src, f);
       break;
     }
 
-    case EIR_OPCODE_ASSERT: {
+    case KIT_IR_OPCODE_ASSERT: {
       read_reg(&i.assertion.cond, f);
       read(&i.assertion.line_id, f);
       break;
     }
 
-    case EIR_OPCODE_MOVI: {
+    case KIT_IR_OPCODE_MOVI: {
       read_reg(&i.movi.dst, f);
       read(&i.movi.value, f);
       break;
     }
 
-    case EIR_OPCODE_MOVF: {
+    case KIT_IR_OPCODE_MOVF: {
       read_reg(&i.movf.dst, f);
       read(&i.movf.value, f);
       break;
     }
 
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE: {
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE: {
       read_reg(&i.binop.dst, f);
       read_reg(&i.binop.a, f);
       read_reg(&i.binop.b, f);
       break;
     }
 
-    case EIR_OPCODE_INC:
-    case EIR_OPCODE_DEC:
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_NEG:
-    case EIR_OPCODE_NOT: {
+    case KIT_IR_OPCODE_INC:
+    case KIT_IR_OPCODE_DEC:
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_NEG:
+    case KIT_IR_OPCODE_NOT: {
       read_reg(&i.unop.dst, f);
       read_reg(&i.unop.a, f);
       break;
     }
 
-    case EIR_OPCODE_RET: {
+    case KIT_IR_OPCODE_RET: {
       read_reg(&i.ret.return_value, f);
       break;
     }
-    case EIR_OPCODE_NOP: break;
+    case KIT_IR_OPCODE_NOP: break;
 
-    case EIR_OPCODE_MK_LIST: {
+    case KIT_IR_OPCODE_MK_LIST: {
       read_reg(&i.mk_list.dst, f);
       read(&i.mk_list.nelems, f);
       break;
     }
-    case EIR_OPCODE_MK_MAP: {
+    case KIT_IR_OPCODE_MK_MAP: {
       read_reg(&i.mk_map.dst, f);
       read(&i.mk_map.npairs, f);
       break;
     }
-    case EIR_OPCODE_INDEX: {
+    case KIT_IR_OPCODE_INDEX: {
       read_reg(&i.index.dst, f);
       read_reg(&i.index.base, f);
       read_reg(&i.index.index, f);
       break;
     }
-    case EIR_OPCODE_INDEX_ASSIGN: {
+    case KIT_IR_OPCODE_INDEX_ASSIGN: {
       read_reg(&i.index_assign.value, f);
       read_reg(&i.index_assign.base, f);
       read_reg(&i.index_assign.index, f);
       break;
     }
-    case EIR_OPCODE_CALL: {
+    case KIT_IR_OPCODE_CALL: {
       read_reg(&i.call.dst, f);
       read(&i.call.function_id, f);
       read(&i.call.nargs, f);
       break;
     }
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ: {
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ: {
       read(&i.cj.target, f);
       read_reg(&i.cj.condition, f);
       break;
     }
-    case EIR_OPCODE_JMP: {
+    case KIT_IR_OPCODE_JMP: {
       read(&i.jmp.target, f);
       break;
     }
 
-    case EIR_OPCODE_LABEL: {
+    case KIT_IR_OPCODE_LABEL: {
       read(&i.label.id, f);
       break;
     }
 
-    case EIR_OPCODE_MEMBER_ACCESS: {
+    case KIT_IR_OPCODE_MEMBER_ACCESS: {
       read_reg(&i.member_access.dst, f);
       read_reg(&i.member_access.base, f);
       read(&i.member_access.member_id, f);
       break;
     }
-    case EIR_OPCODE_MEMBER_ASSIGN: {
+    case KIT_IR_OPCODE_MEMBER_ASSIGN: {
       read_reg(&i.member_assign.value, f);
       read_reg(&i.member_assign.base, f);
       read(&i.member_assign.member_id, f);
       break;
     }
-    case EIR_OPCODE_MK_STRUCT: {
+    case KIT_IR_OPCODE_MK_STRUCT: {
       read_reg(&i.mk_struct.dst, f);
       read(&i.mk_struct.struct_id, f);
       break;
     }
-    case EIR_OPCODE_PUSH: {
+    case KIT_IR_OPCODE_PUSH: {
       read_reg(&i.push.reg, f);
       break;
     }
-    case EIR_OPCODE_POP: {
+    case KIT_IR_OPCODE_POP: {
       read_reg(&i.pop.reg, f);
       break;
     }
@@ -168,144 +168,144 @@ static void
 write_ins(kit_ins i, FILE* f)
 {
   write(&i.opcode, f);
-  switch ((eir_opcode_bits)i.opcode) {
-    case EIR_OPCODE_LOADK: {
+  switch ((kit_ir_opcode_bits)i.opcode) {
+    case KIT_IR_OPCODE_LOADK: {
       write_reg(&i.loadk.dst, f);
       write(&i.loadk.id, f);
       break;
     }
-    case EIR_OPCODE_MOVG:
-    case EIR_OPCODE_GETG:
-    case EIR_OPCODE_SETG:
-    case EIR_OPCODE_MOV: {
+    case KIT_IR_OPCODE_MOVG:
+    case KIT_IR_OPCODE_GETG:
+    case KIT_IR_OPCODE_SETG:
+    case KIT_IR_OPCODE_MOV: {
       write_reg(&i.mov.dst, f);
       write_reg(&i.mov.src, f);
       break;
     }
 
-    case EIR_OPCODE_ASSERT: {
+    case KIT_IR_OPCODE_ASSERT: {
       write_reg(&i.assertion.cond, f);
       write(&i.assertion.line_id, f);
       break;
     }
 
-    case EIR_OPCODE_MOVI: {
+    case KIT_IR_OPCODE_MOVI: {
       write_reg(&i.movi.dst, f);
       write(&i.movi.value, f);
       break;
     }
 
-    case EIR_OPCODE_MOVF: {
+    case KIT_IR_OPCODE_MOVF: {
       write_reg(&i.movf.dst, f);
       write(&i.movf.value, f);
       break;
     }
 
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE: {
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE: {
       write_reg(&i.binop.dst, f);
       write_reg(&i.binop.a, f);
       write_reg(&i.binop.b, f);
       break;
     }
 
-    case EIR_OPCODE_INC:
-    case EIR_OPCODE_DEC:
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_NEG:
-    case EIR_OPCODE_NOT: {
+    case KIT_IR_OPCODE_INC:
+    case KIT_IR_OPCODE_DEC:
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_NEG:
+    case KIT_IR_OPCODE_NOT: {
       write_reg(&i.unop.dst, f);
       write_reg(&i.unop.a, f);
       break;
     }
 
-    case EIR_OPCODE_RET: {
+    case KIT_IR_OPCODE_RET: {
       write_reg(&i.ret.return_value, f);
       break;
     }
-    case EIR_OPCODE_NOP: break;
+    case KIT_IR_OPCODE_NOP: break;
 
-    case EIR_OPCODE_MK_LIST: {
+    case KIT_IR_OPCODE_MK_LIST: {
       write_reg(&i.mk_list.dst, f);
       write(&i.mk_list.nelems, f);
       break;
     }
-    case EIR_OPCODE_MK_MAP: {
+    case KIT_IR_OPCODE_MK_MAP: {
       write_reg(&i.mk_map.dst, f);
       write(&i.mk_map.npairs, f);
       break;
     }
-    case EIR_OPCODE_INDEX: {
+    case KIT_IR_OPCODE_INDEX: {
       write_reg(&i.index.dst, f);
       write_reg(&i.index.base, f);
       write_reg(&i.index.index, f);
       break;
     }
-    case EIR_OPCODE_INDEX_ASSIGN: {
+    case KIT_IR_OPCODE_INDEX_ASSIGN: {
       write_reg(&i.index_assign.value, f);
       write_reg(&i.index_assign.base, f);
       write_reg(&i.index_assign.index, f);
       break;
     }
-    case EIR_OPCODE_CALL: {
+    case KIT_IR_OPCODE_CALL: {
       write_reg(&i.call.dst, f);
       write(&i.call.function_id, f);
       write(&i.call.nargs, f);
       break;
     }
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ: {
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ: {
       write(&i.cj.target, f);
       write_reg(&i.cj.condition, f);
       break;
     }
-    case EIR_OPCODE_JMP: {
+    case KIT_IR_OPCODE_JMP: {
       write(&i.jmp.target, f);
       break;
     }
 
-    case EIR_OPCODE_LABEL: {
+    case KIT_IR_OPCODE_LABEL: {
       write(&i.label.id, f);
       break;
     }
 
-    case EIR_OPCODE_MEMBER_ACCESS: {
+    case KIT_IR_OPCODE_MEMBER_ACCESS: {
       write_reg(&i.member_access.dst, f);
       write_reg(&i.member_access.base, f);
       write(&i.member_access.member_id, f);
       break;
     }
-    case EIR_OPCODE_MEMBER_ASSIGN: {
+    case KIT_IR_OPCODE_MEMBER_ASSIGN: {
       write_reg(&i.member_assign.value, f);
       write_reg(&i.member_assign.base, f);
       write(&i.member_assign.member_id, f);
       break;
     }
-    case EIR_OPCODE_MK_STRUCT: {
+    case KIT_IR_OPCODE_MK_STRUCT: {
       write_reg(&i.mk_struct.dst, f);
       write(&i.mk_struct.struct_id, f);
       break;
     }
-    case EIR_OPCODE_PUSH: {
+    case KIT_IR_OPCODE_PUSH: {
       write_reg(&i.push.reg, f);
       break;
     }
-    case EIR_OPCODE_POP: {
+    case KIT_IR_OPCODE_POP: {
       write_reg(&i.pop.reg, f);
       break;
     }
@@ -668,144 +668,144 @@ kit_read_ins(const u8** ip)
 {
   kit_ins i = { 0 };
   read_ip(&i.opcode, ip);
-  switch ((eir_opcode_bits)i.opcode) {
-    case EIR_OPCODE_LOADK: {
+  switch ((kit_ir_opcode_bits)i.opcode) {
+    case KIT_IR_OPCODE_LOADK: {
       read_reg_ip(&i.loadk.dst, ip);
       read_ip(&i.loadk.id, ip);
       break;
     }
-    case EIR_OPCODE_MOVG:
-    case EIR_OPCODE_GETG:
-    case EIR_OPCODE_SETG:
-    case EIR_OPCODE_MOV: {
+    case KIT_IR_OPCODE_MOVG:
+    case KIT_IR_OPCODE_GETG:
+    case KIT_IR_OPCODE_SETG:
+    case KIT_IR_OPCODE_MOV: {
       read_reg_ip(&i.mov.dst, ip);
       read_reg_ip(&i.mov.src, ip);
       break;
     }
 
-    case EIR_OPCODE_ASSERT: {
+    case KIT_IR_OPCODE_ASSERT: {
       read_reg_ip(&i.assertion.cond, ip);
       read_ip(&i.assertion.line_id, ip);
       break;
     }
 
-    case EIR_OPCODE_MOVI: {
+    case KIT_IR_OPCODE_MOVI: {
       read_reg_ip(&i.movi.dst, ip);
       read_ip(&i.movi.value, ip);
       break;
     }
 
-    case EIR_OPCODE_MOVF: {
+    case KIT_IR_OPCODE_MOVF: {
       read_reg_ip(&i.movf.dst, ip);
       read_ip(&i.movf.value, ip);
       break;
     }
 
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE: {
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE: {
       read_reg_ip(&i.binop.dst, ip);
       read_reg_ip(&i.binop.a, ip);
       read_reg_ip(&i.binop.b, ip);
       break;
     }
 
-    case EIR_OPCODE_INC:
-    case EIR_OPCODE_DEC:
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_NEG:
-    case EIR_OPCODE_NOT: {
+    case KIT_IR_OPCODE_INC:
+    case KIT_IR_OPCODE_DEC:
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_NEG:
+    case KIT_IR_OPCODE_NOT: {
       read_reg_ip(&i.unop.dst, ip);
       read_reg_ip(&i.unop.a, ip);
       break;
     }
 
-    case EIR_OPCODE_RET: {
+    case KIT_IR_OPCODE_RET: {
       read_reg_ip(&i.ret.return_value, ip);
       break;
     }
-    case EIR_OPCODE_NOP: break;
+    case KIT_IR_OPCODE_NOP: break;
 
-    case EIR_OPCODE_MK_LIST: {
+    case KIT_IR_OPCODE_MK_LIST: {
       read_reg_ip(&i.mk_list.dst, ip);
       read_ip(&i.mk_list.nelems, ip);
       break;
     }
-    case EIR_OPCODE_MK_MAP: {
+    case KIT_IR_OPCODE_MK_MAP: {
       read_reg_ip(&i.mk_map.dst, ip);
       read_ip(&i.mk_map.npairs, ip);
       break;
     }
-    case EIR_OPCODE_INDEX: {
+    case KIT_IR_OPCODE_INDEX: {
       read_reg_ip(&i.index.dst, ip);
       read_reg_ip(&i.index.base, ip);
       read_reg_ip(&i.index.index, ip);
       break;
     }
-    case EIR_OPCODE_INDEX_ASSIGN: {
+    case KIT_IR_OPCODE_INDEX_ASSIGN: {
       read_reg_ip(&i.index_assign.value, ip);
       read_reg_ip(&i.index_assign.base, ip);
       read_reg_ip(&i.index_assign.index, ip);
       break;
     }
-    case EIR_OPCODE_CALL: {
+    case KIT_IR_OPCODE_CALL: {
       read_reg_ip(&i.call.dst, ip);
       read_ip(&i.call.function_id, ip);
       read_ip(&i.call.nargs, ip);
       break;
     }
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ: {
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ: {
       read_ip(&i.cj.target, ip);
       read_reg_ip(&i.cj.condition, ip);
       break;
     }
-    case EIR_OPCODE_JMP: {
+    case KIT_IR_OPCODE_JMP: {
       read_ip(&i.jmp.target, ip);
       break;
     }
 
-    case EIR_OPCODE_LABEL: {
+    case KIT_IR_OPCODE_LABEL: {
       read_ip(&i.label.id, ip);
       break;
     }
 
-    case EIR_OPCODE_MEMBER_ACCESS: {
+    case KIT_IR_OPCODE_MEMBER_ACCESS: {
       read_reg_ip(&i.member_access.dst, ip);
       read_reg_ip(&i.member_access.base, ip);
       read_ip(&i.member_access.member_id, ip);
       break;
     }
-    case EIR_OPCODE_MEMBER_ASSIGN: {
+    case KIT_IR_OPCODE_MEMBER_ASSIGN: {
       read_reg_ip(&i.member_assign.value, ip);
       read_reg_ip(&i.member_assign.base, ip);
       read_ip(&i.member_assign.member_id, ip);
       break;
     }
-    case EIR_OPCODE_MK_STRUCT: {
+    case KIT_IR_OPCODE_MK_STRUCT: {
       read_reg_ip(&i.mk_struct.dst, ip);
       read_ip(&i.mk_struct.struct_id, ip);
       break;
     }
-    case EIR_OPCODE_PUSH: {
+    case KIT_IR_OPCODE_PUSH: {
       read_reg_ip(&i.push.reg, ip);
       break;
     }
-    case EIR_OPCODE_POP: {
+    case KIT_IR_OPCODE_POP: {
       read_reg_ip(&i.pop.reg, ip);
       break;
     }

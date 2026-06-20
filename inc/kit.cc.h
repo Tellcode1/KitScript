@@ -321,7 +321,7 @@ kitc_stream_resize(kit_compiler* cc, u32 new_cap)
   kit_ins* newcode = (kit_ins*)realloc(cc->instructions, sizeof(kit_ins) * new_cap);
   if (newcode == NULL) { return; }
 
-  for (u32 i = cc->cinstructions; i < new_cap; i++) { newcode[i] = (kit_ins){ .opcode = EIR_OPCODE_NOP }; }
+  for (u32 i = cc->cinstructions; i < new_cap; i++) { newcode[i] = (kit_ins){ .opcode = KIT_IR_OPCODE_NOP }; }
 
   cc->instructions  = newcode;
   cc->cinstructions = new_cap;

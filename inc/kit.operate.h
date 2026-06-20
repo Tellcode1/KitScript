@@ -71,12 +71,12 @@ is_scalar(const kit_var* v)
 { return (v->type == KIT_VARTYPE_INT || v->type == KIT_VARTYPE_FLOAT || v->type == KIT_VARTYPE_CHAR || v->type == KIT_VARTYPE_BOOL); }
 
 static inline kit_var
-v4_operate(kit_var l, kit_var r, eir_opcode op)
+v4_operate(kit_var l, kit_var r, kit_ir_opcode op)
 {
   if (l.type != KIT_VARTYPE_VEC4 && r.type != KIT_VARTYPE_VEC4) return (kit_var){ .type = KIT_VARTYPE_NULL };
 
-  if (op == EIR_OPCODE_EQL) { return kit_var_from_bool(kit_var_equal(&l, &r)); }
-  if (op == EIR_OPCODE_NEQ) { return kit_var_from_bool(!kit_var_equal(&l, &r)); }
+  if (op == KIT_IR_OPCODE_EQL) { return kit_var_from_bool(kit_var_equal(&l, &r)); }
+  if (op == KIT_IR_OPCODE_NEQ) { return kit_var_from_bool(!kit_var_equal(&l, &r)); }
 
   kit_vec4 lv = { 0 };
   kit_vec4 rv = { 0 };
@@ -88,15 +88,15 @@ v4_operate(kit_var l, kit_var r, eir_opcode op)
   if (rvec) memcpy(rv, r.val.vec3, sizeof(kit_vec4));
 
   switch (op) {
-    case EIR_OPCODE_ADD:
+    case KIT_IR_OPCODE_ADD:
       if (lvec && rvec) return kit_make_vec4(lv[0] + rv[0], lv[1] + rv[1], lv[2] + rv[2], lv[3] + rv[3]);
       break;
 
-    case EIR_OPCODE_SUB:
+    case KIT_IR_OPCODE_SUB:
       if (lvec && rvec) return kit_make_vec4(lv[0] - rv[0], lv[1] - rv[1], lv[2] - rv[2], lv[3] - rv[3]);
       break;
 
-    case EIR_OPCODE_MUL:
+    case KIT_IR_OPCODE_MUL:
       if (lvec && is_scalar(&r)) {
         double s = kit_cast_to_float(&r);
         return kit_make_vec4(lv[0] * s, lv[1] * s, lv[2] * s, lv[3] * s);
@@ -107,14 +107,14 @@ v4_operate(kit_var l, kit_var r, eir_opcode op)
       }
       break;
 
-    case EIR_OPCODE_DIV:
+    case KIT_IR_OPCODE_DIV:
       if (lvec && is_scalar(&r)) {
         double s = kit_cast_to_float(&r);
         return kit_make_vec4(lv[0] / s, lv[1] / s, lv[2] / s, lv[3] / s);
       }
       break;
 
-    case EIR_OPCODE_NEG:
+    case KIT_IR_OPCODE_NEG:
       if (rvec) return kit_make_vec4(-rv[0], -rv[1], -rv[2], -rv[3]);
       break;
 
@@ -125,12 +125,12 @@ v4_operate(kit_var l, kit_var r, eir_opcode op)
 }
 
 static inline kit_var
-v3_operate(kit_var l, kit_var r, eir_opcode op)
+v3_operate(kit_var l, kit_var r, kit_ir_opcode op)
 {
   if (l.type != KIT_VARTYPE_VEC3 && r.type != KIT_VARTYPE_VEC3) return (kit_var){ .type = KIT_VARTYPE_NULL };
 
-  if (op == EIR_OPCODE_EQL) { return kit_var_from_bool(kit_var_equal(&l, &r)); }
-  if (op == EIR_OPCODE_NEQ) { return kit_var_from_bool(!kit_var_equal(&l, &r)); }
+  if (op == KIT_IR_OPCODE_EQL) { return kit_var_from_bool(kit_var_equal(&l, &r)); }
+  if (op == KIT_IR_OPCODE_NEQ) { return kit_var_from_bool(!kit_var_equal(&l, &r)); }
 
   kit_vec3 lv = { 0 };
   kit_vec3 rv = { 0 };
@@ -142,15 +142,15 @@ v3_operate(kit_var l, kit_var r, eir_opcode op)
   if (rvec) memcpy(rv, r.val.vec3, sizeof(kit_vec3));
 
   switch (op) {
-    case EIR_OPCODE_ADD:
+    case KIT_IR_OPCODE_ADD:
       if (lvec && rvec) return kit_make_vec3(lv[0] + rv[0], lv[1] + rv[1], lv[2] + rv[2]);
       break;
 
-    case EIR_OPCODE_SUB:
+    case KIT_IR_OPCODE_SUB:
       if (lvec && rvec) return kit_make_vec3(lv[0] - rv[0], lv[1] - rv[1], lv[2] - rv[2]);
       break;
 
-    case EIR_OPCODE_MUL:
+    case KIT_IR_OPCODE_MUL:
       if (lvec && is_scalar(&r)) {
         double s = kit_cast_to_float(&r);
         return kit_make_vec3(lv[0] * s, lv[1] * s, lv[2] * s);
@@ -161,14 +161,14 @@ v3_operate(kit_var l, kit_var r, eir_opcode op)
       }
       break;
 
-    case EIR_OPCODE_DIV:
+    case KIT_IR_OPCODE_DIV:
       if (lvec && is_scalar(&r)) {
         double s = kit_cast_to_float(&r);
         return kit_make_vec3(lv[0] / s, lv[1] / s, lv[2] / s);
       }
       break;
 
-    case EIR_OPCODE_NEG:
+    case KIT_IR_OPCODE_NEG:
       if (rvec) return kit_make_vec3(-rv[0], -rv[1], -rv[2]);
       break;
 
@@ -179,12 +179,12 @@ v3_operate(kit_var l, kit_var r, eir_opcode op)
 }
 
 static inline kit_var
-v2_operate(kit_var l, kit_var r, eir_opcode op)
+v2_operate(kit_var l, kit_var r, kit_ir_opcode op)
 {
   if (l.type != KIT_VARTYPE_VEC2 && r.type != KIT_VARTYPE_VEC2) return (kit_var){ .type = KIT_VARTYPE_NULL };
 
-  if (op == EIR_OPCODE_EQL) { return kit_var_from_bool(kit_var_equal(&l, &r)); }
-  if (op == EIR_OPCODE_NEQ) { return kit_var_from_bool(!kit_var_equal(&l, &r)); }
+  if (op == KIT_IR_OPCODE_EQL) { return kit_var_from_bool(kit_var_equal(&l, &r)); }
+  if (op == KIT_IR_OPCODE_NEQ) { return kit_var_from_bool(!kit_var_equal(&l, &r)); }
 
   kit_vec2 lv = { 0 };
   kit_vec2 rv = { 0 };
@@ -196,15 +196,15 @@ v2_operate(kit_var l, kit_var r, eir_opcode op)
   if (rhs_is_vec) memcpy(rv, r.val.vec2, sizeof(kit_vec2));
 
   switch (op) {
-    case EIR_OPCODE_ADD:
+    case KIT_IR_OPCODE_ADD:
       if (lhs_is_vec && rhs_is_vec) return kit_make_vec2(lv[0] + rv[0], lv[1] + rv[1]);
       break;
 
-    case EIR_OPCODE_SUB:
+    case KIT_IR_OPCODE_SUB:
       if (lhs_is_vec && rhs_is_vec) return kit_make_vec2(lv[0] - rv[0], lv[1] - rv[1]);
       break;
 
-    case EIR_OPCODE_MUL:
+    case KIT_IR_OPCODE_MUL:
       if (lhs_is_vec && is_scalar(&r)) {
         double s = kit_cast_to_float(&r);
         return kit_make_vec2(lv[0] * s, lv[1] * s);
@@ -215,14 +215,14 @@ v2_operate(kit_var l, kit_var r, eir_opcode op)
       }
       break;
 
-    case EIR_OPCODE_DIV:
+    case KIT_IR_OPCODE_DIV:
       if (lhs_is_vec && is_scalar(&r)) {
         double s = kit_cast_to_float(&r);
         return kit_make_vec2(lv[0] / s, lv[1] / s);
       }
       break;
 
-    case EIR_OPCODE_NEG:
+    case KIT_IR_OPCODE_NEG:
       if (rhs_is_vec) return kit_make_vec2(-rv[0], -rv[1]);
       break;
 
@@ -233,7 +233,7 @@ v2_operate(kit_var l, kit_var r, eir_opcode op)
 }
 
 static inline kit_var
-vector_operate(kit_var l, kit_var r, eir_opcode op)
+vector_operate(kit_var l, kit_var r, kit_ir_opcode op)
 {
   if (l.type == KIT_VARTYPE_VEC4 || r.type == KIT_VARTYPE_VEC4) { return v4_operate(l, r, op); }
   if (l.type == KIT_VARTYPE_VEC3 || r.type == KIT_VARTYPE_VEC3) { return v3_operate(l, r, op); }
@@ -242,31 +242,31 @@ vector_operate(kit_var l, kit_var r, eir_opcode op)
 }
 
 static inline kit_var
-operate(kit_var l, kit_var r, eir_opcode op)
+operate(kit_var l, kit_var r, kit_ir_opcode op)
 {
   if (is_vector(&l) || is_vector(&r)) { return vector_operate(l, r, op); }
 
-  if (op == EIR_OPCODE_NOT) return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = !kit_var_to_bool(r) } };
+  if (op == KIT_IR_OPCODE_NOT) return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = !kit_var_to_bool(r) } };
 
   switch (op) {
-    case EIR_OPCODE_ADD: return COERCE_BINOP(l, r, +);
-    case EIR_OPCODE_SUB: return COERCE_BINOP(l, r, -);
-    case EIR_OPCODE_MUL: return COERCE_BINOP(l, r, *);
-    case EIR_OPCODE_DIV:
+    case KIT_IR_OPCODE_ADD: return COERCE_BINOP(l, r, +);
+    case KIT_IR_OPCODE_SUB: return COERCE_BINOP(l, r, -);
+    case KIT_IR_OPCODE_MUL: return COERCE_BINOP(l, r, *);
+    case KIT_IR_OPCODE_DIV:
       if (kit_cast_to_int(&r) == 0) return KIT_NULLVAR;
       return COERCE_BINOP(l, r, /);
-    case EIR_OPCODE_MOD:
+    case KIT_IR_OPCODE_MOD:
       if (kit_cast_to_int(&r) == 0) return KIT_NULLVAR;
       return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) % kit_cast_to_int(&r) };
-    case EIR_OPCODE_EQL: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = kit_var_equal(&l, &r) };
-    case EIR_OPCODE_NEQ: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = (bool)!kit_var_equal(&l, &r) };
-    case EIR_OPCODE_LT: return COERCE_BOOLEAN_BINOP(l, r, <);
-    case EIR_OPCODE_LTE: return COERCE_BOOLEAN_BINOP(l, r, <=);
-    case EIR_OPCODE_GT: return COERCE_BOOLEAN_BINOP(l, r, >);
-    case EIR_OPCODE_GTE: return COERCE_BOOLEAN_BINOP(l, r, >=);
-    case EIR_OPCODE_AND: return COERCE_BOOLEAN_BINOP(l, r, &&);
-    case EIR_OPCODE_OR: return COERCE_BOOLEAN_BINOP(l, r, ||);
-    case EIR_OPCODE_NEG:
+    case KIT_IR_OPCODE_EQL: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = kit_var_equal(&l, &r) };
+    case KIT_IR_OPCODE_NEQ: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = (bool)!kit_var_equal(&l, &r) };
+    case KIT_IR_OPCODE_LT: return COERCE_BOOLEAN_BINOP(l, r, <);
+    case KIT_IR_OPCODE_LTE: return COERCE_BOOLEAN_BINOP(l, r, <=);
+    case KIT_IR_OPCODE_GT: return COERCE_BOOLEAN_BINOP(l, r, >);
+    case KIT_IR_OPCODE_GTE: return COERCE_BOOLEAN_BINOP(l, r, >=);
+    case KIT_IR_OPCODE_AND: return COERCE_BOOLEAN_BINOP(l, r, &&);
+    case KIT_IR_OPCODE_OR: return COERCE_BOOLEAN_BINOP(l, r, ||);
+    case KIT_IR_OPCODE_NEG:
       switch (r.type) {
         case KIT_VARTYPE_INT: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -r.val.i };
         case KIT_VARTYPE_CHAR: return (kit_var){ .type = KIT_VARTYPE_CHAR, .val.c = (char)-(int)r.val.c };
@@ -274,10 +274,10 @@ operate(kit_var l, kit_var r, eir_opcode op)
         case KIT_VARTYPE_FLOAT: return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val.f = -r.val.f };
         default: break;
       }
-    case EIR_OPCODE_BNOT: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = ~kit_cast_to_int(&r) };
-    case EIR_OPCODE_BAND: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) & kit_cast_to_int(&r) };
-    case EIR_OPCODE_BOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) | kit_cast_to_int(&r) };
-    case EIR_OPCODE_XOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) ^ kit_cast_to_int(&r) };
+    case KIT_IR_OPCODE_BNOT: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = ~kit_cast_to_int(&r) };
+    case KIT_IR_OPCODE_BAND: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) & kit_cast_to_int(&r) };
+    case KIT_IR_OPCODE_BOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) | kit_cast_to_int(&r) };
+    case KIT_IR_OPCODE_XOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) ^ kit_cast_to_int(&r) };
     default: break;
   }
   return KIT_NULLVAR;

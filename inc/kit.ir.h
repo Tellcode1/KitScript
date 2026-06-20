@@ -6,45 +6,45 @@
 typedef int kit_vreg_t;
 typedef u32 kit_reg_t; /* register when it is in memory, u8 on disk */
 
-typedef enum eir_opcode_bits {
-  EIR_OPCODE_NOP = 0,
+typedef enum kit_ir_opcode_bits {
+  KIT_IR_OPCODE_NOP = 0,
 
   /**
    * Move values between two registers.
    * The source register is still valid (so this is more of a copy).
    * MOV [dst] [src]
    */
-  EIR_OPCODE_MOV,
+  KIT_IR_OPCODE_MOV,
 
   /**
    * Move an integer into the register specified.
    * MOVI [dst] [value]
    */
-  EIR_OPCODE_MOVI,
+  KIT_IR_OPCODE_MOVI,
 
   /**
    * Move a floating point number into the register specified.
    * MOVF [dst] [value]
    */
-  EIR_OPCODE_MOVF,
+  KIT_IR_OPCODE_MOVF,
 
   /**
    * Move a global variable to a local register.
    * GETG [dst] [globalReg]
    */
-  EIR_OPCODE_GETG,
+  KIT_IR_OPCODE_GETG,
 
   /**
    * Assign to a global register from a local register.
    * SETG [dstGlobalReg] [localReg]
    */
-  EIR_OPCODE_SETG,
+  KIT_IR_OPCODE_SETG,
 
   /**
    * Move values between two global registers.
    * MOVG [dstGReg] [srcGReg]
    */
-  EIR_OPCODE_MOVG,
+  KIT_IR_OPCODE_MOVG,
 
   /**
    * Add two registers and place them in a third.
@@ -52,42 +52,42 @@ typedef enum eir_opcode_bits {
    * ADD [dst] [a] [b]
    * dst = a+b
    */
-  EIR_OPCODE_ADD,
-  EIR_OPCODE_SUB,
-  EIR_OPCODE_MUL,
-  EIR_OPCODE_DIV,
-  EIR_OPCODE_MOD,
-  EIR_OPCODE_EXP,
-  EIR_OPCODE_AND,
-  EIR_OPCODE_OR,
-  EIR_OPCODE_BAND,
-  EIR_OPCODE_BOR,
-  EIR_OPCODE_XOR,
-  EIR_OPCODE_EQL,
-  EIR_OPCODE_NEQ,
-  EIR_OPCODE_LT,
-  EIR_OPCODE_LTE,
-  EIR_OPCODE_GT,
-  EIR_OPCODE_GTE,
+  KIT_IR_OPCODE_ADD,
+  KIT_IR_OPCODE_SUB,
+  KIT_IR_OPCODE_MUL,
+  KIT_IR_OPCODE_DIV,
+  KIT_IR_OPCODE_MOD,
+  KIT_IR_OPCODE_EXP,
+  KIT_IR_OPCODE_AND,
+  KIT_IR_OPCODE_OR,
+  KIT_IR_OPCODE_BAND,
+  KIT_IR_OPCODE_BOR,
+  KIT_IR_OPCODE_XOR,
+  KIT_IR_OPCODE_EQL,
+  KIT_IR_OPCODE_NEQ,
+  KIT_IR_OPCODE_LT,
+  KIT_IR_OPCODE_LTE,
+  KIT_IR_OPCODE_GT,
+  KIT_IR_OPCODE_GTE,
 
   /**
    * Unary operators.
    * NEG [dst] [src]
    */
-  EIR_OPCODE_BNOT,
-  EIR_OPCODE_NEG,
-  EIR_OPCODE_NOT,
+  KIT_IR_OPCODE_BNOT,
+  KIT_IR_OPCODE_NEG,
+  KIT_IR_OPCODE_NOT,
 
   /* Increment a register. INC [reg] */
-  EIR_OPCODE_INC,
+  KIT_IR_OPCODE_INC,
   /* Decrement a register. DEC [reg] */
-  EIR_OPCODE_DEC,
+  KIT_IR_OPCODE_DEC,
 
   /**
    * Return from a function with a value
    * RET [ReturnValueReg]
    */
-  EIR_OPCODE_RET,
+  KIT_IR_OPCODE_RET,
 
   /**
    * Initialize a list with given elements.
@@ -96,7 +96,7 @@ typedef enum eir_opcode_bits {
    *
    * MK_LIST [dstReg] [numElems]
    */
-  EIR_OPCODE_MK_LIST,
+  KIT_IR_OPCODE_MK_LIST,
 
   /**
    * Pack key value pairs into a map.
@@ -105,161 +105,161 @@ typedef enum eir_opcode_bits {
    *
    * MK_MAP [dst] [nPairs]
    */
-  EIR_OPCODE_MK_MAP,
+  KIT_IR_OPCODE_MK_MAP,
 
   /**
    * INDEX [dst] [base] [index]
    */
-  EIR_OPCODE_INDEX,
+  KIT_IR_OPCODE_INDEX,
 
   /* INDEX_ASSIGN [value] [base] [index] */
-  EIR_OPCODE_INDEX_ASSIGN,
+  KIT_IR_OPCODE_INDEX_ASSIGN,
 
   /* MEMBER_ACCESS [dst] [base] [member ID : u32] */
-  EIR_OPCODE_MEMBER_ACCESS,
+  KIT_IR_OPCODE_MEMBER_ACCESS,
   /* MEMBER_ACCESS [value] [base] [member ID : u32] */
-  EIR_OPCODE_MEMBER_ASSIGN,
+  KIT_IR_OPCODE_MEMBER_ASSIGN,
 
   /**
    * MK_STRUCT [dst] [ID]
    * Implicitly reads from the argument vector.
    */
-  EIR_OPCODE_MK_STRUCT,
+  KIT_IR_OPCODE_MK_STRUCT,
 
   /* CALL [retValueReg] [functionID] [numArgs] */
-  EIR_OPCODE_CALL,
+  KIT_IR_OPCODE_CALL,
 
-  EIR_OPCODE_LABEL,
-  EIR_OPCODE_JMP,
-  EIR_OPCODE_JZ,
-  EIR_OPCODE_JNZ,
+  KIT_IR_OPCODE_LABEL,
+  KIT_IR_OPCODE_JMP,
+  KIT_IR_OPCODE_JZ,
+  KIT_IR_OPCODE_JNZ,
 
   /* Push a register to the stack [regID] */
-  EIR_OPCODE_PUSH,
+  KIT_IR_OPCODE_PUSH,
   /* Pop a register from the stack [regID]*/
-  EIR_OPCODE_POP,
+  KIT_IR_OPCODE_POP,
 
   /**
    * Load a constant from the constant table
    * LOADK [dst] [which]
    */
-  EIR_OPCODE_LOADK,
+  KIT_IR_OPCODE_LOADK,
 
   /**
    * Assert that a condition is true, or return
    * and error if it is not.
    */
-  EIR_OPCODE_ASSERT,
-} eir_opcode_bits;
-typedef u8 eir_opcode;
+  KIT_IR_OPCODE_ASSERT,
+} kit_ir_opcode_bits;
+typedef u8 kit_ir_opcode;
 
 /**
  * An instruction loaded into memory.
  * They are tightly packed on disk.
  */
 typedef union kit_ins {
-  eir_opcode opcode;
-  struct eir_ins_binop {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    kit_reg_t  a;
-    kit_reg_t  b;
+  kit_ir_opcode opcode;
+  struct kit_ir_ins_binop {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    kit_reg_t     a;
+    kit_reg_t     b;
   } binop;
-  struct eir_ins_unop {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    kit_reg_t  a;
+  struct kit_ir_ins_unop {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    kit_reg_t     a;
   } unop;
-  struct eir_ins_loadk {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    u32        id;
+  struct kit_ir_ins_loadk {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    u32           id;
   } loadk;
-  struct eir_ins_mov {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    kit_reg_t  src;
+  struct kit_ir_ins_mov {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    kit_reg_t     src;
   } mov, movg, getg, setg;
-  struct eir_ins_movi {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    int        value;
+  struct kit_ir_ins_movi {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    int           value;
   } movi;
-  struct eir_ins_movf {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    double     value;
+  struct kit_ir_ins_movf {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    double        value;
   } movf;
-  struct eir_ins_ret {
-    eir_opcode opcode;
-    kit_reg_t  return_value;
+  struct kit_ir_ins_ret {
+    kit_ir_opcode opcode;
+    kit_reg_t     return_value;
   } ret;
-  struct eir_ins_mk_list {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    u32        nelems;
+  struct kit_ir_ins_mk_list {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    u32           nelems;
   } mk_list;
-  struct eir_ins_mk_map {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    u32        npairs;
+  struct kit_ir_ins_mk_map {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    u32           npairs;
   } mk_map;
-  struct eir_ins_index {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    kit_reg_t  base;
-    kit_reg_t  index;
+  struct kit_ir_ins_index {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    kit_reg_t     base;
+    kit_reg_t     index;
   } index;
-  struct eir_ins_index_assign {
-    eir_opcode opcode;
-    kit_reg_t  value;
-    kit_reg_t  base;
-    kit_reg_t  index;
+  struct kit_ir_ins_index_assign {
+    kit_ir_opcode opcode;
+    kit_reg_t     value;
+    kit_reg_t     base;
+    kit_reg_t     index;
   } index_assign;
-  struct eir_ins_call {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    u32        function_id;
-    u32        nargs;
+  struct kit_ir_ins_call {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    u32           function_id;
+    u32           nargs;
   } call;
-  struct eir_ins_jmp {
-    eir_opcode opcode;
-    u32        target;
+  struct kit_ir_ins_jmp {
+    kit_ir_opcode opcode;
+    u32           target;
   } jmp;
-  struct eir_ins_cjmp { // conditional jump
-    eir_opcode opcode;
-    kit_reg_t  condition;
-    u32        target;
+  struct kit_ir_ins_cjmp { // conditional jump
+    kit_ir_opcode opcode;
+    kit_reg_t     condition;
+    u32           target;
   } cj, jz, jnz, je, jne;
-  struct eir_ins_label {
-    eir_opcode opcode;
-    u32        id;
+  struct kit_ir_ins_label {
+    kit_ir_opcode opcode;
+    u32           id;
   } label;
-  struct eir_ins_member_access {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    kit_reg_t  base;
-    u32        member_id;
+  struct kit_ir_ins_member_access {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    kit_reg_t     base;
+    u32           member_id;
   } member_access;
-  struct eir_ins_member_assign {
-    eir_opcode opcode;
-    kit_reg_t  value;
-    kit_reg_t  base;
-    u32        member_id;
+  struct kit_ir_ins_member_assign {
+    kit_ir_opcode opcode;
+    kit_reg_t     value;
+    kit_reg_t     base;
+    u32           member_id;
   } member_assign;
-  struct eir_ins_mk_struct {
-    eir_opcode opcode;
-    kit_reg_t  dst;
-    u32        struct_id;
+  struct kit_ir_ins_mk_struct {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    u32           struct_id;
   } mk_struct;
-  struct eir_ins_push {
-    eir_opcode opcode;
-    kit_reg_t  reg;
+  struct kit_ir_ins_push {
+    kit_ir_opcode opcode;
+    kit_reg_t     reg;
   } push, pop;
-  struct eir_ins_assert {
-    eir_opcode opcode;
-    kit_reg_t  cond;
-    u32        line_id; /* the constant ID of the line */
+  struct kit_ir_ins_assert {
+    kit_ir_opcode opcode;
+    kit_reg_t     cond;
+    u32           line_id; /* the constant ID of the line */
   } assertion;
 } kit_ins;
 

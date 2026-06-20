@@ -73,8 +73,10 @@ typedef struct codeblock {
   bool* defines;
   bool* uses;
 
-  bool* live_in;
-  bool* live_out;
+  /* block level liveliness analysis. Arena allocated */
+  bool* live_in;  /* [nvregs] */
+  bool* live_out; /* [nvregs] */
+
 } codeblock;
 
 /* our CFG */
@@ -82,15 +84,22 @@ typedef struct codegraph {
   kit_arena* arena;
   codeblock* blocks; /* arena allocated  */
   u32        nblocks;
-  u32        nvregs;
+
+  /* instruction level liveliness analysis. Arena allocated */
+  bool** ins_live_out; /* [ninstructions][nvregs] */
+  bool** ins_live_in;  /* [ninstructions][nvregs] */
+
+  u32 nvregs;
 } codegraph;
 
 static ATTR_NODISCARD char* qualify_name(const kit_compiler* cc, const char* name);
 
 static ATTR_NODISCARD int codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst);
-static int                codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst);
-static int                codegraph_build_successor_list(kit_compiler* cc, codegraph* dst);
 static void               codegraph_free(kit_compiler* cc, codegraph* graph);
+
+static int codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst);
+static int codegraph_instruction_level_liveliness_analysis(kit_compiler* cc, codegraph* dst);
+static int codegraph_build_successor_list(kit_compiler* cc, codegraph* dst);
 
 static bool codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_constant_folding(kit_compiler* cc, codegraph* cfg);
@@ -117,7 +126,7 @@ static inline u32                 defer_get_current_depth(kit_compiler* cc);
 
 static inline int fold_vector(kit_compiler* cc, const int* elems, u32 nelems);
 
-static inline RETURNS_ERRCODE int emit_and_record_jmp(kit_compiler* cc, eir_opcode opcode, kit_vreg_t condition, u32 label_id);
+static inline RETURNS_ERRCODE int emit_and_record_jmp(kit_compiler* cc, kit_ir_opcode opcode, kit_vreg_t condition, u32 label_id);
 static inline void                define_and_emit_label(kit_compiler* cc, u32 label_id);
 
 static RETURNS_ERRCODE int append_defer_entry(kit_compiler* cc, int* exprs, u32 nexprs);
@@ -276,69 +285,69 @@ get_cost_for_inlining_function(const kit_compiler* cc, int bias, const kitc_func
  * Only supports binary operators.
  * Unary operators must be handled seperately.
  */
-static inline eir_opcode
+static inline kit_ir_opcode
 kit_binary_operator_to_opcode(kit_operator op)
 {
   switch (op) {
-    case KIT_OPERATOR_ADD: return EIR_OPCODE_ADD;
-    case KIT_OPERATOR_SUB: return EIR_OPCODE_SUB;
-    case KIT_OPERATOR_MUL: return EIR_OPCODE_MUL;
-    case KIT_OPERATOR_DIV: return EIR_OPCODE_DIV;
-    case KIT_OPERATOR_MOD: return EIR_OPCODE_MOD;
-    case KIT_OPERATOR_EXP: return EIR_OPCODE_EXP;
-    case KIT_OPERATOR_AND: return EIR_OPCODE_AND;
-    case KIT_OPERATOR_OR: return EIR_OPCODE_OR;
-    case KIT_OPERATOR_BAND: return EIR_OPCODE_BAND;
-    case KIT_OPERATOR_BOR: return EIR_OPCODE_BOR;
-    case KIT_OPERATOR_XOR: return EIR_OPCODE_XOR;
-    case KIT_OPERATOR_ISEQL: return EIR_OPCODE_EQL;
-    case KIT_OPERATOR_ISNEQ: return EIR_OPCODE_NEQ;
-    case KIT_OPERATOR_LT: return EIR_OPCODE_LT;
-    case KIT_OPERATOR_LTE: return EIR_OPCODE_LTE;
-    case KIT_OPERATOR_GT: return EIR_OPCODE_GT;
-    case KIT_OPERATOR_GTE: return EIR_OPCODE_GTE;
-    case KIT_OPERATOR_NOT: return EIR_OPCODE_NOT;
-    case KIT_OPERATOR_BNOT: return EIR_OPCODE_BNOT;
-    case KIT_OPERATOR_DEC: return EIR_OPCODE_DEC;
-    case KIT_OPERATOR_INC: return EIR_OPCODE_INC;
+    case KIT_OPERATOR_ADD: return KIT_IR_OPCODE_ADD;
+    case KIT_OPERATOR_SUB: return KIT_IR_OPCODE_SUB;
+    case KIT_OPERATOR_MUL: return KIT_IR_OPCODE_MUL;
+    case KIT_OPERATOR_DIV: return KIT_IR_OPCODE_DIV;
+    case KIT_OPERATOR_MOD: return KIT_IR_OPCODE_MOD;
+    case KIT_OPERATOR_EXP: return KIT_IR_OPCODE_EXP;
+    case KIT_OPERATOR_AND: return KIT_IR_OPCODE_AND;
+    case KIT_OPERATOR_OR: return KIT_IR_OPCODE_OR;
+    case KIT_OPERATOR_BAND: return KIT_IR_OPCODE_BAND;
+    case KIT_OPERATOR_BOR: return KIT_IR_OPCODE_BOR;
+    case KIT_OPERATOR_XOR: return KIT_IR_OPCODE_XOR;
+    case KIT_OPERATOR_ISEQL: return KIT_IR_OPCODE_EQL;
+    case KIT_OPERATOR_ISNEQ: return KIT_IR_OPCODE_NEQ;
+    case KIT_OPERATOR_LT: return KIT_IR_OPCODE_LT;
+    case KIT_OPERATOR_LTE: return KIT_IR_OPCODE_LTE;
+    case KIT_OPERATOR_GT: return KIT_IR_OPCODE_GT;
+    case KIT_OPERATOR_GTE: return KIT_IR_OPCODE_GTE;
+    case KIT_OPERATOR_NOT: return KIT_IR_OPCODE_NOT;
+    case KIT_OPERATOR_BNOT: return KIT_IR_OPCODE_BNOT;
+    case KIT_OPERATOR_DEC: return KIT_IR_OPCODE_DEC;
+    case KIT_OPERATOR_INC: return KIT_IR_OPCODE_INC;
   }
   return -1;
 }
 
 static inline bool
-is_instruction_binary_operation(eir_opcode op)
+is_instruction_binary_operation(kit_ir_opcode op)
 {
   switch (op) {
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE: return true;
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE: return true;
     default: return false;
   }
   return -1;
 }
 
 static inline bool
-is_instruction_unary_operation(eir_opcode op)
+is_instruction_unary_operation(kit_ir_opcode op)
 {
   switch (op) {
-    case EIR_OPCODE_NOT:
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_DEC:
-    case EIR_OPCODE_INC: return true;
+    case KIT_IR_OPCODE_NOT:
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_DEC:
+    case KIT_IR_OPCODE_INC: return true;
     default: return false;
   }
   return -1;
@@ -515,12 +524,12 @@ defer_emit_to_depth(kit_compiler* cc, u32 target_depth)
  * jump instructions (JMP,JE,JNE,JZ,JNZ,etc.)
  */
 static inline int
-emit_and_record_jmp(kit_compiler* cc, eir_opcode opcode, kit_vreg_t condition, u32 label_id)
+emit_and_record_jmp(kit_compiler* cc, kit_ir_opcode opcode, kit_vreg_t condition, u32 label_id)
 {
   switch (opcode) {
-    case EIR_OPCODE_JMP: kit_emit_ins(cc, (kit_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = label_id } }); break;
-    case EIR_OPCODE_JZ: kit_emit_ins(cc, (kit_ins){ .jz = { .opcode = EIR_OPCODE_JZ, .condition = condition, .target = label_id } }); break;
-    case EIR_OPCODE_JNZ: kit_emit_ins(cc, (kit_ins){ .jnz = { .opcode = EIR_OPCODE_JNZ, .condition = condition, .target = label_id } }); break;
+    case KIT_IR_OPCODE_JMP: kit_emit_ins(cc, (kit_ins){ .jmp = { .opcode = KIT_IR_OPCODE_JMP, .target = label_id } }); break;
+    case KIT_IR_OPCODE_JZ: kit_emit_ins(cc, (kit_ins){ .jz = { .opcode = KIT_IR_OPCODE_JZ, .condition = condition, .target = label_id } }); break;
+    case KIT_IR_OPCODE_JNZ: kit_emit_ins(cc, (kit_ins){ .jnz = { .opcode = KIT_IR_OPCODE_JNZ, .condition = condition, .target = label_id } }); break;
 
     default: return -1;
   }
@@ -530,7 +539,7 @@ emit_and_record_jmp(kit_compiler* cc, eir_opcode opcode, kit_vreg_t condition, u
 
 static inline void
 define_and_emit_label(kit_compiler* cc, u32 label_id)
-{ kit_emit_ins(cc, (kit_ins){ .label = { .opcode = EIR_OPCODE_LABEL, .id = label_id } }); }
+{ kit_emit_ins(cc, (kit_ins){ .label = { .opcode = KIT_IR_OPCODE_LABEL, .id = label_id } }); }
 
 static inline RETURNS_ERRCODE int
 compiler_make_fork(const kit_compiler* old_c, kit_compiler* new_c)
@@ -557,7 +566,7 @@ compiler_make_fork(const kit_compiler* old_c, kit_compiler* new_c)
     .ninstructions     = 0,
     .cinstructions     = init_code_capacity,
   };
-  for (u32 i = 0; i < init_code_capacity; i++) { new_c->instructions[i] = (kit_ins){ .opcode = EIR_OPCODE_NOP }; }
+  for (u32 i = 0; i < init_code_capacity; i++) { new_c->instructions[i] = (kit_ins){ .opcode = KIT_IR_OPCODE_NOP }; }
   scope_push(new_c);
   return new_c->instructions ? 0 : -1;
 }
@@ -707,7 +716,7 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       }
 
       /* local to local operation. global to global operations need a temporary register. */
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = v->slot.reg, .src = value } });
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = v->slot.reg, .src = value } });
       break;
     }
     case KIT_LVAL_GVAR: {
@@ -724,7 +733,7 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       }
 
       /* writing to a global variable from a local register */
-      kit_emit_ins(cc, (kit_ins){ .setg = { .opcode = EIR_OPCODE_SETG, .dst = v->slot.global_id, .src = value } });
+      kit_emit_ins(cc, (kit_ins){ .setg = { .opcode = KIT_IR_OPCODE_SETG, .dst = v->slot.global_id, .src = value } });
       break;
     }
     case KIT_LVAL_INDEX: {
@@ -737,7 +746,7 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       // index = compile(cc, lv->val.index.index_node);
       // if (index < 0) return index;
 
-      // kit_emit_ins(cc, (kit_ins){ .index_assign = { .opcode = EIR_OPCODE_INDEX_ASSIGN, .value = value, .base = base, .index = index } });
+      // kit_emit_ins(cc, (kit_ins){ .index_assign = { .opcode = KIT_IR_OPCODE_INDEX_ASSIGN, .value = value, .base = base, .index = index } });
 
       val_t left = { 0 };
       if (value_init(cc, lv->val.index.left_node, &left) < 0) return -1;
@@ -751,7 +760,7 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       if (index < 0) return index;
 
       /* index_assign modifies base. */
-      kit_emit_ins(cc, (kit_ins){ .index_assign = { .opcode = EIR_OPCODE_INDEX_ASSIGN, .value = value, .base = base, .index = index } });
+      kit_emit_ins(cc, (kit_ins){ .index_assign = { .opcode = KIT_IR_OPCODE_INDEX_ASSIGN, .value = value, .base = base, .index = index } });
 
       /* write base back to its slot */
       if (emit_lvalue_assign(cc, base, &left) < 0) return -1;
@@ -770,7 +779,7 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       kit_vreg_t base = emit_lvalue_load(cc, &base_lv);
       if (base < 0) return base;
 
-      kit_emit_ins(cc, (kit_ins){ .member_assign = { .opcode = EIR_OPCODE_MEMBER_ASSIGN, .value = value, .base = base, .member_id = member_id } });
+      kit_emit_ins(cc, (kit_ins){ .member_assign = { .opcode = KIT_IR_OPCODE_MEMBER_ASSIGN, .value = value, .base = base, .member_id = member_id } });
 
       /* write base back to its slot */
       if (emit_lvalue_assign(cc, base, &base_lv) < 0) return -1;
@@ -803,7 +812,7 @@ emit_lvalue_load(kit_compiler* cc, val_t* lv)
       kit_vreg_t dst = vreg_alloc(cc);
 
       /* emit a GETG to fetch the global variable into our local register */
-      kit_emit_ins(cc, (kit_ins){ .getg = { .opcode = EIR_OPCODE_GETG, .dst = dst, .src = v->slot.global_id } });
+      kit_emit_ins(cc, (kit_ins){ .getg = { .opcode = KIT_IR_OPCODE_GETG, .dst = dst, .src = v->slot.global_id } });
       return dst;
     }
 
@@ -819,7 +828,7 @@ emit_lvalue_load(kit_compiler* cc, val_t* lv)
       index = compile(cc, lv->val.index.index_node);
       if (index < 0) return index;
 
-      kit_emit_ins(cc, (kit_ins){ .index = { .opcode = EIR_OPCODE_INDEX, .dst = dst, .base = base, .index = index } });
+      kit_emit_ins(cc, (kit_ins){ .index = { .opcode = KIT_IR_OPCODE_INDEX, .dst = dst, .base = base, .index = index } });
 
       return dst;
     }
@@ -833,7 +842,7 @@ emit_lvalue_load(kit_compiler* cc, val_t* lv)
       if (base < 0) return base;
 
       kit_vreg_t dst = vreg_alloc(cc);
-      kit_emit_ins(cc, (kit_ins){ .member_access = { .opcode = EIR_OPCODE_MEMBER_ACCESS, .dst = dst, .base = base, .member_id = member_id } });
+      kit_emit_ins(cc, (kit_ins){ .member_access = { .opcode = KIT_IR_OPCODE_MEMBER_ACCESS, .dst = dst, .base = base, .member_id = member_id } });
 
       return dst;
     }
@@ -1023,13 +1032,13 @@ compile_and_push_literal_variable(kit_compiler* cc, const kit_var* v)
   /* OPTIMIZATION: If the variable is an integer or a float, emit a MOVI or a MOVF  */
   if (cc->info->opt_level >= 1 && v->type == KIT_VARTYPE_INT) {
     kit_vreg_t dst = vreg_alloc(cc);
-    kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = dst, .value = v->val.i } });
+    kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = KIT_IR_OPCODE_MOVI, .dst = dst, .value = v->val.i } });
     return dst;
   }
 
   if (cc->info->opt_level >= 1 && v->type == KIT_VARTYPE_FLOAT) {
     kit_vreg_t dst = vreg_alloc(cc);
-    kit_emit_ins(cc, (kit_ins){ .movf = { .opcode = EIR_OPCODE_MOVF, .dst = dst, .value = v->val.f } });
+    kit_emit_ins(cc, (kit_ins){ .movf = { .opcode = KIT_IR_OPCODE_MOVF, .dst = dst, .value = v->val.f } });
     return dst;
   }
 
@@ -1043,7 +1052,7 @@ compile_and_push_literal_variable(kit_compiler* cc, const kit_var* v)
 
   kit_vreg_t dst = vreg_alloc(cc);
 
-  kit_emit_ins(cc, (kit_ins){ .loadk = { .opcode = EIR_OPCODE_LOADK, .dst = dst, .id = hash } });
+  kit_emit_ins(cc, (kit_ins){ .loadk = { .opcode = KIT_IR_OPCODE_LOADK, .dst = dst, .id = hash } });
 
   return dst;
 }
@@ -1077,18 +1086,18 @@ compile_list(kit_compiler* cc, int node)
 
   for (u32 i = 0; i < nelems; i++) {
     /* Move at most 16 elements from their registers to our argument list. */
-    if (i < KIT_REG_ARG_COUNT) kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = elems[i] } });
+    if (i < KIT_REG_ARG_COUNT) kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = elems[i] } });
     /* else push them to the stack */
-    else kit_emit_ins(cc, (kit_ins){ .push = { .opcode = EIR_OPCODE_PUSH, .reg = elems[i] } });
+    else kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = elems[i] } });
   }
 
-  kit_emit_ins(cc, (kit_ins){ .mk_list = { .opcode = EIR_OPCODE_MK_LIST, .dst = dst, .nelems = nelems } });
+  kit_emit_ins(cc, (kit_ins){ .mk_list = { .opcode = KIT_IR_OPCODE_MK_LIST, .dst = dst, .nelems = nelems } });
 
   /* remove spilled elements from the stack */
   kit_vreg_t tmp = vreg_alloc(cc);
   for (u32 i = KIT_REG_ARG_END + 1; i < nelems; i++) {
     /* pop repeatedly into tmp */
-    kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
+    kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = tmp } });
   }
 
   return dst;
@@ -1124,22 +1133,22 @@ compile_map(kit_compiler* cc, int node)
 
     if (i < (KIT_REG_ARG_COUNT / 2)) {
       /* copy KV pairs into our argument vector */
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = KIT_REG_ARG0 + (i * 2), .src = k } });
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = KIT_REG_ARG0 + (i * 2) + 1, .src = v } });
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + (i * 2), .src = k } });
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + (i * 2) + 1, .src = v } });
     } else {
       /* spill! */
-      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = EIR_OPCODE_PUSH, .reg = k } });
-      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = EIR_OPCODE_PUSH, .reg = v } });
+      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = k } });
+      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = v } });
     }
   }
 
-  kit_emit_ins(cc, (kit_ins){ .mk_map = { .opcode = EIR_OPCODE_MK_MAP, .dst = dst, .npairs = npairs } });
+  kit_emit_ins(cc, (kit_ins){ .mk_map = { .opcode = KIT_IR_OPCODE_MK_MAP, .dst = dst, .npairs = npairs } });
 
   /* Cleanup the stack. */
   kit_vreg_t tmp = vreg_alloc(cc);
   for (u32 i = (KIT_REG_ARG_COUNT / 2); i < npairs; i++) {
     /* pop repeatedly into tmp */
-    kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
+    kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = tmp } });
   }
 
   return dst;
@@ -1170,6 +1179,9 @@ codegraph_rebuild(kit_compiler* cc, codegraph* cfg)
   if (e < 0) return e;
 
   e = codegraph_block_level_liveliness_analysis(cc, cfg);
+  if (e < 0) return e;
+
+  e = codegraph_instruction_level_liveliness_analysis(cc, cfg);
   if (e < 0) return e;
 
   return 0;
@@ -1227,11 +1239,11 @@ compile_function_definition(kit_compiler* cc, int node)
     /* argument in vector, mov it to our register */
     if (i < KIT_REG_ARG_COUNT) {
       kit_vreg_t src = (kit_vreg_t)(KIT_REG_ARG0 + i);
-      kit_emit_ins(&fork, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = dst, .src = src } });
+      kit_emit_ins(&fork, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = dst, .src = src } });
     }
     /* argument on stack, mov it to our register */
     else {
-      kit_emit_ins(&fork, (kit_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = dst } });
+      kit_emit_ins(&fork, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = dst } });
     }
 
     /* Define argument variable */
@@ -1333,8 +1345,8 @@ static u32
 next_real_ins(kit_compiler* cc, u32 start)
 {
   for (u32 i = start; i < cc->ninstructions; i++) {
-    eir_opcode op = cc->instructions[i].opcode;
-    if (op != EIR_OPCODE_NOP && op != EIR_OPCODE_LABEL) return i;
+    kit_ir_opcode op = cc->instructions[i].opcode;
+    if (op != KIT_IR_OPCODE_NOP && op != KIT_IR_OPCODE_LABEL) return i;
   }
   return UINT32_MAX;
 }
@@ -1348,7 +1360,7 @@ compile_binary_op(kit_compiler* cc, int node)
   int  left        = KIT_GET_NODE(cc->ast, node)->binaryop.left;
   int  right       = KIT_GET_NODE(cc->ast, node)->binaryop.right;
 
-  eir_opcode opcode = kit_binary_operator_to_opcode(KIT_GET_NODE(cc->ast, node)->binaryop.op);
+  kit_ir_opcode opcode = kit_binary_operator_to_opcode(KIT_GET_NODE(cc->ast, node)->binaryop.op);
   if (opcode < 0) {
     cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Operator %u can not be used as a binary operator\n", KIT_GET_NODE(cc->ast, node)->binaryop.op);
     goto err;
@@ -1417,11 +1429,11 @@ err:
 static kit_vreg_t
 compile_inc_or_dec(kit_compiler* cc, int node)
 {
-  eir_opcode opcode = -1;
+  kit_ir_opcode opcode = -1;
   if (KIT_GET_NODE(cc->ast, node)->unaryop.op == KIT_OPERATOR_INC) {
-    opcode = EIR_OPCODE_ADD;
+    opcode = KIT_IR_OPCODE_ADD;
   } else if (KIT_GET_NODE(cc->ast, node)->unaryop.op == KIT_OPERATOR_DEC) {
-    opcode = EIR_OPCODE_SUB;
+    opcode = KIT_IR_OPCODE_SUB;
   }
 
   int right = KIT_GET_NODE(cc->ast, node)->unaryop.right;
@@ -1458,15 +1470,15 @@ compile_unary_op(kit_compiler* cc, int node)
   kit_operator oper = KIT_GET_NODE(cc->ast, node)->unaryop.op;
   if (oper == KIT_OPERATOR_INC || oper == KIT_OPERATOR_DEC) { return compile_inc_or_dec(cc, node); }
 
-  int        right       = KIT_GET_NODE(cc->ast, node)->unaryop.right;
-  bool       is_compound = KIT_GET_NODE(cc->ast, node)->unaryop.is_compound;
-  eir_opcode opcode      = -1;
+  int           right       = KIT_GET_NODE(cc->ast, node)->unaryop.right;
+  bool          is_compound = KIT_GET_NODE(cc->ast, node)->unaryop.is_compound;
+  kit_ir_opcode opcode      = -1;
 
   switch (KIT_GET_NODE(cc->ast, node)->unaryop.op) {
-    case KIT_OPERATOR_NOT: opcode = EIR_OPCODE_NOT; break;
-    case KIT_OPERATOR_BNOT: opcode = EIR_OPCODE_BNOT; break;
-    case KIT_OPERATOR_SUB: opcode = EIR_OPCODE_NEG; break;
-    case KIT_OPERATOR_ADD: opcode = EIR_OPCODE_NOP; break;
+    case KIT_OPERATOR_NOT: opcode = KIT_IR_OPCODE_NOT; break;
+    case KIT_OPERATOR_BNOT: opcode = KIT_IR_OPCODE_BNOT; break;
+    case KIT_OPERATOR_SUB: opcode = KIT_IR_OPCODE_NEG; break;
+    case KIT_OPERATOR_ADD: opcode = KIT_IR_OPCODE_NOP; break;
     default:
       cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Operator %u can not be used as a unary operator\n", KIT_GET_NODE(cc->ast, node)->unaryop.op);
       return -1;
@@ -1538,7 +1550,7 @@ compile_index(kit_compiler* cc, int node)
   if (index < 0) return index;
 
   kit_vreg_t dst = vreg_alloc(cc);
-  kit_emit_ins(cc, (kit_ins){ .index = { .opcode = EIR_OPCODE_INDEX, .dst = dst, .base = base, .index = index } });
+  kit_emit_ins(cc, (kit_ins){ .index = { .opcode = KIT_IR_OPCODE_INDEX, .dst = dst, .base = base, .index = index } });
 
   return dst;
 }
@@ -1708,22 +1720,22 @@ compile_function_call(kit_compiler* cc, int node)
   for (u32 i = 0; i < nargs; i++) {
     /* move to our arguments register */
     if (i < KIT_REG_ARG_COUNT) {
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = arg_registers[i] } });
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = arg_registers[i] } });
     } else {
       /* Spill the rest of the arguments on the stack */
-      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = EIR_OPCODE_PUSH, .reg = arg_registers[i] } });
+      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = arg_registers[i] } });
     }
   }
 
   kit_vreg_t dst = vreg_alloc(cc);
 
-  kit_emit_ins(cc, (kit_ins){ .call = { .opcode = EIR_OPCODE_CALL, .dst = dst, .function_id = hash, .nargs = nargs } });
+  kit_emit_ins(cc, (kit_ins){ .call = { .opcode = KIT_IR_OPCODE_CALL, .dst = dst, .function_id = hash, .nargs = nargs } });
 
   /* Cleanup the stack. */
   // kit_vreg_t tmp = vreg_alloc(cc);
   // for (u32 i = KIT_REG_ARG_COUNT; i < nargs; i++) {
   //   /* pop repeatedly into tmp */
-  //   kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = EIR_OPCODE_POP, .reg = tmp } });
+  //   kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = tmp } });
   // }
 
   return dst;
@@ -1755,7 +1767,7 @@ compile_if_statement(kit_compiler* cc, int node)
   }
 
   // condition failed :<
-  e = emit_and_record_jmp(cc, EIR_OPCODE_JZ, cond, next_in_chain_label); // Jump to the next in chain. else if/else/end of if statement
+  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JZ, cond, next_in_chain_label); // Jump to the next in chain. else if/else/end of if statement
   if (e < 0) goto ERR;
 
   e = defer_push_scope(cc);
@@ -1779,7 +1791,7 @@ compile_if_statement(kit_compiler* cc, int node)
 
   // Still inside the body, JMP over all other branches
   // since we're done executing the body of the if statement
-  e = emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, end_label); // JUMP!
+  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, end_label); // JUMP!
   if (e < 0) goto ERR;
 
   // ELSE IFS
@@ -1801,7 +1813,7 @@ compile_if_statement(kit_compiler* cc, int node)
     }
 
     /* Failed. Jump to the next in chain. */
-    e = emit_and_record_jmp(cc, EIR_OPCODE_JZ, elif_cond, next_in_chain_label);
+    e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JZ, elif_cond, next_in_chain_label);
     if (e < 0) goto ERR;
 
     // JZ pops condition
@@ -1826,7 +1838,7 @@ compile_if_statement(kit_compiler* cc, int node)
     scope_pop(cc);
 
     /* JMP over all other branches. */
-    e = emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, end_label); // skip remaining elseifs and else
+    e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, end_label); // skip remaining elseifs and else
     if (e < 0) goto ERR;
   }
 
@@ -1901,7 +1913,7 @@ compile_while_statement(kit_compiler* cc, int node)
   if (cond < 0) goto ERR;
 
   // Break out of loop if condition is false.
-  e = emit_and_record_jmp(cc, EIR_OPCODE_JZ, cond, end_label);
+  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JZ, cond, end_label);
   if (e < 0) goto ERR;
 
   scope_push(cc);
@@ -1934,7 +1946,7 @@ compile_while_statement(kit_compiler* cc, int node)
   if (e < 0) goto ERR;
 
   /* Jump to condition, body is done executing */
-  e = emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, pre_condition_label);
+  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, pre_condition_label);
   if (e < 0) goto ERR;
 
   // End label.
@@ -2019,7 +2031,7 @@ compile_for_statement(kit_compiler* cc, int node)
   }
 
   // JZ END_LABEL
-  e = emit_and_record_jmp(cc, EIR_OPCODE_JZ, cond_reg, end_label);
+  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JZ, cond_reg, end_label);
   if (e < 0) goto ERR;
 
   e = defer_push_scope(cc);
@@ -2066,7 +2078,7 @@ compile_for_statement(kit_compiler* cc, int node)
   /* Pop body scope */
 
   // JMP TOP_LABEL
-  e = emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, top_label);
+  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, top_label);
   if (e < 0) goto ERR;
 
   // END_LABEL
@@ -2123,28 +2135,29 @@ compile_ranged_for_statement(kit_compiler* cc, int node)
   u32 reverse_iterator_direction_label         = make_label_id(cc);
   u32 end_iterator_direction_calculation_label = make_label_id(cc);
 
-  kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = iterator_reg, .src = iterator_start_value } });
+  kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = iterator_reg, .src = iterator_start_value } });
 
   /* calc = stop < start [for i in 10..0]*/
   kit_emit_ins(
       cc,
       (kit_ins){
-          .binop = { .opcode = EIR_OPCODE_LT, .dst = iterator_increment_amount_calculation, .a = iterator_stop_value, .b = iterator_start_value } });
+          .binop = {
+              .opcode = KIT_IR_OPCODE_LT, .dst = iterator_increment_amount_calculation, .a = iterator_stop_value, .b = iterator_start_value } });
 
   /* jnz calc reverse_direction */
   kit_emit_ins(
       cc,
       (kit_ins){
-          .jnz = { .opcode = EIR_OPCODE_JNZ, .target = reverse_iterator_direction_label, .condition = iterator_increment_amount_calculation } });
+          .jnz = { .opcode = KIT_IR_OPCODE_JNZ, .target = reverse_iterator_direction_label, .condition = iterator_increment_amount_calculation } });
 
   /* jnz failed, normal iterator direction */
-  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = iterator_increment_amount, .value = 1 } });
-  kit_emit_ins(cc, (kit_ins){ .jmp = { .opcode = EIR_OPCODE_JMP, .target = end_iterator_direction_calculation_label } });
+  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = KIT_IR_OPCODE_MOVI, .dst = iterator_increment_amount, .value = 1 } });
+  kit_emit_ins(cc, (kit_ins){ .jmp = { .opcode = KIT_IR_OPCODE_JMP, .target = end_iterator_direction_calculation_label } });
 
   define_and_emit_label(cc, reverse_iterator_direction_label);
 
   /* reverse iterator direction */
-  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = EIR_OPCODE_MOVI, .dst = iterator_increment_amount, .value = -1 } });
+  kit_emit_ins(cc, (kit_ins){ .movi = { .opcode = KIT_IR_OPCODE_MOVI, .dst = iterator_increment_amount, .value = -1 } });
 
   define_and_emit_label(cc, end_iterator_direction_calculation_label);
 
@@ -2165,8 +2178,8 @@ compile_ranged_for_statement(kit_compiler* cc, int node)
   kit_vreg_t condition_check = vreg_alloc(cc);
 
   // neq dst=condition_check, iterator, stop
-  kit_emit_ins(cc, (kit_ins){ .binop = { .opcode = EIR_OPCODE_EQL, .dst = condition_check, .a = iterator_reg, .b = iterator_stop_value } });
-  if (emit_and_record_jmp(cc, EIR_OPCODE_JNZ, condition_check, end_label) < 0) goto ERR;
+  kit_emit_ins(cc, (kit_ins){ .binop = { .opcode = KIT_IR_OPCODE_EQL, .dst = condition_check, .a = iterator_reg, .b = iterator_stop_value } });
+  if (emit_and_record_jmp(cc, KIT_IR_OPCODE_JNZ, condition_check, end_label) < 0) goto ERR;
 
   for (u32 i = 0; i < nstmts; i++) {
     if (compile(cc, stmts[i]) < 0) {
@@ -2181,9 +2194,9 @@ compile_ranged_for_statement(kit_compiler* cc, int node)
   if (defer_emit_current_scope(cc) < 0) goto ERR;
 
   /* increase iterator_reg by increment_amount (+1 or -1)  */
-  kit_emit_ins(cc, (kit_ins){ .binop = { .opcode = EIR_OPCODE_ADD, .dst = iterator_reg, .a = iterator_reg, .b = iterator_increment_amount } });
+  kit_emit_ins(cc, (kit_ins){ .binop = { .opcode = KIT_IR_OPCODE_ADD, .dst = iterator_reg, .a = iterator_reg, .b = iterator_increment_amount } });
 
-  if (emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, start_label) < 0) goto ERR;
+  if (emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, start_label) < 0) goto ERR;
 
   define_and_emit_label(cc, end_label);
 
@@ -2307,13 +2320,13 @@ compile_return(kit_compiler* cc, int node)
       return rv;
     }
 
-    kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = rv } });
+    kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = KIT_IR_OPCODE_RET, .return_value = rv } });
   } else {
     kit_var    nil    = KIT_NULLVAR;
     kit_vreg_t nilvar = compile_and_push_literal_variable(cc, &nil);
     if (nilvar < 0) return nilvar;
 
-    kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
+    kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = KIT_IR_OPCODE_RET, .return_value = nilvar } });
   }
   return r;
 }
@@ -2430,10 +2443,10 @@ compile_struct_constructor(kit_compiler* fork, kit_filespan span, const kitc_str
   }
 
   /* Make the structure. Our inputs are already in the argument register and the stack (calling convention says so.) */
-  kit_emit_ins(fork, (kit_ins){ .mk_struct = { .opcode = EIR_OPCODE_MK_STRUCT, .dst = tmp, .struct_id = struct_id } });
+  kit_emit_ins(fork, (kit_ins){ .mk_struct = { .opcode = KIT_IR_OPCODE_MK_STRUCT, .dst = tmp, .struct_id = struct_id } });
 
   /* Return from our temporary register */
-  kit_emit_ins(fork, (kit_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = tmp } });
+  kit_emit_ins(fork, (kit_ins){ .ret = { .opcode = KIT_IR_OPCODE_RET, .return_value = tmp } });
 
   /* No need to clean up the stack, the CALL handler is responsible for that */
 
@@ -2548,9 +2561,9 @@ compile_variable_decleration(kit_compiler* cc, int node)
 
     /* global scope? */
     if (info->is_global) {
-      kit_emit_ins(cc, (kit_ins){ .setg = { .opcode = EIR_OPCODE_SETG, .dst = new_var, .src = init_reg } });
+      kit_emit_ins(cc, (kit_ins){ .setg = { .opcode = KIT_IR_OPCODE_SETG, .dst = new_var, .src = init_reg } });
     } else {
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = new_var, .src = init_reg } });
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = new_var, .src = init_reg } });
     }
   } else {
     kit_var    nil = KIT_NULLVAR;
@@ -2559,9 +2572,9 @@ compile_variable_decleration(kit_compiler* cc, int node)
 
     /* no initializer specified. initialize it to null. */
     if (info->is_global) {
-      kit_emit_ins(cc, (kit_ins){ .setg = { .opcode = EIR_OPCODE_SETG, .dst = new_var, .src = n } });
+      kit_emit_ins(cc, (kit_ins){ .setg = { .opcode = KIT_IR_OPCODE_SETG, .dst = new_var, .src = n } });
     } else {
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = new_var, .src = n } });
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = new_var, .src = n } });
     }
   }
 
@@ -2597,7 +2610,7 @@ compile_root(kit_compiler* cc, int node)
    */
   kit_var    v      = KIT_NULLVAR;
   kit_vreg_t nilvar = compile_and_push_literal_variable(cc, &v);
-  kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
+  kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = KIT_IR_OPCODE_RET, .return_value = nilvar } });
 
   // if (!cc->info->feature_set.disable_register_allocation_i_know_what_im_doing) era_register_allocation_pass(cc);
   // cc->ninstructions = label_pass(cc->arena, cc->instructions, cc->ninstructions, cc->next_label);
@@ -2702,7 +2715,7 @@ compile_function(kit_compiler* cc, int node)
   kit_vreg_t nilvar = compile_and_push_literal_variable(cc, &nil);
   if (nilvar < 0) return nilvar;
 
-  kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = EIR_OPCODE_RET, .return_value = nilvar } });
+  kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = KIT_IR_OPCODE_RET, .return_value = nilvar } });
   return 0;
 }
 
@@ -2836,7 +2849,7 @@ compile(kit_compiler* cc, int node)
       if (defer_emit_to_depth(cc, cc->loop->defer_depth) < 0) return -1;
 
       u32 target = cc->loop->break_label;
-      return emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, target);
+      return emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, target);
     }
     case KIT_AST_NODE_CONTINUE: {
       if (!cc->loop) {
@@ -2848,7 +2861,7 @@ compile(kit_compiler* cc, int node)
       if (defer_emit_to_depth(cc, cc->loop->defer_depth) < 0) return -1;
 
       u32 target = cc->loop->continue_label;
-      return emit_and_record_jmp(cc, EIR_OPCODE_JMP, -1, target);
+      return emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, target);
     }
     case KIT_AST_NODE_ASSERT: {
       int   condition = KIT_GET_NODE(cc->ast, node)->assertion.stmt;
@@ -2866,7 +2879,7 @@ compile(kit_compiler* cc, int node)
 
       if (add_literal_to_track(cc, &line_str) < 0) return -1;
 
-      kit_emit_ins(cc, (kit_ins){ .assertion = { .opcode = EIR_OPCODE_ASSERT, .cond = cond, .line_id = kit_var_hash(&line_str) } });
+      kit_emit_ins(cc, (kit_ins){ .assertion = { .opcode = KIT_IR_OPCODE_ASSERT, .cond = cond, .line_id = kit_var_hash(&line_str) } });
 
       return 0;
     }
@@ -2878,69 +2891,69 @@ compile(kit_compiler* cc, int node)
 static u32
 get_destination_reg(const kit_ins* i)
 {
-  switch ((eir_opcode_bits)i->opcode) {
+  switch ((kit_ir_opcode_bits)i->opcode) {
       /* getg, setg and movg  */
-    case EIR_OPCODE_MOV: return i->mov.dst; break;
+    case KIT_IR_OPCODE_MOV: return i->mov.dst; break;
 
-    case EIR_OPCODE_MOVI: return i->movi.dst; break; /* values are not registers */
-    case EIR_OPCODE_MOVF: return i->movf.dst; break; /* values are not registers */
+    case KIT_IR_OPCODE_MOVI: return i->movi.dst; break; /* values are not registers */
+    case KIT_IR_OPCODE_MOVF: return i->movf.dst; break; /* values are not registers */
 
-    case EIR_OPCODE_GETG: return i->mov.dst; break;
+    case KIT_IR_OPCODE_GETG: return i->mov.dst; break;
 
-    case EIR_OPCODE_ASSERT:
-    case EIR_OPCODE_SETG:
-    case EIR_OPCODE_MOVG: {
+    case KIT_IR_OPCODE_ASSERT:
+    case KIT_IR_OPCODE_SETG:
+    case KIT_IR_OPCODE_MOVG: {
       break;
     }
-    case EIR_OPCODE_LOADK:
+    case KIT_IR_OPCODE_LOADK:
       return i->loadk.dst;
       break; /* id is not a register */
 
-    // case EIR_OPCODE_LOADK: break;
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE: return i->binop.dst; break;
-    case EIR_OPCODE_NOT:
-    case EIR_OPCODE_NEG:
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_DEC:
-    case EIR_OPCODE_INC: return i->unop.dst; break;
-    case EIR_OPCODE_CALL: return i->call.dst; break;
-    case EIR_OPCODE_INDEX: return i->index.dst; break;
-    case EIR_OPCODE_INDEX_ASSIGN: break;
-    case EIR_OPCODE_MK_LIST: return i->mk_list.dst; break;
-    case EIR_OPCODE_MK_MAP: return i->mk_map.dst; break;
-    case EIR_OPCODE_MK_STRUCT: return i->mk_struct.dst; break;
-    case EIR_OPCODE_MEMBER_ACCESS: return i->member_access.dst; break;
-    case EIR_OPCODE_MEMBER_ASSIGN: break;
-    case EIR_OPCODE_RET:
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ:
-    case EIR_OPCODE_PUSH: {
+    // case KIT_IR_OPCODE_LOADK: break;
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE: return i->binop.dst; break;
+    case KIT_IR_OPCODE_NOT:
+    case KIT_IR_OPCODE_NEG:
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_DEC:
+    case KIT_IR_OPCODE_INC: return i->unop.dst; break;
+    case KIT_IR_OPCODE_CALL: return i->call.dst; break;
+    case KIT_IR_OPCODE_INDEX: return i->index.dst; break;
+    case KIT_IR_OPCODE_INDEX_ASSIGN: break;
+    case KIT_IR_OPCODE_MK_LIST: return i->mk_list.dst; break;
+    case KIT_IR_OPCODE_MK_MAP: return i->mk_map.dst; break;
+    case KIT_IR_OPCODE_MK_STRUCT: return i->mk_struct.dst; break;
+    case KIT_IR_OPCODE_MEMBER_ACCESS: return i->member_access.dst; break;
+    case KIT_IR_OPCODE_MEMBER_ASSIGN: break;
+    case KIT_IR_OPCODE_RET:
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ:
+    case KIT_IR_OPCODE_PUSH: {
       break;
     }
-    case EIR_OPCODE_POP: {
+    case KIT_IR_OPCODE_POP: {
       return i->pop.reg;
     }
 
       // default: break;
-    case EIR_OPCODE_NOP:
-    case EIR_OPCODE_LABEL:
-    case EIR_OPCODE_JMP: {
+    case KIT_IR_OPCODE_NOP:
+    case KIT_IR_OPCODE_LABEL:
+    case KIT_IR_OPCODE_JMP: {
       break;
     }
   }
@@ -2952,92 +2965,92 @@ static u32
 get_source_registers(const kit_ins* i, u32 sources[32])
 {
   u32 n = 0;
-  switch ((eir_opcode_bits)i->opcode) {
+  switch ((kit_ir_opcode_bits)i->opcode) {
       /* getg, setg and movg  */
-    case EIR_OPCODE_MOV: sources[n++] = i->mov.src; break;
+    case KIT_IR_OPCODE_MOV: sources[n++] = i->mov.src; break;
 
-    case EIR_OPCODE_ASSERT: sources[n++] = i->assertion.cond; break;
+    case KIT_IR_OPCODE_ASSERT: sources[n++] = i->assertion.cond; break;
 
-    case EIR_OPCODE_MOVI:
-    case EIR_OPCODE_MOVF: /* values are not registers */
-    case EIR_OPCODE_GETG: break;
+    case KIT_IR_OPCODE_MOVI:
+    case KIT_IR_OPCODE_MOVF: /* values are not registers */
+    case KIT_IR_OPCODE_GETG: break;
 
-    case EIR_OPCODE_SETG: sources[n++] = i->mov.src; break;
+    case KIT_IR_OPCODE_SETG: sources[n++] = i->mov.src; break;
 
-    case EIR_OPCODE_MOVG:
-    case EIR_OPCODE_LOADK: /* id is not a register */ break;
+    case KIT_IR_OPCODE_MOVG:
+    case KIT_IR_OPCODE_LOADK: /* id is not a register */ break;
 
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE:
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE:
       sources[n++] = i->binop.a;
       sources[n++] = i->binop.b;
       break;
 
-    case EIR_OPCODE_NOT:
-    case EIR_OPCODE_NEG:
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_DEC:
-    case EIR_OPCODE_INC: sources[n++] = i->unop.a; break;
+    case KIT_IR_OPCODE_NOT:
+    case KIT_IR_OPCODE_NEG:
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_DEC:
+    case KIT_IR_OPCODE_INC: sources[n++] = i->unop.a; break;
 
-    case EIR_OPCODE_MK_LIST:
+    case KIT_IR_OPCODE_MK_LIST:
       for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->mk_list.nelems); j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
       break;
 
-    case EIR_OPCODE_MK_MAP:
+    case KIT_IR_OPCODE_MK_MAP:
       for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->mk_map.npairs * 2); j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
       break;
 
-    case EIR_OPCODE_MK_STRUCT:
+    case KIT_IR_OPCODE_MK_STRUCT:
       /* finding out which argument registers to clear will take some time. just kill the entire vector. */
       for (u32 j = KIT_REG_ARG0; j < KIT_REG_ARG_COUNT; j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
       break;
-    case EIR_OPCODE_CALL:
+    case KIT_IR_OPCODE_CALL:
       /* record only the argument registers that were used */
       for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->call.nargs); j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
       break;
 
-    case EIR_OPCODE_INDEX:
+    case KIT_IR_OPCODE_INDEX:
       sources[n++] = i->index.base;
       sources[n++] = i->index.index;
       break;
-    case EIR_OPCODE_INDEX_ASSIGN:
+    case KIT_IR_OPCODE_INDEX_ASSIGN:
       sources[n++] = i->index_assign.value;
       sources[n++] = i->index_assign.index;
       sources[n++] = i->index_assign.base;
       break;
 
-    case EIR_OPCODE_MEMBER_ACCESS: sources[n++] = i->member_access.base; break;
-    case EIR_OPCODE_MEMBER_ASSIGN:
+    case KIT_IR_OPCODE_MEMBER_ACCESS: sources[n++] = i->member_access.base; break;
+    case KIT_IR_OPCODE_MEMBER_ASSIGN:
       sources[n++] = i->member_assign.value;
       sources[n++] = i->member_assign.base;
       break;
-    case EIR_OPCODE_RET: sources[n++] = i->ret.return_value; break;
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ: sources[n++] = i->cj.condition; break;
-    case EIR_OPCODE_PUSH: {
+    case KIT_IR_OPCODE_RET: sources[n++] = i->ret.return_value; break;
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ: sources[n++] = i->cj.condition; break;
+    case KIT_IR_OPCODE_PUSH: {
       sources[n++] = i->push.reg;
       break;
     }
     // default: break;
-    case EIR_OPCODE_POP:
-    case EIR_OPCODE_NOP:
-    case EIR_OPCODE_LABEL:
-    case EIR_OPCODE_JMP: {
+    case KIT_IR_OPCODE_POP:
+    case KIT_IR_OPCODE_NOP:
+    case KIT_IR_OPCODE_LABEL:
+    case KIT_IR_OPCODE_JMP: {
       break;
     }
   }
@@ -3066,7 +3079,7 @@ codegraph_build_successor_list(kit_compiler* cc, codegraph* dst)
 
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* ins = &cc->instructions[i];
-    if (ins->opcode == EIR_OPCODE_LABEL) label_map[ins->label.id] = i;
+    if (ins->opcode == KIT_IR_OPCODE_LABEL) label_map[ins->label.id] = i;
   }
 
   const u32  nblocks = dst->nblocks;
@@ -3093,7 +3106,7 @@ codegraph_build_successor_list(kit_compiler* cc, codegraph* dst)
     const kit_ins* last_ins    = &code[last_ins_ip];
 
     /* jump to another code block */
-    if (last_ins->opcode == EIR_OPCODE_JMP) {
+    if (last_ins->opcode == KIT_IR_OPCODE_JMP) {
       u32 target_ip = label_map[last_ins->jmp.target];
       if (target_ip < code_size) {
         u32 target_block                    = ip_to_block[target_ip];
@@ -3101,7 +3114,7 @@ codegraph_build_successor_list(kit_compiler* cc, codegraph* dst)
       }
     }
 
-    else if (last_ins->opcode == EIR_OPCODE_JZ || last_ins->opcode == EIR_OPCODE_JNZ) {
+    else if (last_ins->opcode == KIT_IR_OPCODE_JZ || last_ins->opcode == KIT_IR_OPCODE_JNZ) {
       // fallthrough
       if (i + 1 < nblocks) blk->successors[blk->nsuccessors++] = i + 1;
 
@@ -3113,7 +3126,7 @@ codegraph_build_successor_list(kit_compiler* cc, codegraph* dst)
       }
     }
 
-    else if (last_ins->opcode == EIR_OPCODE_RET) {
+    else if (last_ins->opcode == KIT_IR_OPCODE_RET) {
       // no successors ever.
     }
 
@@ -3296,7 +3309,7 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
   /* Find all registers used for returning values */
   bool* return_live = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
   for (u32 i = 0; i < code_size; i++) {
-    if (code[i].opcode == EIR_OPCODE_RET) return_live[code[i].ret.return_value] = true;
+    if (code[i].opcode == KIT_IR_OPCODE_RET) return_live[code[i].ret.return_value] = true;
   }
 
   /* initialize live_out sets for exit blocks */
@@ -3308,8 +3321,8 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
     }
   }
 
-  bool* new_live_out = kit_arnalloc(dst->arena, nvregs);
-  bool* new_live_in  = kit_arnalloc(dst->arena, nvregs);
+  bool* new_live_out = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
+  bool* new_live_in  = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
 
   /* start out as true so while loop starts */
   bool changed = true;
@@ -3319,8 +3332,8 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
     for (i64 i = (i64)dst->nblocks - 1; i >= 0; i--) {
       codeblock* blk = &dst->blocks[i];
 
-      memset(new_live_out, 0, nvregs);
-      memset(new_live_in, 0, nvregs);
+      memset(new_live_out, 0, nvregs * sizeof(bool));
+      memset(new_live_in, 0, nvregs * sizeof(bool));
 
       /* new_live_out = U live_in[successor] */
       for (u32 s = 0; s < blk->nsuccessors; s++) {
@@ -3336,16 +3349,67 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
         if ((blk->uses[reg]) || (new_live_out[reg] && !blk->defines[reg])) { new_live_in[reg] = true; }
       }
 
-      if (memcmp(new_live_in, blk->live_in, nvregs) != 0) { /* changed? */
+      if (memcmp(new_live_in, blk->live_in, nvregs * sizeof(bool)) != 0) { /* changed? */
         changed = true;
       }
-      if (memcmp(new_live_out, blk->live_out, nvregs) != 0) { /* changed? */
+      if (memcmp(new_live_out, blk->live_out, nvregs * sizeof(bool)) != 0) { /* changed? */
         changed = true;
       }
 
-      memcpy(blk->live_in, new_live_in, nvregs);
-      memcpy(blk->live_out, new_live_out, nvregs);
+      memcpy(blk->live_in, new_live_in, nvregs * sizeof(bool));
+      memcpy(blk->live_out, new_live_out, nvregs * sizeof(bool));
     }
+  }
+
+  return 0;
+}
+
+static int
+codegraph_instruction_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
+{
+  const u32 nvregs = dst->nvregs;
+
+  dst->ins_live_in  = (bool**)kit_arnalloc(dst->arena, cc->ninstructions * sizeof(bool*));
+  dst->ins_live_out = (bool**)kit_arnalloc(dst->arena, cc->ninstructions * sizeof(bool*));
+
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    dst->ins_live_in[i]  = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
+    dst->ins_live_out[i] = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
+
+    memset(dst->ins_live_in[i], 0, nvregs * sizeof(bool));
+    memset(dst->ins_live_out[i], 0, nvregs * sizeof(bool));
+  }
+
+  for (u32 b = 0; b < dst->nblocks; b++) {
+    codeblock* blk = &dst->blocks[b];
+
+    bool* live = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
+    memcpy(live, blk->live_out, nvregs * sizeof(bool));
+
+    for (i64 ip = blk->end; ip >= (i64)blk->start; ip--) {
+      /* blk->end is a valid index. */
+      kit_ins* ins = &cc->instructions[ip];
+
+      /* instruction's live_after = currently live */
+      memcpy(dst->ins_live_out[ip], live, nvregs * sizeof(bool));
+
+      /* start destination as dead */
+      u32 dst_reg = get_destination_reg(ins);
+      if (dst_reg != UINT32_MAX && dst_reg < nvregs) { live[dst_reg] = false; }
+
+      u32 srcs[32];
+      u32 nsrcs = get_source_registers(ins, srcs);
+
+      /* set live to each register that is used (as source) */
+      for (u32 s = 0; s < nsrcs; s++) {
+        if (srcs[s] < nvregs) live[srcs[s]] = true;
+      }
+
+      /* live_before = live */
+      memcpy(dst->ins_live_in[ip], live, nvregs * sizeof(bool));
+    }
+
+    kit_arnfree(dst->arena, live);
   }
 
   return 0;
@@ -3364,7 +3428,7 @@ codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst)
 
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* ins = &cc->instructions[i];
-    if (ins->opcode == EIR_OPCODE_LABEL) label_map[ins->label.id] = i;
+    if (ins->opcode == KIT_IR_OPCODE_LABEL) label_map[ins->label.id] = i;
   }
 
   /* Find all block headers */
@@ -3377,11 +3441,11 @@ codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst)
   for (u32 i = 0; i < code_size; i++) {
     const kit_ins* ins = &code[i];
 
-    if (ins->opcode == EIR_OPCODE_JMP) {
+    if (ins->opcode == KIT_IR_OPCODE_JMP) {
       u32 target = label_map[ins->jmp.target];
       if (target < cc->ninstructions) { blk_header[target] = true; }
       if (i + 1 < code_size) blk_header[i + 1] = true;
-    } else if (ins->opcode == EIR_OPCODE_JZ || ins->opcode == EIR_OPCODE_JNZ) {
+    } else if (ins->opcode == KIT_IR_OPCODE_JZ || ins->opcode == KIT_IR_OPCODE_JNZ) {
       u32 target = label_map[ins->cj.target];
 
       if (target < code_size) blk_header[target] = true;
@@ -3419,24 +3483,24 @@ codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst)
 }
 
 static bool
-is_instruction_impure(eir_opcode op)
+is_instruction_impure(kit_ir_opcode op)
 {
   switch (op) {
-    case EIR_OPCODE_CALL:
-    case EIR_OPCODE_PUSH:
-    case EIR_OPCODE_POP:
-    case EIR_OPCODE_RET:
-    case EIR_OPCODE_JMP:
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ:
-    case EIR_OPCODE_LABEL: // keep labels for control flow
-    case EIR_OPCODE_SETG:  // writes global state
-    case EIR_OPCODE_MOVG:
-    case EIR_OPCODE_INDEX_ASSIGN:
-    case EIR_OPCODE_MEMBER_ASSIGN:
-    case EIR_OPCODE_MK_LIST:
-    case EIR_OPCODE_MK_MAP:
-    case EIR_OPCODE_MK_STRUCT: return true;
+    case KIT_IR_OPCODE_CALL:
+    case KIT_IR_OPCODE_PUSH:
+    case KIT_IR_OPCODE_POP:
+    case KIT_IR_OPCODE_RET:
+    case KIT_IR_OPCODE_JMP:
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ:
+    case KIT_IR_OPCODE_LABEL: // keep labels for control flow
+    case KIT_IR_OPCODE_SETG:  // writes global state
+    case KIT_IR_OPCODE_MOVG:
+    case KIT_IR_OPCODE_INDEX_ASSIGN:
+    case KIT_IR_OPCODE_MEMBER_ASSIGN:
+    case KIT_IR_OPCODE_MK_LIST:
+    case KIT_IR_OPCODE_MK_MAP:
+    case KIT_IR_OPCODE_MK_STRUCT: return true;
     default: return false;
   }
 }
@@ -3446,7 +3510,7 @@ codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
 {
   codegraph_build_successor_list(cc, cfg);
 
-  bool* live = kit_arnalloc(cfg->arena, cfg->nvregs);
+  bool* live = kit_arnalloc(cfg->arena, cfg->nvregs * sizeof(bool));
 
   bool changed = false;
 
@@ -3457,12 +3521,12 @@ codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
     for (u32 i = 0; i < cfg->nblocks; i++) {
       codeblock* blk = &cfg->blocks[i];
 
-      memcpy(live, blk->live_out, cfg->nvregs);
+      memcpy(live, blk->live_out, cfg->nvregs * sizeof(bool));
 
       for (i64 ip = blk->end; ip >= blk->start; ip--) {
         kit_ins* ins = &cc->instructions[ip];
 
-        if (ins->opcode == EIR_OPCODE_NOP || ins->opcode == EIR_OPCODE_LABEL) continue;
+        if (ins->opcode == KIT_IR_OPCODE_NOP || ins->opcode == KIT_IR_OPCODE_LABEL) continue;
 
         u32 dst     = UINT32_MAX;
         u32 src[32] = { 0 };
@@ -3474,7 +3538,7 @@ codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
         /* need to mark sources for impure instructions */
         if (!is_instruction_impure(ins->opcode) && (dst != UINT32_MAX && !live[dst])) {
           /* dead store */
-          ins->opcode = EIR_OPCODE_NOP;
+          ins->opcode = KIT_IR_OPCODE_NOP;
           changed     = true;
           continue;
         }
@@ -3490,11 +3554,11 @@ codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
 }
 
 static inline bool
-is_instruction_noop(eir_opcode opcode)
+is_instruction_noop(kit_ir_opcode opcode)
 {
   switch (opcode) {
-    case EIR_OPCODE_NOP:
-    case EIR_OPCODE_LABEL: return true;
+    case KIT_IR_OPCODE_NOP:
+    case KIT_IR_OPCODE_LABEL: return true;
     default: return false;
   }
 }
@@ -3528,7 +3592,7 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
       kit_ins* a = &cc->instructions[a_idx];
       kit_ins* b = &cc->instructions[b_idx];
 
-      if (b->opcode != EIR_OPCODE_MOV) continue;
+      if (b->opcode != KIT_IR_OPCODE_MOV) continue;
 
       u32 a_dst = get_destination_reg(a);
 
@@ -3564,67 +3628,67 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
 
       if (!is_a_read_later) {
         switch (a->opcode) {
-          case EIR_OPCODE_MOV:
+          case KIT_IR_OPCODE_MOV:
             // mov a,x  ;  mov b,a  →  mov b,x
             b->mov.src = a->mov.src;
-            a->opcode  = EIR_OPCODE_NOP;
+            a->opcode  = KIT_IR_OPCODE_NOP;
             changed    = true;
             break;
 
-          case EIR_OPCODE_LOADK:
+          case KIT_IR_OPCODE_LOADK:
             // loadk a,id  ;  mov b,a  →  loadk b,id
-            b->opcode    = EIR_OPCODE_LOADK;
+            b->opcode    = KIT_IR_OPCODE_LOADK;
             b->loadk.dst = b->mov.dst; // reuse the dst slot
             b->loadk.id  = a->loadk.id;
-            a->opcode    = EIR_OPCODE_NOP;
+            a->opcode    = KIT_IR_OPCODE_NOP;
             changed      = true;
             break;
 
-          case EIR_OPCODE_MOVI:
+          case KIT_IR_OPCODE_MOVI:
             // movi a,val ; mov b,a → movi b,val
-            b->opcode     = EIR_OPCODE_MOVI;
+            b->opcode     = KIT_IR_OPCODE_MOVI;
             b->movi.dst   = b->mov.dst;
             b->movi.value = a->movi.value;
-            a->opcode     = EIR_OPCODE_NOP;
+            a->opcode     = KIT_IR_OPCODE_NOP;
             changed       = true;
             break;
 
-          case EIR_OPCODE_MOVF:
+          case KIT_IR_OPCODE_MOVF:
             // movf a,val ; mov b,a → movf b,val
-            b->opcode     = EIR_OPCODE_MOVF;
+            b->opcode     = KIT_IR_OPCODE_MOVF;
             b->movf.dst   = b->mov.dst;
             b->movf.value = a->movf.value;
-            a->opcode     = EIR_OPCODE_NOP;
+            a->opcode     = KIT_IR_OPCODE_NOP;
             changed       = true;
             break;
 
-          case EIR_OPCODE_GETG:
+          case KIT_IR_OPCODE_GETG:
             // getg a,gid ; mov b,a → getg b,gid
-            b->opcode   = EIR_OPCODE_GETG;
+            b->opcode   = KIT_IR_OPCODE_GETG;
             b->getg.dst = b->mov.dst;
             b->getg.src = a->getg.src; // global id
-            a->opcode   = EIR_OPCODE_NOP;
+            a->opcode   = KIT_IR_OPCODE_NOP;
             changed     = true;
             break;
 
             // binop dst=x a,b ; move x, a
-          case EIR_OPCODE_ADD:
-          case EIR_OPCODE_SUB:
-          case EIR_OPCODE_MUL:
-          case EIR_OPCODE_DIV:
-          case EIR_OPCODE_MOD:
-          case EIR_OPCODE_EXP:
-          case EIR_OPCODE_AND:
-          case EIR_OPCODE_OR:
-          case EIR_OPCODE_BAND:
-          case EIR_OPCODE_BOR:
-          case EIR_OPCODE_XOR:
-          case EIR_OPCODE_EQL:
-          case EIR_OPCODE_NEQ:
-          case EIR_OPCODE_LT:
-          case EIR_OPCODE_LTE:
-          case EIR_OPCODE_GT:
-          case EIR_OPCODE_GTE: {
+          case KIT_IR_OPCODE_ADD:
+          case KIT_IR_OPCODE_SUB:
+          case KIT_IR_OPCODE_MUL:
+          case KIT_IR_OPCODE_DIV:
+          case KIT_IR_OPCODE_MOD:
+          case KIT_IR_OPCODE_EXP:
+          case KIT_IR_OPCODE_AND:
+          case KIT_IR_OPCODE_OR:
+          case KIT_IR_OPCODE_BAND:
+          case KIT_IR_OPCODE_BOR:
+          case KIT_IR_OPCODE_XOR:
+          case KIT_IR_OPCODE_EQL:
+          case KIT_IR_OPCODE_NEQ:
+          case KIT_IR_OPCODE_LT:
+          case KIT_IR_OPCODE_LTE:
+          case KIT_IR_OPCODE_GT:
+          case KIT_IR_OPCODE_GTE: {
             u32 dst = b->mov.dst;
 
             if (dst == a->binop.a || dst == a->binop.b) { continue; }
@@ -3634,7 +3698,7 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
             b->binop.b   = a->binop.b;
             b->binop.dst = dst;
 
-            a->opcode = EIR_OPCODE_NOP;
+            a->opcode = KIT_IR_OPCODE_NOP;
 
             changed = true;
             break;
@@ -3645,7 +3709,7 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
       }
 
       /* There pairs are often produced from this pass, clean them up right here. */
-      if (a->opcode == EIR_OPCODE_MOV && a->mov.src == a->mov.dst) { a->opcode = EIR_OPCODE_NOP; }
+      if (a->opcode == KIT_IR_OPCODE_MOV && a->mov.src == a->mov.dst) { a->opcode = KIT_IR_OPCODE_NOP; }
     }
   }
 
@@ -3670,7 +3734,7 @@ codegraph_preliminary_dead_store_elimination(kit_compiler* cc, const codegraph* 
 
       if (ins_dst == nxt_dst && ins_dst != UINT32_MAX && nxt_dst != UINT32_MAX) {
         /* The first write is invalidated by the next. remove the first */
-        ins->opcode = EIR_OPCODE_NOP;
+        ins->opcode = KIT_IR_OPCODE_NOP;
         changed     = true;
       }
     }
@@ -3687,14 +3751,14 @@ remove_jmp_where_it_would_fallthrough(kit_compiler* cc)
 
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* ins = &cc->instructions[i];
-    if (ins->opcode == EIR_OPCODE_LABEL) label_map[ins->label.id] = i;
+    if (ins->opcode == KIT_IR_OPCODE_LABEL) label_map[ins->label.id] = i;
   }
 
   /* find a jump instruction */
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* ins = &cc->instructions[i];
 
-    if (ins->opcode != EIR_OPCODE_JMP) continue;
+    if (ins->opcode != KIT_IR_OPCODE_JMP) continue;
 
     u32 target = label_map[ins->jmp.target];
     if (i > target) continue; /* skip backward jumps */
@@ -3713,7 +3777,7 @@ remove_jmp_where_it_would_fallthrough(kit_compiler* cc)
     }
 
     /* jmp is useless. noop it. */
-    if (useless) { ins->opcode = EIR_OPCODE_NOP; }
+    if (useless) { ins->opcode = KIT_IR_OPCODE_NOP; }
   }
 
   // kit_arnfree(cc->arena, label_map);
@@ -3727,12 +3791,12 @@ codegraph_free(kit_compiler* cc, codegraph* graph)
 }
 
 static inline bool
-instruction_produces_constant_value(eir_opcode op)
+instruction_produces_constant_value(kit_ir_opcode op)
 {
   switch (op) {
-    case EIR_OPCODE_MOVI:
-    case EIR_OPCODE_MOVF:
-    case EIR_OPCODE_LOADK: return true;
+    case KIT_IR_OPCODE_MOVI:
+    case KIT_IR_OPCODE_MOVF:
+    case KIT_IR_OPCODE_LOADK: return true;
     default: return false;
   }
 }
@@ -3741,15 +3805,15 @@ static inline int
 get_instruction_constant_result(const kit_compiler* cc, const kit_ins* i, kit_var* result)
 {
   switch (i->opcode) {
-    case EIR_OPCODE_MOVI: {
+    case KIT_IR_OPCODE_MOVI: {
       *result = kit_var_from_int(i->movi.value);
       return 0;
     }
-    case EIR_OPCODE_MOVF: {
+    case KIT_IR_OPCODE_MOVF: {
       *result = kit_var_from_float(i->movf.value);
       return 0;
     }
-    case EIR_OPCODE_LOADK: {
+    case KIT_IR_OPCODE_LOADK: {
       u32 id = i->loadk.id;
       for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
         kit_var* lit = &cc->lit_table->literals[j];
@@ -3840,26 +3904,26 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
 
       /* replace the three instructions with a single loadk */
 
-      one->opcode = EIR_OPCODE_NOP;
-      two->opcode = EIR_OPCODE_NOP;
+      one->opcode = KIT_IR_OPCODE_NOP;
+      two->opcode = KIT_IR_OPCODE_NOP;
 
       u32 three_dst = get_destination_reg(three);
 
       if (result.type == KIT_VARTYPE_INT) {
-        three->opcode     = EIR_OPCODE_MOVI;
+        three->opcode     = KIT_IR_OPCODE_MOVI;
         three->movi.dst   = three_dst;
         three->movi.value = result.val.i;
       } else if (result.type == KIT_VARTYPE_FLOAT) {
-        three->opcode     = EIR_OPCODE_MOVF;
+        three->opcode     = KIT_IR_OPCODE_MOVF;
         three->movf.dst   = three_dst;
         three->movf.value = result.val.f;
       } else if (result.type == KIT_VARTYPE_NULL) {
-        three->opcode  = EIR_OPCODE_MOV;
+        three->opcode  = KIT_IR_OPCODE_MOV;
         three->mov.dst = three_dst;
         three->mov.src = KIT_REG_NIL;
       } else {
         if (add_literal_to_track(cc, &result) < 0) continue;
-        three->opcode    = EIR_OPCODE_LOADK;
+        three->opcode    = KIT_IR_OPCODE_LOADK;
         three->loadk.id  = kit_var_hash(&result);
         three->loadk.dst = three_dst;
       }
@@ -3881,26 +3945,26 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
   //   u32 one_dst = get_destination_reg(one);
 
   //   /* special case, conditional jumps */
-  //   if ((two->opcode == EIR_OPCODE_JZ || two->opcode == EIR_OPCODE_JNZ) && two->cj.condition == one_dst) {
+  //   if ((two->opcode == KIT_IR_OPCODE_JZ || two->opcode == KIT_IR_OPCODE_JNZ) && two->cj.condition == one_dst) {
   //     /* load the constant */
   //     kit_var one_result = KIT_NULLVAR;
   //     if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
 
   //     bool b = kit_cast_to_bool(&one_result);
 
-  //     if (two->opcode == EIR_OPCODE_JZ) {
+  //     if (two->opcode == KIT_IR_OPCODE_JZ) {
   //       if (b) { /* condition always false, fallthrough */
-  //         two->opcode = EIR_OPCODE_NOP;
+  //         two->opcode = KIT_IR_OPCODE_NOP;
   //       } else { /* condition always true, just jump to it */
-  //         two->opcode     = EIR_OPCODE_JMP;
+  //         two->opcode     = KIT_IR_OPCODE_JMP;
   //         two->jmp.target = two->cj.target;
   //       }
   //     }
-  //     if (two->opcode == EIR_OPCODE_JNZ) {
+  //     if (two->opcode == KIT_IR_OPCODE_JNZ) {
   //       if (!b) { /* condition always false, fallthrough */
-  //         two->opcode = EIR_OPCODE_NOP;
+  //         two->opcode = KIT_IR_OPCODE_NOP;
   //       } else { /* condition always true, just jump to it */
-  //         two->opcode     = EIR_OPCODE_JMP;
+  //         two->opcode     = KIT_IR_OPCODE_JMP;
   //         two->jmp.target = two->cj.target;
   //       }
   //     }
@@ -3927,11 +3991,11 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
 
   //   if (add_literal_to_track(cc, &result) < 0) continue;
 
-  //   one->opcode = EIR_OPCODE_NOP;
+  //   one->opcode = KIT_IR_OPCODE_NOP;
 
   //   u32 two_dst = get_destination_reg(two);
 
-  //   two->opcode    = EIR_OPCODE_LOADK;
+  //   two->opcode    = KIT_IR_OPCODE_LOADK;
   //   two->loadk.id  = kit_var_hash(&result);
   //   two->loadk.dst = two_dst;
   // }
@@ -3948,7 +4012,7 @@ strip_noops(kit_compiler* cc)
 
   u32 ctr = 0;
   for (u32 i = 0; i < cc->ninstructions; i++) {
-    if (copy[i].opcode == EIR_OPCODE_NOP) continue;
+    if (copy[i].opcode == KIT_IR_OPCODE_NOP) continue;
 
     cc->instructions[ctr++] = copy[i];
   }
@@ -3974,9 +4038,9 @@ label_pass(kit_arena* arena, kit_ins* instructions, u32 ninstructions, u32 label
   for (u32 i = 0; i < ninstructions; i++) {
     kit_ins* ins = &instructions[i];
 
-    if (copy[i].opcode == EIR_OPCODE_NOP) continue;
+    if (copy[i].opcode == KIT_IR_OPCODE_NOP) continue;
 
-    if (ins->opcode == EIR_OPCODE_LABEL) {
+    if (ins->opcode == KIT_IR_OPCODE_LABEL) {
       // fprintf(stderr, "defined %u vs %u\n", ins->label.id, label_count);
       label_map[ins->label.id] = ctr;
       continue;
@@ -3991,12 +4055,12 @@ label_pass(kit_arena* arena, kit_ins* instructions, u32 ninstructions, u32 label
   for (u32 i = 0; i < ninstructions; i++) {
     kit_ins* ins = &instructions[i];
     switch (ins->opcode) {
-      case EIR_OPCODE_JMP:
+      case KIT_IR_OPCODE_JMP:
         // fprintf(stderr, "jmp %u vs %u\n", ins->jmp.target, label_count);
         ins->jmp.target = label_map[ins->jmp.target];
         break;
-      case EIR_OPCODE_JZ:
-      case EIR_OPCODE_JNZ:
+      case KIT_IR_OPCODE_JZ:
+      case KIT_IR_OPCODE_JNZ:
         // fprintf(stderr, "cj %u vs %u\n", ins->cj.target, label_count);
         ins->cj.target = label_map[ins->cj.target];
         break;
@@ -4041,9 +4105,9 @@ codegraph_eliminate_unreachable_code(kit_compiler* cc, codegraph* cfg)
     codeblock* blk = &cfg->blocks[i];
     for (u32 ip = blk->start; ip <= blk->end; ip++) {
       // dont kill labels!!
-      if (cc->instructions[ip].opcode != EIR_OPCODE_LABEL) {
+      if (cc->instructions[ip].opcode != KIT_IR_OPCODE_LABEL) {
         changed                     = true;
-        cc->instructions[ip].opcode = EIR_OPCODE_NOP;
+        cc->instructions[ip].opcode = KIT_IR_OPCODE_NOP;
       }
     }
   }
@@ -4056,17 +4120,17 @@ static inline int
 replace_move_with_constant_load(kit_compiler* cc, const codegraph* cfg, kit_ins* ins, u32 dst_reg, const kit_var* value)
 {
   if (value->type == KIT_VARTYPE_INT) {
-    ins->opcode     = EIR_OPCODE_MOVI;
+    ins->opcode     = KIT_IR_OPCODE_MOVI;
     ins->movi.dst   = dst_reg;
     ins->movi.value = value->val.i;
   } else if (value->type == KIT_VARTYPE_FLOAT) {
-    ins->opcode     = EIR_OPCODE_MOVF;
+    ins->opcode     = KIT_IR_OPCODE_MOVF;
     ins->movf.dst   = dst_reg;
     ins->movf.value = value->val.f;
   } else {
     if (add_literal_to_track(cc, value) < 0) return -1;
 
-    ins->opcode    = EIR_OPCODE_LOADK;
+    ins->opcode    = KIT_IR_OPCODE_LOADK;
     ins->loadk.id  = kit_var_hash(value);
     ins->loadk.dst = dst_reg;
   }
@@ -4091,14 +4155,14 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* ins = &cc->instructions[i];
 
-    if (ins->opcode == EIR_OPCODE_CALL) {
+    if (ins->opcode == KIT_IR_OPCODE_CALL) {
       memset(values_known, 0, nvregs * sizeof(bool));
       values_known[ins->call.dst] = false;
       continue;
     }
 
     /* impure instruction. flush state and move on. */
-    if (ins->opcode != EIR_OPCODE_LABEL && ins->opcode != EIR_OPCODE_INDEX_ASSIGN && ins->opcode != EIR_OPCODE_MEMBER_ASSIGN
+    if (ins->opcode != KIT_IR_OPCODE_LABEL && ins->opcode != KIT_IR_OPCODE_INDEX_ASSIGN && ins->opcode != KIT_IR_OPCODE_MEMBER_ASSIGN
         && is_instruction_impure(ins->opcode)) {
       /* this is the first optimization pass, assume jumps wreck all registers */
       memset(values_known, 0, nvregs * sizeof(bool));
@@ -4106,16 +4170,16 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
     }
 
     switch (ins->opcode) {
-      case EIR_OPCODE_NOP: break;
+      case KIT_IR_OPCODE_NOP: break;
 
-      case EIR_OPCODE_MOV: {
+      case KIT_IR_OPCODE_MOV: {
         u32 dst = ins->mov.dst;
         u32 src = ins->mov.src;
 
         /* If the value is already in dst, turn this instruction into a NOOP */
         if (values_known[dst] && values_known[src] && kit_var_equal(&regs[dst], &regs[src])) {
           changed     = true;
-          ins->opcode = EIR_OPCODE_NOP;
+          ins->opcode = KIT_IR_OPCODE_NOP;
           continue;
         }
 
@@ -4130,23 +4194,23 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
         break;
       }
-      case EIR_OPCODE_MOVI: {
+      case KIT_IR_OPCODE_MOVI: {
         regs[ins->movi.dst]         = kit_var_from_int(ins->movi.value);
         values_known[ins->movi.dst] = true;
         break;
       }
-      case EIR_OPCODE_MOVF: {
+      case KIT_IR_OPCODE_MOVF: {
         regs[ins->movf.dst]         = kit_var_from_float(ins->movf.value);
         values_known[ins->movf.dst] = true;
         break;
       }
 
-      case EIR_OPCODE_GETG:
-      case EIR_OPCODE_SETG:
-      case EIR_OPCODE_MOVG: break;
+      case KIT_IR_OPCODE_GETG:
+      case KIT_IR_OPCODE_SETG:
+      case KIT_IR_OPCODE_MOVG: break;
 
-      case EIR_OPCODE_NEQ:
-      case EIR_OPCODE_EQL: {
+      case KIT_IR_OPCODE_NEQ:
+      case KIT_IR_OPCODE_EQL: {
         /* special case, if both point to the same register */
         u32 a   = ins->binop.a;
         u32 b   = ins->binop.b;
@@ -4155,7 +4219,7 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
           values_known[dst] = true;
           changed           = true;
           /* register self comparison will always result in true (for EQL)*/
-          regs[dst] = kit_var_from_bool(ins->opcode == EIR_OPCODE_EQL ? true : false);
+          regs[dst] = kit_var_from_bool(ins->opcode == KIT_IR_OPCODE_EQL ? true : false);
 
           replace_move_with_constant_load(cc, cfg, ins, dst, &regs[dst]);
           break;
@@ -4163,21 +4227,21 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
         /* fallthrough */
       }
 
-      case EIR_OPCODE_ADD:
-      case EIR_OPCODE_SUB:
-      case EIR_OPCODE_MUL:
-      case EIR_OPCODE_DIV:
-      case EIR_OPCODE_MOD:
-      case EIR_OPCODE_EXP:
-      case EIR_OPCODE_AND:
-      case EIR_OPCODE_OR:
-      case EIR_OPCODE_BAND:
-      case EIR_OPCODE_BOR:
-      case EIR_OPCODE_XOR:
-      case EIR_OPCODE_LT:
-      case EIR_OPCODE_LTE:
-      case EIR_OPCODE_GT:
-      case EIR_OPCODE_GTE:
+      case KIT_IR_OPCODE_ADD:
+      case KIT_IR_OPCODE_SUB:
+      case KIT_IR_OPCODE_MUL:
+      case KIT_IR_OPCODE_DIV:
+      case KIT_IR_OPCODE_MOD:
+      case KIT_IR_OPCODE_EXP:
+      case KIT_IR_OPCODE_AND:
+      case KIT_IR_OPCODE_OR:
+      case KIT_IR_OPCODE_BAND:
+      case KIT_IR_OPCODE_BOR:
+      case KIT_IR_OPCODE_XOR:
+      case KIT_IR_OPCODE_LT:
+      case KIT_IR_OPCODE_LTE:
+      case KIT_IR_OPCODE_GT:
+      case KIT_IR_OPCODE_GTE:
         /* if value of both operands are known, compute it and store it */ {
           if (!values_known[ins->binop.a] || !values_known[ins->binop.b]) {
             values_known[ins->binop.dst] = false;
@@ -4198,11 +4262,11 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
           break;
         }
 
-      case EIR_OPCODE_BNOT:
-      case EIR_OPCODE_NEG:
-      case EIR_OPCODE_NOT:
-      case EIR_OPCODE_INC:
-      case EIR_OPCODE_DEC: {
+      case KIT_IR_OPCODE_BNOT:
+      case KIT_IR_OPCODE_NEG:
+      case KIT_IR_OPCODE_NOT:
+      case KIT_IR_OPCODE_INC:
+      case KIT_IR_OPCODE_DEC: {
         if (!values_known[ins->unop.a]) {
           values_known[ins->unop.dst] = false;
           break;
@@ -4221,7 +4285,7 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
         break;
       }
 
-      case EIR_OPCODE_LOADK: {
+      case KIT_IR_OPCODE_LOADK: {
         u32 id  = ins->loadk.id;
         u32 dst = ins->loadk.dst;
 
@@ -4244,18 +4308,18 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
         break;
       }
 
-      case EIR_OPCODE_JMP:
-      case EIR_OPCODE_JZ:
-      case EIR_OPCODE_JNZ: {
+      case KIT_IR_OPCODE_JMP:
+      case KIT_IR_OPCODE_JZ:
+      case KIT_IR_OPCODE_JNZ: {
         memset(values_known, 0, nvregs * sizeof(bool));
         break;
       }
 
-      case EIR_OPCODE_ASSERT: {
+      case KIT_IR_OPCODE_ASSERT: {
         u32 cond = ins->assertion.cond;
 
         /* assertion is always true, noop it. */
-        if (values_known[cond] && kit_var_to_bool(regs[cond])) { ins->opcode = EIR_OPCODE_NOP; }
+        if (values_known[cond] && kit_var_to_bool(regs[cond])) { ins->opcode = KIT_IR_OPCODE_NOP; }
 
         break;
       }
@@ -4279,147 +4343,147 @@ patch_instruction_for_function_inlining(
     kit_compiler* cc, kit_ins* ins, u32 register_offset, u32 label_offset, kit_vreg_t return_register, u32 exit_label)
 {
   switch (ins->opcode) {
-    case EIR_OPCODE_LABEL: {
+    case KIT_IR_OPCODE_LABEL: {
       ins->label.id += label_offset;
       break;
     }
 
-    case EIR_OPCODE_NOP: break;
+    case KIT_IR_OPCODE_NOP: break;
 
-    case EIR_OPCODE_MOV: {
+    case KIT_IR_OPCODE_MOV: {
       update_reg(&ins->mov.dst, register_offset);
       update_reg(&ins->mov.src, register_offset);
       break;
     }
-    case EIR_OPCODE_MOVI: {
+    case KIT_IR_OPCODE_MOVI: {
       update_reg(&ins->movi.dst, register_offset);
       break;
     }
-    case EIR_OPCODE_MOVF: {
+    case KIT_IR_OPCODE_MOVF: {
       update_reg(&ins->movf.dst, register_offset);
       break;
     }
-    case EIR_OPCODE_GETG: {
+    case KIT_IR_OPCODE_GETG: {
       update_reg(&ins->getg.dst, register_offset);
       break;
     }
-    case EIR_OPCODE_SETG: {
+    case KIT_IR_OPCODE_SETG: {
       update_reg(&ins->setg.src, register_offset);
       break;
     }
-    case EIR_OPCODE_MOVG: {
+    case KIT_IR_OPCODE_MOVG: {
       break;
     }
-    case EIR_OPCODE_ADD:
-    case EIR_OPCODE_SUB:
-    case EIR_OPCODE_MUL:
-    case EIR_OPCODE_DIV:
-    case EIR_OPCODE_MOD:
-    case EIR_OPCODE_EXP:
-    case EIR_OPCODE_AND:
-    case EIR_OPCODE_OR:
-    case EIR_OPCODE_BAND:
-    case EIR_OPCODE_BOR:
-    case EIR_OPCODE_XOR:
-    case EIR_OPCODE_EQL:
-    case EIR_OPCODE_NEQ:
-    case EIR_OPCODE_LT:
-    case EIR_OPCODE_LTE:
-    case EIR_OPCODE_GT:
-    case EIR_OPCODE_GTE: {
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE: {
       update_reg(&ins->binop.a, register_offset);
       update_reg(&ins->binop.b, register_offset);
       update_reg(&ins->binop.dst, register_offset);
       break;
     }
 
-    case EIR_OPCODE_BNOT:
-    case EIR_OPCODE_NEG:
-    case EIR_OPCODE_NOT:
-    case EIR_OPCODE_INC:
-    case EIR_OPCODE_DEC: {
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_NEG:
+    case KIT_IR_OPCODE_NOT:
+    case KIT_IR_OPCODE_INC:
+    case KIT_IR_OPCODE_DEC: {
       update_reg(&ins->unop.a, register_offset);
       update_reg(&ins->unop.dst, register_offset);
       break;
     }
 
-    case EIR_OPCODE_RET: {
+    case KIT_IR_OPCODE_RET: {
       update_reg(&ins->ret.return_value, register_offset);
 
       /* move the return value to the common return register */
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = EIR_OPCODE_MOV, .dst = return_register, .src = ins->ret.return_value } });
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = return_register, .src = ins->ret.return_value } });
 
       /* convert this ret into a jump to the exit label */
-      ins->jmp.opcode = EIR_OPCODE_JMP;
+      ins->jmp.opcode = KIT_IR_OPCODE_JMP;
       ins->jmp.target = exit_label;
 
       /* gets emitted after the switch */
       break;
     }
 
-    case EIR_OPCODE_MK_LIST: {
+    case KIT_IR_OPCODE_MK_LIST: {
       update_reg(&ins->mk_list.dst, register_offset);
       break;
     }
 
-    case EIR_OPCODE_MK_MAP: {
+    case KIT_IR_OPCODE_MK_MAP: {
       update_reg(&ins->mk_map.dst, register_offset);
       break;
     }
 
-    case EIR_OPCODE_INDEX: {
+    case KIT_IR_OPCODE_INDEX: {
       update_reg(&ins->index.dst, register_offset);
       update_reg(&ins->index.base, register_offset);
       update_reg(&ins->index.index, register_offset);
       break;
     }
-    case EIR_OPCODE_INDEX_ASSIGN: {
+    case KIT_IR_OPCODE_INDEX_ASSIGN: {
       update_reg(&ins->index_assign.value, register_offset);
       update_reg(&ins->index_assign.base, register_offset);
       update_reg(&ins->index_assign.index, register_offset);
       break;
     }
-    case EIR_OPCODE_MEMBER_ACCESS: {
+    case KIT_IR_OPCODE_MEMBER_ACCESS: {
       update_reg(&ins->member_access.dst, register_offset);
       update_reg(&ins->member_access.base, register_offset);
       break;
     }
-    case EIR_OPCODE_MEMBER_ASSIGN: {
+    case KIT_IR_OPCODE_MEMBER_ASSIGN: {
       update_reg(&ins->member_assign.value, register_offset);
       update_reg(&ins->member_assign.base, register_offset);
       break;
     }
-    case EIR_OPCODE_MK_STRUCT: {
+    case KIT_IR_OPCODE_MK_STRUCT: {
       update_reg(&ins->mk_struct.dst, register_offset);
       break;
     }
-    case EIR_OPCODE_CALL: {
+    case KIT_IR_OPCODE_CALL: {
       update_reg(&ins->call.dst, register_offset);
       break;
     }
 
-    case EIR_OPCODE_JZ:
-    case EIR_OPCODE_JNZ: {
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ: {
       ins->cj.target += label_offset;
       update_reg(&ins->cj.condition, register_offset);
       break;
     }
 
-    case EIR_OPCODE_JMP: {
+    case KIT_IR_OPCODE_JMP: {
       ins->jmp.target += label_offset;
       break;
     }
 
-    case EIR_OPCODE_PUSH: {
+    case KIT_IR_OPCODE_PUSH: {
       update_reg(&ins->push.reg, register_offset);
       break;
     }
-    case EIR_OPCODE_POP: {
+    case KIT_IR_OPCODE_POP: {
       update_reg(&ins->pop.reg, register_offset);
       break;
     }
 
-    case EIR_OPCODE_LOADK: {
+    case KIT_IR_OPCODE_LOADK: {
       update_reg(&ins->loadk.dst, register_offset);
       break;
     }
@@ -4441,7 +4505,7 @@ opt_inline_function_calls(kit_compiler* cc)
     kit_ins* ins = &old_instructions[i];
 
     /* normal instruction, push it to our stream. */
-    if (ins->opcode != EIR_OPCODE_CALL) {
+    if (ins->opcode != KIT_IR_OPCODE_CALL) {
       kit_emit_ins(cc, *ins);
       continue;
     }
@@ -4517,123 +4581,123 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
 
     for (u32 ip = blk->start; ip <= blk->end; ip++) {
       kit_ins* ins = &cc->instructions[ip];
-      if (ins->opcode == EIR_OPCODE_NOP || ins->opcode == EIR_OPCODE_LABEL) continue;
+      if (ins->opcode == KIT_IR_OPCODE_NOP || ins->opcode == KIT_IR_OPCODE_LABEL) continue;
 
-      switch ((eir_opcode_bits)ins->opcode) {
+      switch ((kit_ir_opcode_bits)ins->opcode) {
           /* getg, setg and movg  */
-        case EIR_OPCODE_MOV:
+        case KIT_IR_OPCODE_MOV:
           ins->mov.src = copy_map[ins->mov.src];
           changed      = true;
           break;
 
-        case EIR_OPCODE_ASSERT:
+        case KIT_IR_OPCODE_ASSERT:
           ins->assertion.cond = copy_map[ins->assertion.cond];
           changed             = true;
           break;
 
-        case EIR_OPCODE_MOVI:
-        case EIR_OPCODE_MOVF: /* values are not registers */
-        case EIR_OPCODE_GETG: break;
+        case KIT_IR_OPCODE_MOVI:
+        case KIT_IR_OPCODE_MOVF: /* values are not registers */
+        case KIT_IR_OPCODE_GETG: break;
 
-        case EIR_OPCODE_SETG:
+        case KIT_IR_OPCODE_SETG:
           ins->mov.src = copy_map[ins->mov.src];
           changed      = true;
           break;
 
-        case EIR_OPCODE_MOVG:
-        case EIR_OPCODE_LOADK: /* id is not a register */ break;
+        case KIT_IR_OPCODE_MOVG:
+        case KIT_IR_OPCODE_LOADK: /* id is not a register */ break;
 
-        case EIR_OPCODE_ADD:
-        case EIR_OPCODE_SUB:
-        case EIR_OPCODE_MUL:
-        case EIR_OPCODE_DIV:
-        case EIR_OPCODE_MOD:
-        case EIR_OPCODE_EXP:
-        case EIR_OPCODE_AND:
-        case EIR_OPCODE_OR:
-        case EIR_OPCODE_BAND:
-        case EIR_OPCODE_BOR:
-        case EIR_OPCODE_XOR:
-        case EIR_OPCODE_EQL:
-        case EIR_OPCODE_NEQ:
-        case EIR_OPCODE_LT:
-        case EIR_OPCODE_LTE:
-        case EIR_OPCODE_GT:
-        case EIR_OPCODE_GTE:
+        case KIT_IR_OPCODE_ADD:
+        case KIT_IR_OPCODE_SUB:
+        case KIT_IR_OPCODE_MUL:
+        case KIT_IR_OPCODE_DIV:
+        case KIT_IR_OPCODE_MOD:
+        case KIT_IR_OPCODE_EXP:
+        case KIT_IR_OPCODE_AND:
+        case KIT_IR_OPCODE_OR:
+        case KIT_IR_OPCODE_BAND:
+        case KIT_IR_OPCODE_BOR:
+        case KIT_IR_OPCODE_XOR:
+        case KIT_IR_OPCODE_EQL:
+        case KIT_IR_OPCODE_NEQ:
+        case KIT_IR_OPCODE_LT:
+        case KIT_IR_OPCODE_LTE:
+        case KIT_IR_OPCODE_GT:
+        case KIT_IR_OPCODE_GTE:
           ins->binop.a = copy_map[ins->binop.a];
           ins->binop.b = copy_map[ins->binop.b];
           changed      = true;
           break;
 
-        case EIR_OPCODE_NOT:
-        case EIR_OPCODE_NEG:
-        case EIR_OPCODE_BNOT:
-        case EIR_OPCODE_DEC:
-        case EIR_OPCODE_INC:
+        case KIT_IR_OPCODE_NOT:
+        case KIT_IR_OPCODE_NEG:
+        case KIT_IR_OPCODE_BNOT:
+        case KIT_IR_OPCODE_DEC:
+        case KIT_IR_OPCODE_INC:
           ins->unop.a = copy_map[ins->unop.a];
           changed     = true;
           break;
 
         /* can't rewrite argument vector */
-        case EIR_OPCODE_MK_LIST:
-        case EIR_OPCODE_MK_MAP:
-        case EIR_OPCODE_MK_STRUCT:
-        case EIR_OPCODE_CALL: break;
+        case KIT_IR_OPCODE_MK_LIST:
+        case KIT_IR_OPCODE_MK_MAP:
+        case KIT_IR_OPCODE_MK_STRUCT:
+        case KIT_IR_OPCODE_CALL: break;
 
-        case EIR_OPCODE_INDEX:
+        case KIT_IR_OPCODE_INDEX:
           ins->index.base  = copy_map[ins->index.base];
           ins->index.index = copy_map[ins->index.index];
           changed          = true;
           break;
-        case EIR_OPCODE_INDEX_ASSIGN:
+        case KIT_IR_OPCODE_INDEX_ASSIGN:
           ins->index_assign.value = copy_map[ins->index_assign.value];
           ins->index_assign.index = copy_map[ins->index_assign.index];
           ins->index_assign.base  = copy_map[ins->index_assign.base];
           changed                 = true;
           break;
 
-        case EIR_OPCODE_MEMBER_ACCESS:
+        case KIT_IR_OPCODE_MEMBER_ACCESS:
           ins->member_access.base = copy_map[ins->member_access.base];
           changed                 = true;
           break;
-        case EIR_OPCODE_MEMBER_ASSIGN:
+        case KIT_IR_OPCODE_MEMBER_ASSIGN:
           ins->member_assign.value = copy_map[ins->member_assign.value];
           ins->member_assign.base  = copy_map[ins->member_assign.base];
           changed                  = true;
           break;
-        case EIR_OPCODE_RET:
+        case KIT_IR_OPCODE_RET:
           ins->ret.return_value = copy_map[ins->ret.return_value];
           changed               = true;
           break;
-        case EIR_OPCODE_JZ:
-        case EIR_OPCODE_JNZ:
+        case KIT_IR_OPCODE_JZ:
+        case KIT_IR_OPCODE_JNZ:
           ins->cj.condition = copy_map[ins->cj.condition];
           changed           = true;
           break;
-        case EIR_OPCODE_PUSH: {
+        case KIT_IR_OPCODE_PUSH: {
           ins->push.reg = copy_map[ins->push.reg];
           changed       = true;
           break;
         }
 
-        case EIR_OPCODE_POP:
-        case EIR_OPCODE_NOP:
-        case EIR_OPCODE_LABEL:
-        case EIR_OPCODE_JMP: {
+        case KIT_IR_OPCODE_POP:
+        case KIT_IR_OPCODE_NOP:
+        case KIT_IR_OPCODE_LABEL:
+        case KIT_IR_OPCODE_JMP: {
           break;
         }
       }
 
       u32 dst = get_destination_reg(ins);
       if (dst != UINT32_MAX) {
-        if (ins->opcode == EIR_OPCODE_MOV) {
+        if (ins->opcode == KIT_IR_OPCODE_MOV) {
           u32 src = ins->mov.src;
           if (src < KIT_REG_GENERAL_BEGIN) {
             copy_map[dst] = dst; /* fixed registers always die in any circumstance */
             changed       = true;
           } else {
             copy_map[dst] = src;
-            if (dst == src) ins->opcode = EIR_OPCODE_NOP;
+            if (dst == src) ins->opcode = KIT_IR_OPCODE_NOP;
             changed = true;
           }
         } else {
@@ -4658,51 +4722,17 @@ codegraph_local_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
 
     for (u32 ip = blk->start; ip <= blk->end; ip++) {
       kit_ins* ins = &cc->instructions[ip];
-      if (ins->opcode == EIR_OPCODE_NOP || ins->opcode == EIR_OPCODE_LABEL) continue;
+      if (ins->opcode == KIT_IR_OPCODE_NOP || ins->opcode == KIT_IR_OPCODE_LABEL) continue;
 
       if (is_instruction_impure(ins->opcode)) continue; /* can't modify instructions with side effects */
 
       u32 dst = get_destination_reg(ins);
       if (dst < KIT_REG_GENERAL_BEGIN || dst == UINT32_MAX) continue; /* can't modify non general registers | can't remove instructions with no dst */
 
-      /**
-       * Check if the register is used (read)
-       * later.
-       */
-      bool is_read_after = false;
-      for (u32 jp = ip + 1; jp <= blk->end; jp++) {
-        /* if jp is impure, assume we can't optimize */
-        if (is_instruction_impure(cc->instructions[jp].opcode)) {
-          is_read_after = true;
-          break;
-        }
-
-        u32 sources[32];
-        u32 nsources = get_source_registers(&cc->instructions[jp], sources);
-
-        for (u32 k = 0; k < nsources; k++) {
-          if (sources[k] == dst) {
-            is_read_after = true;
-            break;
-          }
-        }
-
-        if (is_read_after) break;
-
-        /* check if register is overwritten. That means we can remove this instruction. */
-        u32 lookahead_dst = get_destination_reg(&cc->instructions[jp]);
-        if (lookahead_dst == dst) {
-          is_read_after = false;
-          break;
-        }
-      }
-
-      /* check if it is in the live_out set. If it is, we can't optimize. */
-      if (!is_read_after && blk->live_out[dst]) { is_read_after = true; }
-
-      if (!is_read_after) {
+      /* if it is not live_out to the instruction, remove it */
+      if (!cfg->ins_live_out[ip][dst]) {
         changed     = true;
-        ins->opcode = EIR_OPCODE_NOP;
+        ins->opcode = KIT_IR_OPCODE_NOP;
       }
     }
   }
@@ -4716,7 +4746,7 @@ forward_dead_moves(kit_compiler* cc)
   return;
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* mov = &cc->instructions[i];
-    if (mov->opcode != EIR_OPCODE_MOV) continue;
+    if (mov->opcode != KIT_IR_OPCODE_MOV) continue;
 
     u32 dst = mov->mov.dst;
     u32 src = mov->mov.src;
@@ -4768,66 +4798,66 @@ forward_dead_moves(kit_compiler* cc)
 
       /* Replace dst with src in the instruction's source operands */
       switch (ins->opcode) {
-        case EIR_OPCODE_MOV:
+        case KIT_IR_OPCODE_MOV:
           if (ins->mov.src == dst) ins->mov.src = src;
           break;
-        case EIR_OPCODE_SETG:
+        case KIT_IR_OPCODE_SETG:
           if (ins->setg.src == dst) ins->setg.src = src;
           break;
-        case EIR_OPCODE_ADD:
-        case EIR_OPCODE_SUB:
-        case EIR_OPCODE_MUL:
-        case EIR_OPCODE_DIV:
-        case EIR_OPCODE_MOD:
-        case EIR_OPCODE_EXP:
-        case EIR_OPCODE_AND:
-        case EIR_OPCODE_OR:
-        case EIR_OPCODE_BAND:
-        case EIR_OPCODE_BOR:
-        case EIR_OPCODE_XOR:
-        case EIR_OPCODE_EQL:
-        case EIR_OPCODE_NEQ:
-        case EIR_OPCODE_LT:
-        case EIR_OPCODE_LTE:
-        case EIR_OPCODE_GT:
-        case EIR_OPCODE_GTE:
+        case KIT_IR_OPCODE_ADD:
+        case KIT_IR_OPCODE_SUB:
+        case KIT_IR_OPCODE_MUL:
+        case KIT_IR_OPCODE_DIV:
+        case KIT_IR_OPCODE_MOD:
+        case KIT_IR_OPCODE_EXP:
+        case KIT_IR_OPCODE_AND:
+        case KIT_IR_OPCODE_OR:
+        case KIT_IR_OPCODE_BAND:
+        case KIT_IR_OPCODE_BOR:
+        case KIT_IR_OPCODE_XOR:
+        case KIT_IR_OPCODE_EQL:
+        case KIT_IR_OPCODE_NEQ:
+        case KIT_IR_OPCODE_LT:
+        case KIT_IR_OPCODE_LTE:
+        case KIT_IR_OPCODE_GT:
+        case KIT_IR_OPCODE_GTE:
           if (ins->binop.a == dst) ins->binop.a = src;
           if (ins->binop.b == dst) ins->binop.b = src;
           break;
-        case EIR_OPCODE_NOT:
-        case EIR_OPCODE_NEG:
-        case EIR_OPCODE_BNOT:
-        case EIR_OPCODE_INC:
-        case EIR_OPCODE_DEC:
+        case KIT_IR_OPCODE_NOT:
+        case KIT_IR_OPCODE_NEG:
+        case KIT_IR_OPCODE_BNOT:
+        case KIT_IR_OPCODE_INC:
+        case KIT_IR_OPCODE_DEC:
           if (ins->unop.a == dst) ins->unop.a = src;
           break;
-        case EIR_OPCODE_RET:
+        case KIT_IR_OPCODE_RET:
           if (ins->ret.return_value == dst) ins->ret.return_value = src;
           break;
-        case EIR_OPCODE_INDEX:
+        case KIT_IR_OPCODE_INDEX:
           if (ins->index.base == dst) ins->index.base = src;
           if (ins->index.index == dst) ins->index.index = src;
           break;
-        case EIR_OPCODE_INDEX_ASSIGN:
+        case KIT_IR_OPCODE_INDEX_ASSIGN:
           if (ins->index_assign.base == dst) ins->index_assign.base = src;
           if (ins->index_assign.index == dst) ins->index_assign.index = src;
           if (ins->index_assign.value == dst) ins->index_assign.value = src;
           break;
-        case EIR_OPCODE_MEMBER_ACCESS:
+        case KIT_IR_OPCODE_MEMBER_ACCESS:
           if (ins->member_access.base == dst) ins->member_access.base = src;
           break;
-        case EIR_OPCODE_MEMBER_ASSIGN:
+        case KIT_IR_OPCODE_MEMBER_ASSIGN:
           if (ins->member_assign.base == dst) ins->member_assign.base = src;
           if (ins->member_assign.value == dst) ins->member_assign.value = src;
           break;
-        case EIR_OPCODE_JZ:
-        case EIR_OPCODE_JNZ:
+        case KIT_IR_OPCODE_JZ:
+        case KIT_IR_OPCODE_JNZ:
           if (ins->cj.condition == dst) ins->cj.condition = src;
           break;
-        case EIR_OPCODE_PUSH:
+        case KIT_IR_OPCODE_PUSH:
           if (ins->push.reg == dst) ins->push.reg = src;
           break;
-        case EIR_OPCODE_ASSERT:
+        case KIT_IR_OPCODE_ASSERT:
           if (ins->assertion.cond == dst) ins->assertion.cond = src;
           break;
         default: break;
@@ -4836,7 +4866,7 @@ forward_dead_moves(kit_compiler* cc)
     }
 
     if (any_replaced) {
-      mov->opcode = EIR_OPCODE_NOP; // safe to delete the move
+      mov->opcode = KIT_IR_OPCODE_NOP; // safe to delete the move
     }
   }
 }
@@ -4882,108 +4912,108 @@ era_compute_ranges(kit_compiler* cc, era_state* ra)
     if (i > ra->ranges[_r].end) ra->ranges[_r].end = i;                                                                                              \
   } while (0)
 
-    switch ((eir_opcode_bits)ins.opcode) {
+    switch ((kit_ir_opcode_bits)ins.opcode) {
       /* getg, setg and movg  */
-      case EIR_OPCODE_MOV:
+      case KIT_IR_OPCODE_MOV:
         WRITES_TO(ins.mov.dst);
         READS_FROM(ins.mov.src);
         break;
 
-      case EIR_OPCODE_MOVI: WRITES_TO(ins.movi.dst); break; /* values are not registers */
-      case EIR_OPCODE_MOVF: WRITES_TO(ins.movf.dst); break; /* values are not registers */
+      case KIT_IR_OPCODE_MOVI: WRITES_TO(ins.movi.dst); break; /* values are not registers */
+      case KIT_IR_OPCODE_MOVF: WRITES_TO(ins.movf.dst); break; /* values are not registers */
 
-      case EIR_OPCODE_ASSERT: READS_FROM(ins.assertion.cond); break; /* values are not registers */
+      case KIT_IR_OPCODE_ASSERT: READS_FROM(ins.assertion.cond); break; /* values are not registers */
 
-      case EIR_OPCODE_GETG: WRITES_TO(ins.mov.dst); break;
-      case EIR_OPCODE_SETG: READS_FROM(ins.mov.src); break;
-      case EIR_OPCODE_MOVG: {
+      case KIT_IR_OPCODE_GETG: WRITES_TO(ins.mov.dst); break;
+      case KIT_IR_OPCODE_SETG: READS_FROM(ins.mov.src); break;
+      case KIT_IR_OPCODE_MOVG: {
         break;
       }
-      case EIR_OPCODE_LOADK:
+      case KIT_IR_OPCODE_LOADK:
         WRITES_TO(ins.loadk.dst);
         break; /* id is not a register */
 
-      // case EIR_OPCODE_LOADK: break;
-      case EIR_OPCODE_ADD:
-      case EIR_OPCODE_SUB:
-      case EIR_OPCODE_MUL:
-      case EIR_OPCODE_DIV:
-      case EIR_OPCODE_MOD:
-      case EIR_OPCODE_EXP:
-      case EIR_OPCODE_AND:
-      case EIR_OPCODE_OR:
-      case EIR_OPCODE_BAND:
-      case EIR_OPCODE_BOR:
-      case EIR_OPCODE_XOR:
-      case EIR_OPCODE_EQL:
-      case EIR_OPCODE_NEQ:
-      case EIR_OPCODE_LT:
-      case EIR_OPCODE_LTE:
-      case EIR_OPCODE_GT:
-      case EIR_OPCODE_GTE:
+      // case KIT_IR_OPCODE_LOADK: break;
+      case KIT_IR_OPCODE_ADD:
+      case KIT_IR_OPCODE_SUB:
+      case KIT_IR_OPCODE_MUL:
+      case KIT_IR_OPCODE_DIV:
+      case KIT_IR_OPCODE_MOD:
+      case KIT_IR_OPCODE_EXP:
+      case KIT_IR_OPCODE_AND:
+      case KIT_IR_OPCODE_OR:
+      case KIT_IR_OPCODE_BAND:
+      case KIT_IR_OPCODE_BOR:
+      case KIT_IR_OPCODE_XOR:
+      case KIT_IR_OPCODE_EQL:
+      case KIT_IR_OPCODE_NEQ:
+      case KIT_IR_OPCODE_LT:
+      case KIT_IR_OPCODE_LTE:
+      case KIT_IR_OPCODE_GT:
+      case KIT_IR_OPCODE_GTE:
         WRITES_TO(ins.binop.dst);
         READS_FROM(ins.binop.a);
         READS_FROM(ins.binop.b);
         break;
-      case EIR_OPCODE_NOT:
-      case EIR_OPCODE_NEG:
-      case EIR_OPCODE_BNOT:
-      case EIR_OPCODE_DEC:
-      case EIR_OPCODE_INC:
+      case KIT_IR_OPCODE_NOT:
+      case KIT_IR_OPCODE_NEG:
+      case KIT_IR_OPCODE_BNOT:
+      case KIT_IR_OPCODE_DEC:
+      case KIT_IR_OPCODE_INC:
         WRITES_TO(ins.unop.dst);
         READS_FROM(ins.unop.a);
         break;
-      case EIR_OPCODE_CALL:
+      case KIT_IR_OPCODE_CALL:
         for (u32 j = KIT_REG_ARG0; j < MIN(ins.call.nargs, KIT_REG_ARG_COUNT); j++) { READS_FROM(j); }
         WRITES_TO(ins.call.dst);
         break;
-      case EIR_OPCODE_INDEX:
+      case KIT_IR_OPCODE_INDEX:
         WRITES_TO(ins.index.dst);
         READS_FROM(ins.index.base);
         READS_FROM(ins.index.index);
         break;
-      case EIR_OPCODE_INDEX_ASSIGN:
+      case KIT_IR_OPCODE_INDEX_ASSIGN:
         READS_FROM(ins.index_assign.value);
         READS_FROM(ins.index_assign.index);
         READS_FROM(ins.index_assign.base);
         break;
-      case EIR_OPCODE_MK_LIST:
+      case KIT_IR_OPCODE_MK_LIST:
         for (u32 j = KIT_REG_ARG0; j < MIN(ins.mk_list.nelems, KIT_REG_ARG_COUNT); j++) { READS_FROM(j); }
         WRITES_TO(ins.mk_list.dst);
         break;
-      case EIR_OPCODE_MK_MAP:
+      case KIT_IR_OPCODE_MK_MAP:
         for (u32 j = KIT_REG_ARG0; j < MIN(ins.mk_map.npairs * 2, KIT_REG_ARG_COUNT); j++) { READS_FROM(j); }
         WRITES_TO(ins.mk_map.dst);
         break;
-      case EIR_OPCODE_MK_STRUCT:
+      case KIT_IR_OPCODE_MK_STRUCT:
         /* we don't know how many members this instruction will initialize. clobber the entire argument vector. */
         for (u32 j = KIT_REG_ARG0; j < KIT_REG_ARG_COUNT; j++) { READS_FROM(j); }
         WRITES_TO(ins.mk_struct.dst);
         break;
-      case EIR_OPCODE_MEMBER_ACCESS:
+      case KIT_IR_OPCODE_MEMBER_ACCESS:
         WRITES_TO(ins.member_access.dst);
         READS_FROM(ins.member_access.base);
         break;
-      case EIR_OPCODE_MEMBER_ASSIGN:
+      case KIT_IR_OPCODE_MEMBER_ASSIGN:
         READS_FROM(ins.member_assign.value);
         READS_FROM(ins.member_assign.base);
         break;
-      case EIR_OPCODE_RET: READS_FROM(ins.ret.return_value); break;
-      case EIR_OPCODE_JZ:
-      case EIR_OPCODE_JNZ: READS_FROM(ins.cj.condition); break;
-      case EIR_OPCODE_PUSH: {
+      case KIT_IR_OPCODE_RET: READS_FROM(ins.ret.return_value); break;
+      case KIT_IR_OPCODE_JZ:
+      case KIT_IR_OPCODE_JNZ: READS_FROM(ins.cj.condition); break;
+      case KIT_IR_OPCODE_PUSH: {
         READS_FROM(ins.push.reg);
         break;
       }
-      case EIR_OPCODE_POP: {
+      case KIT_IR_OPCODE_POP: {
         WRITES_TO(ins.pop.reg);
         break;
       }
 
         // default: break;
-      case EIR_OPCODE_NOP:
-      case EIR_OPCODE_LABEL:
-      case EIR_OPCODE_JMP: {
+      case KIT_IR_OPCODE_NOP:
+      case KIT_IR_OPCODE_LABEL:
+      case KIT_IR_OPCODE_JMP: {
         break;
       }
     }
@@ -5111,94 +5141,94 @@ era_rewrite(kit_compiler* cc, const u32* vreg_to_phys)
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins ins = cc->instructions[i];
 
-    switch ((eir_opcode_bits)ins.opcode) {
-      case EIR_OPCODE_MOV:
+    switch ((kit_ir_opcode_bits)ins.opcode) {
+      case KIT_IR_OPCODE_MOV:
         MAP(ins.mov.dst);
         MAP(ins.mov.src);
         break;
 
-      case EIR_OPCODE_MOVI: MAP(ins.movi.dst); break;
-      case EIR_OPCODE_MOVF: MAP(ins.movf.dst); break;
+      case KIT_IR_OPCODE_MOVI: MAP(ins.movi.dst); break;
+      case KIT_IR_OPCODE_MOVF: MAP(ins.movf.dst); break;
 
-      case EIR_OPCODE_PUSH:
-      case EIR_OPCODE_POP: {
+      case KIT_IR_OPCODE_PUSH:
+      case KIT_IR_OPCODE_POP: {
         MAP(ins.push.reg);
         break;
       }
 
-      case EIR_OPCODE_ASSERT: {
+      case KIT_IR_OPCODE_ASSERT: {
         MAP(ins.assertion.cond);
         break;
       }
 
-      case EIR_OPCODE_LOADK: MAP(ins.loadk.dst); break;
-      // case EIR_OPCODE_LOADK: break;
-      case EIR_OPCODE_ADD:
-      case EIR_OPCODE_SUB:
-      case EIR_OPCODE_MUL:
-      case EIR_OPCODE_DIV:
-      case EIR_OPCODE_MOD:
-      case EIR_OPCODE_EXP:
-      case EIR_OPCODE_AND:
-      case EIR_OPCODE_OR:
-      case EIR_OPCODE_BAND:
-      case EIR_OPCODE_BOR:
-      case EIR_OPCODE_XOR:
-      case EIR_OPCODE_EQL:
-      case EIR_OPCODE_NEQ:
-      case EIR_OPCODE_LT:
-      case EIR_OPCODE_LTE:
-      case EIR_OPCODE_GT:
-      case EIR_OPCODE_GTE:
+      case KIT_IR_OPCODE_LOADK: MAP(ins.loadk.dst); break;
+      // case KIT_IR_OPCODE_LOADK: break;
+      case KIT_IR_OPCODE_ADD:
+      case KIT_IR_OPCODE_SUB:
+      case KIT_IR_OPCODE_MUL:
+      case KIT_IR_OPCODE_DIV:
+      case KIT_IR_OPCODE_MOD:
+      case KIT_IR_OPCODE_EXP:
+      case KIT_IR_OPCODE_AND:
+      case KIT_IR_OPCODE_OR:
+      case KIT_IR_OPCODE_BAND:
+      case KIT_IR_OPCODE_BOR:
+      case KIT_IR_OPCODE_XOR:
+      case KIT_IR_OPCODE_EQL:
+      case KIT_IR_OPCODE_NEQ:
+      case KIT_IR_OPCODE_LT:
+      case KIT_IR_OPCODE_LTE:
+      case KIT_IR_OPCODE_GT:
+      case KIT_IR_OPCODE_GTE:
         MAP(ins.binop.dst);
         MAP(ins.binop.a);
         MAP(ins.binop.b);
         break;
-      case EIR_OPCODE_NOT:
-      case EIR_OPCODE_NEG:
-      case EIR_OPCODE_BNOT:
-      case EIR_OPCODE_INC:
-      case EIR_OPCODE_DEC:
+      case KIT_IR_OPCODE_NOT:
+      case KIT_IR_OPCODE_NEG:
+      case KIT_IR_OPCODE_BNOT:
+      case KIT_IR_OPCODE_INC:
+      case KIT_IR_OPCODE_DEC:
         MAP(ins.unop.dst);
         MAP(ins.unop.a);
         break;
-      case EIR_OPCODE_CALL: MAP(ins.call.dst); break;
-      case EIR_OPCODE_INDEX:
+      case KIT_IR_OPCODE_CALL: MAP(ins.call.dst); break;
+      case KIT_IR_OPCODE_INDEX:
         MAP(ins.index.dst);
         MAP(ins.index.base);
         MAP(ins.index.index);
         break;
-      case EIR_OPCODE_INDEX_ASSIGN:
+      case KIT_IR_OPCODE_INDEX_ASSIGN:
         MAP(ins.index_assign.value);
         MAP(ins.index_assign.base);
         MAP(ins.index_assign.index);
         break;
-      case EIR_OPCODE_MEMBER_ACCESS:
+      case KIT_IR_OPCODE_MEMBER_ACCESS:
         MAP(ins.member_access.dst);
         MAP(ins.member_access.base);
         break;
-      case EIR_OPCODE_MEMBER_ASSIGN:
+      case KIT_IR_OPCODE_MEMBER_ASSIGN:
         MAP(ins.member_assign.value);
         MAP(ins.member_assign.base);
         break;
-      case EIR_OPCODE_RET: MAP(ins.ret.return_value); break;
-      case EIR_OPCODE_JZ:
-      case EIR_OPCODE_JNZ: MAP(ins.cj.condition); break;
-      case EIR_OPCODE_GETG: MAP(ins.getg.dst); break;
-      case EIR_OPCODE_SETG: MAP(ins.setg.src); break;
+      case KIT_IR_OPCODE_RET: MAP(ins.ret.return_value); break;
+      case KIT_IR_OPCODE_JZ:
+      case KIT_IR_OPCODE_JNZ: MAP(ins.cj.condition); break;
+      case KIT_IR_OPCODE_GETG: MAP(ins.getg.dst); break;
+      case KIT_IR_OPCODE_SETG: MAP(ins.setg.src); break;
 
-      case EIR_OPCODE_MK_LIST: MAP(ins.mk_list.dst); break;
-      case EIR_OPCODE_MK_MAP: MAP(ins.mk_map.dst); break;
-      case EIR_OPCODE_MK_STRUCT:
+      case KIT_IR_OPCODE_MK_LIST: MAP(ins.mk_list.dst); break;
+      case KIT_IR_OPCODE_MK_MAP: MAP(ins.mk_map.dst); break;
+      case KIT_IR_OPCODE_MK_STRUCT:
         MAP(ins.mk_struct.dst);
         break;
 
         // default: break;
 
-      case EIR_OPCODE_NOP:
-      case EIR_OPCODE_MOVG:
-      case EIR_OPCODE_LABEL:
-      case EIR_OPCODE_JMP: break;
+      case KIT_IR_OPCODE_NOP:
+      case KIT_IR_OPCODE_MOVG:
+      case KIT_IR_OPCODE_LABEL:
+      case KIT_IR_OPCODE_JMP: break;
     }
 
     // write the patched instruction back to the same location
@@ -5263,15 +5293,15 @@ era_compute_ranges_from_cfg(kit_compiler* cc, era_state* ra)
 
   for (u32 i = 0; i < cc->ninstructions; i++) {
     kit_ins* ins = &cc->instructions[i];
-    if (ins->opcode == EIR_OPCODE_LABEL) label_map[ins->label.id] = i;
+    if (ins->opcode == KIT_IR_OPCODE_LABEL) label_map[ins->label.id] = i;
   }
 
   /* If theres a loop, extend all registers to the end of the jump */
   for (u32 i = 0; i < cc->ninstructions; i++) {
     const kit_ins* ins = &cc->instructions[i];
-    if (ins->opcode != EIR_OPCODE_JMP && ins->opcode != EIR_OPCODE_JZ && ins->opcode != EIR_OPCODE_JNZ) continue;
+    if (ins->opcode != KIT_IR_OPCODE_JMP && ins->opcode != KIT_IR_OPCODE_JZ && ins->opcode != KIT_IR_OPCODE_JNZ) continue;
 
-    u32 target = label_map[ins->opcode == EIR_OPCODE_JMP ? ins->jmp.target : ins->cj.target];
+    u32 target = label_map[ins->opcode == KIT_IR_OPCODE_JMP ? ins->jmp.target : ins->cj.target];
     if (i > target) {
       for (u32 r = 0; r < cc->next_vreg; r++) {
         if (ra->ranges[r].start != UINT32_MAX && ra->ranges[r].end >= target // currently reaches into the loop
@@ -5351,30 +5381,30 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
   char buf0[32];
   char buf1[32];
   char buf2[32];
-  switch ((eir_opcode_bits)i.opcode) {
-    case EIR_OPCODE_LOADK: {
+  switch ((kit_ir_opcode_bits)i.opcode) {
+    case KIT_IR_OPCODE_LOADK: {
       fprintf(f, "loadk dst=%s, id=%u\n", get_register_name(i.loadk.dst, buf0), i.loadk.id);
       break;
     }
-    case EIR_OPCODE_ASSERT: {
+    case KIT_IR_OPCODE_ASSERT: {
       fprintf(f, "assert condition=%s, line_id=%u\n", get_register_name(i.assertion.cond, buf0), i.assertion.line_id);
       break;
     }
-    case EIR_OPCODE_MOV: {
+    case KIT_IR_OPCODE_MOV: {
       fprintf(f, "mov dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1));
       break;
     }
 
-    case EIR_OPCODE_MOVI: {
+    case KIT_IR_OPCODE_MOVI: {
       fprintf(f, "movi dst=%s, value=%i\n", get_register_name(i.movi.dst, buf0), i.movi.value);
       break;
     }
-    case EIR_OPCODE_MOVF: {
+    case KIT_IR_OPCODE_MOVF: {
       fprintf(f, "movf dst=%s, value=%f\n", get_register_name(i.movf.dst, buf0), i.movf.value);
       break;
     }
 
-    case EIR_OPCODE_ADD:
+    case KIT_IR_OPCODE_ADD:
       fprintf(
           f,
           "add dst=%s, a=%s, b=%s\n",
@@ -5382,7 +5412,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_SUB:
+    case KIT_IR_OPCODE_SUB:
       fprintf(
           f,
           "sub dst=%s, a=%s, b=%s\n",
@@ -5390,7 +5420,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_MUL:
+    case KIT_IR_OPCODE_MUL:
       fprintf(
           f,
           "mul dst=%s, a=%s, b=%s\n",
@@ -5398,7 +5428,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_DIV:
+    case KIT_IR_OPCODE_DIV:
       fprintf(
           f,
           "div dst=%s, a=%s, b=%s\n",
@@ -5406,7 +5436,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_MOD:
+    case KIT_IR_OPCODE_MOD:
       fprintf(
           f,
           "mod dst=%s, a=%s, b=%s\n",
@@ -5414,7 +5444,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_EXP:
+    case KIT_IR_OPCODE_EXP:
       fprintf(
           f,
           "exp dst=%s, a=%s, b=%s\n",
@@ -5422,7 +5452,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_AND:
+    case KIT_IR_OPCODE_AND:
       fprintf(
           f,
           "and dst=%s, a=%s, b=%s\n",
@@ -5430,11 +5460,11 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_OR:
+    case KIT_IR_OPCODE_OR:
       fprintf(
           f, "or dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BAND:
       fprintf(
           f,
           "band dst=%s, a=%s, b=%s\n",
@@ -5442,7 +5472,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_BOR:
+    case KIT_IR_OPCODE_BOR:
       fprintf(
           f,
           "bor dst=%s, a=%s, b=%s\n",
@@ -5450,7 +5480,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_XOR:
+    case KIT_IR_OPCODE_XOR:
       fprintf(
           f,
           "xor dst=%s, a=%s, b=%s\n",
@@ -5458,7 +5488,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_EQL:
+    case KIT_IR_OPCODE_EQL:
       fprintf(
           f,
           "eql dst=%s, a=%s, b=%s\n",
@@ -5466,7 +5496,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_NEQ:
       fprintf(
           f,
           "neq dst=%s, a=%s, b=%s\n",
@@ -5474,11 +5504,11 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_LT:
+    case KIT_IR_OPCODE_LT:
       fprintf(
           f, "lt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_LTE:
+    case KIT_IR_OPCODE_LTE:
       fprintf(
           f,
           "lte dst=%s, a=%s, b=%s\n",
@@ -5486,11 +5516,11 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.a, buf1),
           get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_GT:
+    case KIT_IR_OPCODE_GT:
       fprintf(
           f, "gt dst=%s, a=%s, b=%s\n", get_register_name(i.binop.dst, buf0), get_register_name(i.binop.a, buf1), get_register_name(i.binop.b, buf2));
       break;
-    case EIR_OPCODE_GTE:
+    case KIT_IR_OPCODE_GTE:
       fprintf(
           f,
           "gte dst=%s, a=%s, b=%s\n",
@@ -5499,20 +5529,20 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.binop.b, buf2));
       break;
 
-    case EIR_OPCODE_INC: fprintf(f, "inc dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_DEC: fprintf(f, "dec dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_BNOT: fprintf(f, "bnot dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_NEG: fprintf(f, "neg dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
-    case EIR_OPCODE_NOT: fprintf(f, "not dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case KIT_IR_OPCODE_INC: fprintf(f, "inc dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case KIT_IR_OPCODE_DEC: fprintf(f, "dec dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case KIT_IR_OPCODE_BNOT: fprintf(f, "bnot dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case KIT_IR_OPCODE_NEG: fprintf(f, "neg dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
+    case KIT_IR_OPCODE_NOT: fprintf(f, "not dst=%s, src=%s\n", get_register_name(i.unop.dst, buf0), get_register_name(i.unop.a, buf1)); break;
 
-    case EIR_OPCODE_RET: {
+    case KIT_IR_OPCODE_RET: {
       fprintf(f, "ret val=%s\n", get_register_name(i.ret.return_value, buf0));
       break;
     }
-    case EIR_OPCODE_NOP: fprintf(f, "nop\n"); break;
-    case EIR_OPCODE_MK_LIST: fprintf(f, "mk_list dst=%s, nelems=%u\n", get_register_name(i.mk_list.dst, buf0), i.mk_list.nelems); break;
-    case EIR_OPCODE_MK_MAP: fprintf(f, "mk_map dst=%s, npairs=%u\n", get_register_name(i.mk_map.dst, buf0), i.mk_map.npairs); break;
-    case EIR_OPCODE_INDEX:
+    case KIT_IR_OPCODE_NOP: fprintf(f, "nop\n"); break;
+    case KIT_IR_OPCODE_MK_LIST: fprintf(f, "mk_list dst=%s, nelems=%u\n", get_register_name(i.mk_list.dst, buf0), i.mk_list.nelems); break;
+    case KIT_IR_OPCODE_MK_MAP: fprintf(f, "mk_map dst=%s, npairs=%u\n", get_register_name(i.mk_map.dst, buf0), i.mk_map.npairs); break;
+    case KIT_IR_OPCODE_INDEX:
       fprintf(
           f,
           "index dst=%s, base=%s, index=%s\n",
@@ -5520,7 +5550,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.index.base, buf1),
           get_register_name(i.index.index, buf2));
       break;
-    case EIR_OPCODE_CALL:
+    case KIT_IR_OPCODE_CALL:
       fprintf(
           f,
           "call dst=%s, id=%u|name=%s, nargs=%u\n",
@@ -5529,7 +5559,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           lookup(r, i.call.function_id),
           i.call.nargs);
       break;
-    case EIR_OPCODE_INDEX_ASSIGN:
+    case KIT_IR_OPCODE_INDEX_ASSIGN:
       fprintf(
           f,
           "index_assign value=%s, base=%s, index=%s\n",
@@ -5538,11 +5568,11 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.index_assign.index, buf2));
       break;
 
-    case EIR_OPCODE_LABEL: fprintf(f, "label id=%u\n", i.label.id); break;
-    case EIR_OPCODE_JMP: fprintf(f, "jmp target=%u\n", i.jmp.target); break;
-    case EIR_OPCODE_JZ: fprintf(f, "jz target=%u, condition=%s\n", i.jz.target, get_register_name(i.jz.condition, buf0)); break;
-    case EIR_OPCODE_JNZ: fprintf(f, "jnz target=%u, condition=%s\n", i.jnz.target, get_register_name(i.jnz.condition, buf0)); break;
-    case EIR_OPCODE_MEMBER_ACCESS:
+    case KIT_IR_OPCODE_LABEL: fprintf(f, "label id=%u\n", i.label.id); break;
+    case KIT_IR_OPCODE_JMP: fprintf(f, "jmp target=%u\n", i.jmp.target); break;
+    case KIT_IR_OPCODE_JZ: fprintf(f, "jz target=%u, condition=%s\n", i.jz.target, get_register_name(i.jz.condition, buf0)); break;
+    case KIT_IR_OPCODE_JNZ: fprintf(f, "jnz target=%u, condition=%s\n", i.jnz.target, get_register_name(i.jnz.condition, buf0)); break;
+    case KIT_IR_OPCODE_MEMBER_ACCESS:
       fprintf(
           f,
           "member_access dst=%s, base=%s, member_id=%u\n",
@@ -5550,7 +5580,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.member_access.base, buf1),
           i.member_access.member_id);
       break;
-    case EIR_OPCODE_MEMBER_ASSIGN:
+    case KIT_IR_OPCODE_MEMBER_ASSIGN:
       fprintf(
           f,
           "member_assign value=%s, base=%s, member_id=%u\n",
@@ -5558,12 +5588,12 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.member_assign.base, buf1),
           i.member_assign.member_id);
       break;
-    case EIR_OPCODE_MK_STRUCT: fprintf(f, "mk_struct dst=%s, id=%u\n", get_register_name(i.mk_struct.dst, buf0), i.mk_struct.struct_id); break;
-    case EIR_OPCODE_GETG: fprintf(f, "getg dst=%s, src=gv%u\n", get_register_name(i.mov.dst, buf0), i.mov.src); break;
-    case EIR_OPCODE_SETG: fprintf(f, "setg dst=gv%u, src=%s\n", i.mov.dst, get_register_name(i.mov.src, buf1)); break;
-    case EIR_OPCODE_MOVG: fprintf(f, "movg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
-    case EIR_OPCODE_PUSH: fprintf(f, "push %s\n", get_register_name(i.push.reg, buf0)); break;
-    case EIR_OPCODE_POP: fprintf(f, "pop %s\n", get_register_name(i.pop.reg, buf0)); break;
+    case KIT_IR_OPCODE_MK_STRUCT: fprintf(f, "mk_struct dst=%s, id=%u\n", get_register_name(i.mk_struct.dst, buf0), i.mk_struct.struct_id); break;
+    case KIT_IR_OPCODE_GETG: fprintf(f, "getg dst=%s, src=gv%u\n", get_register_name(i.mov.dst, buf0), i.mov.src); break;
+    case KIT_IR_OPCODE_SETG: fprintf(f, "setg dst=gv%u, src=%s\n", i.mov.dst, get_register_name(i.mov.src, buf1)); break;
+    case KIT_IR_OPCODE_MOVG: fprintf(f, "movg dst=%s, src=%s\n", get_register_name(i.mov.dst, buf0), get_register_name(i.mov.src, buf1)); break;
+    case KIT_IR_OPCODE_PUSH: fprintf(f, "push %s\n", get_register_name(i.push.reg, buf0)); break;
+    case KIT_IR_OPCODE_POP: fprintf(f, "pop %s\n", get_register_name(i.pop.reg, buf0)); break;
   }
 }
 
@@ -5708,7 +5738,7 @@ kit_compile(const kitc_info* info, kit_compilation_result* result)
     .cinstructions     = init_code_capacity,
   };
   if (!cc.instructions) return -1;
-  for (u32 i = 0; i < init_code_capacity; i++) { cc.instructions[i] = (kit_ins){ .opcode = EIR_OPCODE_NOP }; }
+  for (u32 i = 0; i < init_code_capacity; i++) { cc.instructions[i] = (kit_ins){ .opcode = KIT_IR_OPCODE_NOP }; }
 
   scope_push(&cc);
 
