@@ -233,6 +233,9 @@ RET:
   kit_var_free(&object_pool, &time_now);
 
   if (!run_from_stdin && f) fclose(f);
+
+  for (u32 i = 0; i < KIT_ARRLEN(gvars); i++) { kit_var_free(&object_pool, &gvars[i]); }
+
   kit_var_release(&object_pool, &v);
   kit_refdobj_pool_free(&object_pool);
 

@@ -63,6 +63,8 @@ typedef struct codeblock {
   u32 start; /* first instruction (inclusive) */
   u32 end;   /* last instruction (inclusive) */
 
+  u32 idom; /* The immediate dominater */
+
   /* Block can really only have 2 successors max (JZ and JNZ, namely the condition failed branch and the condition pass branch) */
   u32 nsuccessors;
   u32 npredecessors;
@@ -77,17 +79,35 @@ typedef struct codeblock {
   bool* live_in;  /* [nvregs] */
   bool* live_out; /* [nvregs] */
 
+  /* Which codeblocks dominate this block */
+  bool* dominators; /* [nblocks] */
+
 } codeblock;
+
+typedef struct loop {
+  u32 header; /* loop header index */
+
+  u32  nlatches;
+  u32* latches; /* loop latch (connector) indices */
+
+  bool* is_block_member; /* which blocks are members of this loop [nblocks] */
+} blockloop;
 
 /* our CFG */
 typedef struct codegraph {
   kit_arena* arena;
+
   codeblock* blocks; /* arena allocated  */
   u32        nblocks;
+
+  blockloop* loops;
+  u32        nloops;
 
   /* instruction level liveliness analysis. Arena allocated */
   bool** ins_live_out; /* [ninstructions][nvregs] */
   bool** ins_live_in;  /* [ninstructions][nvregs] */
+
+  u32 entry_block; /* index of the entry codeblock */
 
   u32 nvregs;
 } codegraph;
@@ -99,6 +119,8 @@ static void               codegraph_free(kit_compiler* cc, codegraph* graph);
 
 static int codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst);
 static int codegraph_instruction_level_liveliness_analysis(kit_compiler* cc, codegraph* dst);
+static int codegraph_domination_analysis(kit_compiler* cc, codegraph* cfg);
+static int codegraph_loop_analysis(kit_compiler* cc, codegraph* cfg);
 static int codegraph_build_successor_list(kit_compiler* cc, codegraph* dst);
 
 static bool codegraph_dead_store_elimination(kit_compiler* cc, codegraph* cfg);
@@ -106,9 +128,12 @@ static bool codegraph_constant_folding(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_preliminary_dead_store_elimination(kit_compiler* cc, const codegraph* cfg);
 static bool codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_eliminate_unreachable_code(kit_compiler* cc, codegraph* cfg);
-static bool codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_local_dead_store_elimination(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_loop_invariant_code_motion(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_argument_vector_move_coalescing(kit_compiler* cc, codegraph* cfg);
+static bool codegraph_constant_jump_reduction(kit_compiler* cc, codegraph* cfg);
 
 static void opt_inline_function_calls(kit_compiler* cc);
 
@@ -1184,6 +1209,12 @@ codegraph_rebuild(kit_compiler* cc, codegraph* cfg)
   e = codegraph_instruction_level_liveliness_analysis(cc, cfg);
   if (e < 0) return e;
 
+  e = codegraph_domination_analysis(cc, cfg);
+  if (e < 0) return e;
+
+  e = codegraph_loop_analysis(cc, cfg);
+  if (e < 0) return e;
+
   return 0;
 }
 
@@ -1291,9 +1322,9 @@ compile_function_definition(kit_compiler* cc, int node)
       // if (!fork.info->feature_set.disable_dead_store_elimination) {
       //   if (codegraph_dead_store_elimination(&fork, &cfg)) codegraph_rebuild(&fork, &cfg);
       // }
-      // if (!fork.info->feature_set.disable_constant_propagation) {
-      //   if (codegraph_constant_propagation(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
-      // }
+      if (!fork.info->feature_set.disable_constant_propagation) {
+        if (codegraph_local_constant_propagation(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      }
       // if (!fork.info->feature_set.disable_constant_folding) {
       //   if (codegraph_constant_folding(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
       // }
@@ -1303,6 +1334,8 @@ compile_function_definition(kit_compiler* cc, int node)
       if (!fork.info->feature_set.disable_dead_branch_elimination) {
         if (codegraph_eliminate_unreachable_code(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
       }
+      codegraph_argument_vector_move_coalescing(&fork, &cfg);
+      codegraph_loop_invariant_code_motion(&fork, &cfg);
 
       /* codegraph invalidated after these calls */
       if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
@@ -2961,6 +2994,78 @@ get_destination_reg(const kit_ins* i)
   return UINT32_MAX;
 }
 
+static void
+set_destination_reg(kit_ins* i, u32 value)
+{
+  switch ((kit_ir_opcode_bits)i->opcode) {
+      /* getg, setg and movg  */
+    case KIT_IR_OPCODE_MOV: i->mov.dst = value; break;
+
+    case KIT_IR_OPCODE_MOVI: i->movi.dst = value; break; /* values are not registers */
+    case KIT_IR_OPCODE_MOVF: i->movf.dst = value; break; /* values are not registers */
+
+    case KIT_IR_OPCODE_GETG: i->mov.dst = value; break;
+
+    case KIT_IR_OPCODE_ASSERT:
+    case KIT_IR_OPCODE_SETG:
+    case KIT_IR_OPCODE_MOVG: {
+      break;
+    }
+    case KIT_IR_OPCODE_LOADK:
+      i->loadk.dst = value;
+      break; /* id is not a register */
+
+    // case KIT_IR_OPCODE_LOADK: break;
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_SUB:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_DIV:
+    case KIT_IR_OPCODE_MOD:
+    case KIT_IR_OPCODE_EXP:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ:
+    case KIT_IR_OPCODE_LT:
+    case KIT_IR_OPCODE_LTE:
+    case KIT_IR_OPCODE_GT:
+    case KIT_IR_OPCODE_GTE: i->binop.dst = value; break;
+    case KIT_IR_OPCODE_NOT:
+    case KIT_IR_OPCODE_NEG:
+    case KIT_IR_OPCODE_BNOT:
+    case KIT_IR_OPCODE_DEC:
+    case KIT_IR_OPCODE_INC: i->unop.dst = value; break;
+    case KIT_IR_OPCODE_CALL: i->call.dst = value; break;
+    case KIT_IR_OPCODE_INDEX: i->index.dst = value; break;
+    case KIT_IR_OPCODE_INDEX_ASSIGN: break;
+    case KIT_IR_OPCODE_MK_LIST: i->mk_list.dst = value; break;
+    case KIT_IR_OPCODE_MK_MAP: i->mk_map.dst = value; break;
+    case KIT_IR_OPCODE_MK_STRUCT: i->mk_struct.dst = value; break;
+    case KIT_IR_OPCODE_MEMBER_ACCESS: i->member_access.dst = value; break;
+    case KIT_IR_OPCODE_MEMBER_ASSIGN: break;
+    case KIT_IR_OPCODE_RET:
+    case KIT_IR_OPCODE_JZ:
+    case KIT_IR_OPCODE_JNZ:
+    case KIT_IR_OPCODE_PUSH: {
+      break;
+    }
+    case KIT_IR_OPCODE_POP: {
+      i->pop.reg = value;
+      break;
+    }
+
+      // default: break;
+    case KIT_IR_OPCODE_NOP:
+    case KIT_IR_OPCODE_LABEL:
+    case KIT_IR_OPCODE_JMP: {
+      break;
+    }
+  }
+}
+
 static u32
 get_source_registers(const kit_ins* i, u32 sources[32])
 {
@@ -3058,18 +3163,6 @@ get_source_registers(const kit_ins* i, u32 sources[32])
   return n;
 }
 
-static inline u32
-intersection(const u32* rpo_num, const u32* idom, u32 b1, u32 b2)
-{
-  u32 cursor1 = (b1);
-  u32 cursor2 = (b2);
-  while (cursor1 != cursor2) {
-    while (rpo_num[cursor1] < rpo_num[cursor2]) cursor1 = idom[cursor1];
-    while (rpo_num[cursor2] < rpo_num[cursor1]) cursor2 = idom[cursor2];
-  }
-  return cursor1;
-}
-
 static int
 codegraph_build_successor_list(kit_compiler* cc, codegraph* dst)
 {
@@ -3136,123 +3229,35 @@ codegraph_build_successor_list(kit_compiler* cc, codegraph* dst)
     }
   }
 
-  // u32* pred_count = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
-  // memset(pred_count, 0, nblocks * sizeof(u32));
+  u32* pred_count = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
+  memset(pred_count, 0, nblocks * sizeof(u32));
 
-  // for (u32 b = 0; b < nblocks; b++) {
-  //   for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
-  //     u32 succ = blocks[b].successors[s];
-  //     if (succ < nblocks) pred_count[succ]++;
-  //   }
-  // }
+  for (u32 b = 0; b < nblocks; b++) {
+    for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
+      u32 succ = blocks[b].successors[s];
+      if (succ < nblocks) pred_count[succ]++;
+    }
+  }
 
-  // for (u32 b = 0; b < nblocks; b++) {
-  //   blocks[b].npredecessors = pred_count[b];
-  //   if (pred_count[b] > 0) {
-  //     blocks[b].predecessors = kit_arnalloc(cc->arena, pred_count[b] * sizeof(u32));
-  //   } else {
-  //     blocks[b].predecessors = NULL;
-  //   }
-  // }
+  for (u32 b = 0; b < nblocks; b++) {
+    blocks[b].npredecessors = pred_count[b];
+    if (pred_count[b] > 0) {
+      blocks[b].predecessors = kit_arnalloc(cc->arena, pred_count[b] * sizeof(u32));
+    } else {
+      blocks[b].predecessors = NULL;
+    }
+  }
 
-  // u32* fill_idx = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
-  // memset(fill_idx, 0, nblocks * sizeof(u32));
+  u32* fill_idx = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
+  memset(fill_idx, 0, nblocks * sizeof(u32));
 
-  // /* fill predecessors */
-  // for (u32 b = 0; b < nblocks; b++) {
-  //   for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
-  //     u32 succ = blocks[b].successors[s];
-  //     if (succ < nblocks) { blocks[succ].predecessors[fill_idx[succ]++] = b; }
-  //   }
-  // }
-
-  // /* reverse post ordered */
-  // u32* rpo     = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
-  // u32* rpo_num = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
-  // u32  rpo_idx = 0;
-
-  // /* post ordered */
-  // u32* post     = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
-  // u32  post_idx = 0;
-
-  // bool* visited = kit_arnalloc(cc->arena, nblocks * sizeof(bool));
-  // memset(visited, 0, nblocks * sizeof(bool));
-
-  // u32* stack = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
-  // u32  sp    = 0;
-
-  // /* dfs thru our codegraph */
-  // stack[0]   = 0;
-  // visited[0] = true;
-  // sp++;
-  // while (sp > 0) {
-  //   u32  b      = stack[sp - 1];
-  //   bool pushed = false;
-
-  //   for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
-  //     u32 succ = blocks[b].successors[s];
-  //     if (!visited[succ]) {
-  //       visited[succ] = true;
-  //       stack[sp++]   = succ;
-  //       pushed        = true;
-  //       break;
-  //     }
-  //   }
-
-  //   if (!pushed) {
-  //     post[post_idx++] = b;
-  //     sp--;
-  //   }
-  // }
-
-  // /* reverse the post list to get RPO */
-  // for (u32 i = 0; i < nblocks; i++) {
-  //   rpo[i]          = post[nblocks - 1 - i];
-  //   rpo_num[rpo[i]] = i;
-  // }
-
-  // u32* idom = kit_arnalloc(cc->arena, nblocks * sizeof(u32));
-  // for (u32 i = 0; i < nblocks; i++) idom[i] = UINT32_MAX;
-  // idom[0] = 0; /* entry point */
-
-  // bool changed = true;
-  // while (changed) {
-  //   changed = false;
-
-  //   for (u32 i = 1; i < nblocks; i++) { /* skip entry point */
-  //     u32 b = rpo[i];
-
-  //     /* find first processed predecessor */
-  //     u32 new_idom = UINT32_MAX;
-  //     for (u32 p = 0; p < blocks[b].npredecessors; p++) {
-  //       u32 pred = blocks[b].predecessors[p];
-  //       if (idom[pred] != UINT32_MAX) {
-  //         new_idom = pred;
-  //         break;
-  //       }
-  //     }
-
-  //     /* interect with all other processed predecessors */
-  //     for (u32 p = 0; p < blocks[b].npredecessors; p++) {
-  //       u32 pred = blocks[b].predecessors[p];
-  //       if (pred != new_idom && idom[pred] != UINT32_MAX) new_idom = intersection(rpo_num, idom, pred, new_idom);
-  //     }
-
-  //     if (new_idom != idom[b]) {
-  //       idom[b] = new_idom;
-  //       changed = true;
-  //     }
-  //   }
-  // }
-
-  // kit_arnfree(cc->arena, stack);
-  // kit_arnfree(cc->arena, visited);
-  // kit_arnfree(cc->arena, rpo_num);
-  // kit_arnfree(cc->arena, rpo);
-  // kit_arnfree(cc->arena, pred_count);
-  // kit_arnfree(cc->arena, fill_idx);
-  // kit_arnfree(dst->arena, ip_to_block);
-  // kit_arnfree(dst->arena, label_map);
+  /* fill predecessors */
+  for (u32 b = 0; b < nblocks; b++) {
+    for (u32 s = 0; s < blocks[b].nsuccessors; s++) {
+      u32 succ = blocks[b].successors[s];
+      if (succ < nblocks) { blocks[succ].predecessors[fill_idx[succ]++] = b; }
+    }
+  }
 
   return 0;
 }
@@ -3321,16 +3326,63 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
     }
   }
 
+  /* compute reverse post order for this graph */
+  u32   nblocks = dst->nblocks;
+  bool* visited = kit_arnalloc(dst->arena, nblocks * sizeof(bool));
+
+  memset(visited, 0, nblocks * sizeof(bool));
+
+  u32* stack_trav = kit_arnalloc(dst->arena, nblocks * sizeof(u32));
+  u32* stack_post = kit_arnalloc(dst->arena, nblocks * sizeof(u32));
+
+  u32 top_trav           = 0;
+  u32 top_post           = 0;
+  stack_trav[top_trav++] = dst->entry_block;
+
+  while (top_trav > 0) {
+    u32 b = stack_trav[--top_trav];
+    if (visited[b]) continue;
+    visited[b] = true;
+  }
+
+  memset(visited, 0, nblocks * sizeof(bool));
+  top_trav               = 0;
+  top_post               = 0;
+  stack_trav[top_trav++] = dst->entry_block;
+
+  while (top_trav > 0) {
+    u32 b = stack_trav[--top_trav];
+    if (visited[b]) continue;
+    visited[b]             = true;
+    stack_post[top_post++] = b;
+
+    codeblock* blk = &dst->blocks[b];
+    for (u32 s = 0; s < blk->nsuccessors; s++) {
+      u32 succ = blk->successors[s];
+      if (!visited[succ]) { stack_trav[top_trav++] = succ; }
+    }
+  }
+
+  u32* rpo = kit_arnalloc(dst->arena, nblocks * sizeof(u32));
+
+  /* reverse */
+  for (u32 i = 0; i < top_post; i++) { rpo[i] = stack_post[top_post - 1 - i]; }
+  const u32 nrpo = top_post;
+
+  kit_arnfree(dst->arena, visited);
+  kit_arnfree(dst->arena, stack_trav);
+  kit_arnfree(dst->arena, stack_post);
+
   bool* new_live_out = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
   bool* new_live_in  = kit_arnalloc(dst->arena, nvregs * sizeof(bool));
 
-  /* start out as true so while loop starts */
-  bool changed = true;
-  while (changed) {
-    changed = false; /* assume we didn't change */
+  bool changed = false;
+  do {
+    changed = false;
 
-    for (i64 i = (i64)dst->nblocks - 1; i >= 0; i--) {
-      codeblock* blk = &dst->blocks[i];
+    for (u32 idx = 0; idx < nrpo; idx++) {
+      u32        b   = rpo[idx];
+      codeblock* blk = &dst->blocks[b];
 
       memset(new_live_out, 0, nvregs * sizeof(bool));
       memset(new_live_in, 0, nvregs * sizeof(bool));
@@ -3359,7 +3411,7 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
       memcpy(blk->live_in, new_live_in, nvregs * sizeof(bool));
       memcpy(blk->live_out, new_live_out, nvregs * sizeof(bool));
     }
-  }
+  } while (changed);
 
   return 0;
 }
@@ -3415,6 +3467,186 @@ codegraph_instruction_level_liveliness_analysis(kit_compiler* cc, codegraph* dst
   return 0;
 }
 
+static int
+codegraph_domination_analysis(kit_compiler* cc, codegraph* cfg)
+{
+  for (u32 b = 0; b < cfg->nblocks; b++) {
+    codeblock* blk = &cfg->blocks[b];
+
+    blk->dominators = kit_arnalloc(cfg->arena, cfg->nblocks * sizeof(bool));
+
+    if (b == cfg->entry_block) {
+      memset(blk->dominators, 0, cfg->nblocks * sizeof(bool));
+
+      /* entry block dominates itself */
+      blk->dominators[b] = true;
+    } else {
+      /* (start with) everything else dominating everything else */
+      memset(blk->dominators, 1, cfg->nblocks * sizeof(bool));
+    }
+  }
+
+  bool changed = true;
+
+  while (changed) {
+    changed = false;
+
+    for (u32 b = 0; b < cfg->nblocks; b++) {
+      if (b == cfg->entry_block) continue;
+
+      codeblock* blk = &cfg->blocks[b];
+
+      bool* new_dom = kit_arnalloc(cfg->arena, cfg->nblocks * sizeof(bool));
+
+      /* start as all true */
+      memset(new_dom, 1, cfg->nblocks * sizeof(bool));
+
+      for (u32 p = 0; p < blk->npredecessors; p++) {
+        codeblock* pred = &cfg->blocks[blk->predecessors[p]];
+
+        for (u32 i = 0; i < cfg->nblocks; i++) { new_dom[i] = new_dom[i] && pred->dominators[i]; }
+      }
+
+      /* add self */
+      new_dom[b] = true;
+
+      if (memcmp(new_dom, blk->dominators, cfg->nblocks * sizeof(bool)) != 0) {
+        changed |= true;
+
+        memcpy(blk->dominators, new_dom, cfg->nblocks * sizeof(bool));
+      }
+
+      kit_arnfree(cfg->arena, new_dom);
+    }
+  }
+
+  for (u32 b = 0; b < cfg->nblocks; b++) {
+    if (b == cfg->entry_block) {
+      cfg->blocks[b].idom = UINT32_MAX;
+      continue;
+    }
+
+    u32 idom = UINT32_MAX;
+
+    for (u32 d = 0; d < cfg->nblocks; d++) {
+      if (d == b) continue;
+
+      if (!cfg->blocks[b].dominators[d]) continue;
+
+      bool closest = true;
+
+      for (u32 e = 0; e < cfg->nblocks; e++) {
+        if (e == b || e == d) continue;
+
+        if (!cfg->blocks[b].dominators[e]) continue;
+
+        /*
+         * If e dominates d,
+         * then d is not closest.
+         */
+        if (cfg->blocks[d].dominators[e]) {
+          closest = false;
+          break;
+        }
+      }
+
+      if (closest) {
+        idom = d;
+        break;
+      }
+    }
+
+    cfg->blocks[b].idom = idom;
+  }
+
+  return 0;
+}
+
+static int
+codegraph_loop_analysis(kit_compiler* cc, codegraph* cfg)
+{
+  typedef struct backedge {
+    u32 header;
+    u32 latch;
+  } backedge;
+
+  backedge* edges  = kit_arnalloc(cfg->arena, sizeof(backedge) * cfg->nblocks * 2);
+  u32       nedges = 0;
+
+  for (u32 src = 0; src < cfg->nblocks; src++) {
+    codeblock* blk = &cfg->blocks[src];
+
+    for (u32 i = 0; i < blk->nsuccessors; i++) {
+      u32 dst = blk->successors[i];
+
+      if (cfg->blocks[src].dominators[dst]) { edges[nedges++] = (backedge){ .header = dst, .latch = src }; }
+    }
+  }
+
+  /* merge back edges that share a header into one loop. */
+  cfg->loops  = kit_arnalloc(cfg->arena, sizeof(blockloop) * nedges);
+  cfg->nloops = 0;
+
+  for (u32 e = 0; e < nedges; e++) {
+    u32 header = edges[e].header;
+
+    blockloop* loop = NULL;
+    for (u32 l = 0; l < cfg->nloops; l++) {
+      if (cfg->loops[l].header == header) {
+        loop = &cfg->loops[l];
+        break;
+      }
+    }
+
+    if (!loop) {
+      loop  = &cfg->loops[cfg->nloops++];
+      *loop = (blockloop){
+        .header          = header,
+        .latches         = kit_arnalloc(cfg->arena, sizeof(u32) * nedges),
+        .nlatches        = 0,
+        .is_block_member = kit_arnalloc(cfg->arena, cfg->nblocks * sizeof(bool)),
+      };
+      memset(loop->is_block_member, 0, cfg->nblocks * sizeof(bool));
+      loop->is_block_member[header] = true;
+    }
+
+    loop->latches[loop->nlatches++]       = edges[e].latch;
+    loop->is_block_member[edges[e].latch] = true;
+  }
+
+  for (u32 l = 0; l < cfg->nloops; l++) {
+    blockloop* loop = &cfg->loops[l];
+
+    u32  capacity = 1024;
+    u32  top      = 0;
+    u32* stack    = kit_arnalloc(cfg->arena, capacity * sizeof(u32));
+
+    for (u32 i = 0; i < loop->nlatches; i++) { stack[top++] = loop->latches[i]; }
+
+    while (top) {
+      u32        b   = stack[--top];
+      codeblock* blk = &cfg->blocks[b];
+
+      for (u32 i = 0; i < blk->npredecessors; i++) {
+        u32 pred = blk->predecessors[i];
+
+        if (pred == loop->header) continue;
+
+        if (!loop->is_block_member[pred]) {
+          if (top >= capacity) {
+            stack = kit_arnrealloc(cfg->arena, stack, capacity * sizeof(u32), capacity * 2UL * sizeof(u32));
+            capacity *= 2;
+          }
+          loop->is_block_member[pred] = true;
+          stack[top++]                = pred;
+        }
+      }
+    }
+  }
+
+  return 0;
+}
+
 static ATTR_NODISCARD int
 codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst)
 {
@@ -3432,24 +3664,24 @@ codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst)
   }
 
   /* Find all block headers */
-  bool* blk_header = kit_arnalloc(a, code_size * sizeof(bool));
-  memset(blk_header, 0, code_size * sizeof(bool));
+  bool* is_blk_header = kit_arnalloc(a, code_size * sizeof(bool));
+  memset(is_blk_header, 0, code_size * sizeof(bool));
 
   /* first instruction */
-  blk_header[0] = true;
+  is_blk_header[0] = true;
 
   for (u32 i = 0; i < code_size; i++) {
     const kit_ins* ins = &code[i];
 
     if (ins->opcode == KIT_IR_OPCODE_JMP) {
       u32 target = label_map[ins->jmp.target];
-      if (target < cc->ninstructions) { blk_header[target] = true; }
-      if (i + 1 < code_size) blk_header[i + 1] = true;
+      if (target < cc->ninstructions) { is_blk_header[target] = true; }
+      if (i + 1 < code_size) is_blk_header[i + 1] = true;
     } else if (ins->opcode == KIT_IR_OPCODE_JZ || ins->opcode == KIT_IR_OPCODE_JNZ) {
       u32 target = label_map[ins->cj.target];
 
-      if (target < code_size) blk_header[target] = true;
-      if (i + 1 < code_size) blk_header[i + 1] = true; // fallthrough
+      if (target < code_size) is_blk_header[target] = true;
+      if (i + 1 < code_size) is_blk_header[i + 1] = true; // fallthrough
     }
   }
 
@@ -3461,7 +3693,10 @@ codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst)
 
   u32 block_start = 0;
   for (u32 i = 0; i < code_size; i++) {
-    if (blk_header[i] && i != 0) {
+    if (is_blk_header[i] && i != 0) {
+      /* Block starts from 0, it's the entry point */
+      if (block_start == 0) { dst->entry_block = nblocks; }
+
       blocks[nblocks].start = block_start;
       blocks[nblocks].end   = i - 1;
       nblocks++;
@@ -3493,8 +3728,9 @@ is_instruction_impure(kit_ir_opcode op)
     case KIT_IR_OPCODE_JMP:
     case KIT_IR_OPCODE_JZ:
     case KIT_IR_OPCODE_JNZ:
-    case KIT_IR_OPCODE_LABEL: // keep labels for control flow
-    case KIT_IR_OPCODE_SETG:  // writes global state
+    case KIT_IR_OPCODE_LABEL:  // keep labels for control flow
+    case KIT_IR_OPCODE_SETG:   // writes global state
+    case KIT_IR_OPCODE_ASSERT: /* can crash the program */
     case KIT_IR_OPCODE_MOVG:
     case KIT_IR_OPCODE_INDEX_ASSIGN:
     case KIT_IR_OPCODE_MEMBER_ASSIGN:
@@ -3700,7 +3936,7 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
 
             a->opcode = KIT_IR_OPCODE_NOP;
 
-            changed = true;
+            changed |= true;
             break;
           }
 
@@ -3865,7 +4101,6 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
       kit_ins* three = &cc->instructions[three_idx];
 
       if (!instruction_produces_constant_value(one->opcode) || !instruction_produces_constant_value(two->opcode)) continue;
-      // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
       if (!is_instruction_binary_operation(three->opcode)) continue;
 
       /* check if three depends on one and (or two) */
@@ -3879,7 +4114,11 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
       bool found_two = three_sources[1] == two_dst;
 
       /* if in reverse order, for some reason, swap one and two */
-      if (three_sources[0] == two_dst && three_sources[1] == one_dst) {
+      bool order_dependant = three->opcode == KIT_IR_OPCODE_DIV || three->opcode == KIT_IR_OPCODE_MUL || three->opcode == KIT_IR_OPCODE_EXP;
+      if (order_dependant) continue;
+
+      /* only swap out if the operation is associative */
+      if ((three_sources[0] == two_dst && three_sources[1] == one_dst)) {
         kit_ins* tmp = one;
         one          = two;
         two          = tmp;
@@ -3934,71 +4173,71 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
   }
 
   /* now do unary operations */
-  // for (u32 i = 0; i < cc->ninstructions; i++) {
-  //   if (i + 2 >= cc->ninstructions) break;
+  for (u32 i = 0; i < cc->ninstructions; i++) {
+    if (i + 2 >= cc->ninstructions) break;
 
-  //   kit_ins* one = &cc->instructions[i];
-  //   kit_ins* two = &cc->instructions[i + 1];
+    kit_ins* one = &cc->instructions[i];
+    kit_ins* two = &cc->instructions[i + 1];
 
-  //   if (!instruction_produces_constant_value(one->opcode)) continue;
+    if (!instruction_produces_constant_value(one->opcode)) continue;
 
-  //   u32 one_dst = get_destination_reg(one);
+    u32 one_dst = get_destination_reg(one);
 
-  //   /* special case, conditional jumps */
-  //   if ((two->opcode == KIT_IR_OPCODE_JZ || two->opcode == KIT_IR_OPCODE_JNZ) && two->cj.condition == one_dst) {
-  //     /* load the constant */
-  //     kit_var one_result = KIT_NULLVAR;
-  //     if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+    /* special case, conditional jumps */
+    if ((two->opcode == KIT_IR_OPCODE_JZ || two->opcode == KIT_IR_OPCODE_JNZ) && two->cj.condition == one_dst) {
+      /* load the constant */
+      kit_var one_result = KIT_NULLVAR;
+      if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
 
-  //     bool b = kit_cast_to_bool(&one_result);
+      bool b = kit_cast_to_bool(&one_result);
 
-  //     if (two->opcode == KIT_IR_OPCODE_JZ) {
-  //       if (b) { /* condition always false, fallthrough */
-  //         two->opcode = KIT_IR_OPCODE_NOP;
-  //       } else { /* condition always true, just jump to it */
-  //         two->opcode     = KIT_IR_OPCODE_JMP;
-  //         two->jmp.target = two->cj.target;
-  //       }
-  //     }
-  //     if (two->opcode == KIT_IR_OPCODE_JNZ) {
-  //       if (!b) { /* condition always false, fallthrough */
-  //         two->opcode = KIT_IR_OPCODE_NOP;
-  //       } else { /* condition always true, just jump to it */
-  //         two->opcode     = KIT_IR_OPCODE_JMP;
-  //         two->jmp.target = two->cj.target;
-  //       }
-  //     }
-  //     continue;
-  //   }
+      if (two->opcode == KIT_IR_OPCODE_JZ) {
+        if (b) { /* condition always false, fallthrough */
+          two->opcode = KIT_IR_OPCODE_NOP;
+        } else { /* condition always true, just jump to it */
+          two->opcode     = KIT_IR_OPCODE_JMP;
+          two->jmp.target = two->cj.target;
+        }
+      }
+      if (two->opcode == KIT_IR_OPCODE_JNZ) {
+        if (!b) { /* condition always false, fallthrough */
+          two->opcode = KIT_IR_OPCODE_NOP;
+        } else { /* condition always true, just jump to it */
+          two->opcode     = KIT_IR_OPCODE_JMP;
+          two->jmp.target = two->cj.target;
+        }
+      }
+      continue;
+    }
 
-  //   // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
-  //   if (!is_instruction_unary_operation(two->opcode)) continue;
+    // if (!is_instruction_binary_operation(three->opcode) && !is_instruction_unary_operation(three->opcode)) continue;
+    if (!is_instruction_unary_operation(two->opcode)) continue;
 
-  //   /* check if two depends on one */
-  //   u32 two_sources[32];
-  //   get_source_registers(two, two_sources);
+    /* check if two depends on one */
+    u32 two_sources[32];
+    get_source_registers(two, two_sources);
 
-  //   bool found_one = two_sources[0] == one_dst;
+    bool found_one = two_sources[0] == one_dst;
 
-  //   if (!found_one) continue;
+    if (!found_one) continue;
 
-  //   kit_var one_result = KIT_NULLVAR;
-  //   if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
+    kit_var one_result = KIT_NULLVAR;
+    if (get_instruction_constant_result(cc, one, &one_result) < 0) continue;
 
-  //   kit_var result = operate(KIT_NULLVAR, one_result, two->opcode);
+    kit_var result = operate(KIT_NULLVAR, one_result, two->opcode);
 
-  //   /* replace the three instructions with a single loadk */
+    /* replace the three instructions with a single loadk */
 
-  //   if (add_literal_to_track(cc, &result) < 0) continue;
+    if (add_literal_to_track(cc, &result) < 0) continue;
 
-  //   one->opcode = KIT_IR_OPCODE_NOP;
+    one->opcode = KIT_IR_OPCODE_NOP;
 
-  //   u32 two_dst = get_destination_reg(two);
+    u32 two_dst = get_destination_reg(two);
 
-  //   two->opcode    = KIT_IR_OPCODE_LOADK;
-  //   two->loadk.id  = kit_var_hash(&result);
-  //   two->loadk.dst = two_dst;
-  // }
+    two->opcode    = KIT_IR_OPCODE_LOADK;
+    two->loadk.id  = kit_var_hash(&result);
+    two->loadk.dst = two_dst;
+  }
 
   return changed_anything;
 }
@@ -4139,7 +4378,7 @@ replace_move_with_constant_load(kit_compiler* cc, const codegraph* cfg, kit_ins*
 }
 
 static bool
-codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
+codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
 {
   kit_var* regs         = kit_arnalloc(cfg->arena, cfg->nvregs * sizeof(kit_var));
   bool*    values_known = kit_arnalloc(cfg->arena, cfg->nvregs * sizeof(bool));
@@ -4152,179 +4391,212 @@ codegraph_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
   bool changed = false;
 
-  for (u32 i = 0; i < cc->ninstructions; i++) {
-    kit_ins* ins = &cc->instructions[i];
+  for (u32 block = 0; block < cfg->nblocks; block++) {
+    codeblock* blk = &cfg->blocks[block];
 
-    if (ins->opcode == KIT_IR_OPCODE_CALL) {
-      memset(values_known, 0, nvregs * sizeof(bool));
-      values_known[ins->call.dst] = false;
-      continue;
-    }
+    memset(values_known, 0, cfg->nvregs * sizeof(bool));
 
-    /* impure instruction. flush state and move on. */
-    if (ins->opcode != KIT_IR_OPCODE_LABEL && ins->opcode != KIT_IR_OPCODE_INDEX_ASSIGN && ins->opcode != KIT_IR_OPCODE_MEMBER_ASSIGN
-        && is_instruction_impure(ins->opcode)) {
-      /* this is the first optimization pass, assume jumps wreck all registers */
-      memset(values_known, 0, nvregs * sizeof(bool));
-      continue;
-    }
+    for (u32 i = blk->start; i <= blk->end; i++) {
+      kit_ins* ins = &cc->instructions[i];
 
-    switch (ins->opcode) {
-      case KIT_IR_OPCODE_NOP: break;
-
-      case KIT_IR_OPCODE_MOV: {
-        u32 dst = ins->mov.dst;
-        u32 src = ins->mov.src;
-
-        /* If the value is already in dst, turn this instruction into a NOOP */
-        if (values_known[dst] && values_known[src] && kit_var_equal(&regs[dst], &regs[src])) {
-          changed     = true;
-          ins->opcode = KIT_IR_OPCODE_NOP;
-          continue;
-        }
-
-        if (values_known[src]) {
-          changed = true;
-          replace_move_with_constant_load(cc, cfg, ins, dst, &regs[src]);
-          values_known[dst] = true;
-        }
-
-        regs[dst]         = regs[src];
-        values_known[dst] = values_known[src]; /* if the value of src is known, then the value of dst is known */
-
-        break;
-      }
-      case KIT_IR_OPCODE_MOVI: {
-        regs[ins->movi.dst]         = kit_var_from_int(ins->movi.value);
-        values_known[ins->movi.dst] = true;
-        break;
-      }
-      case KIT_IR_OPCODE_MOVF: {
-        regs[ins->movf.dst]         = kit_var_from_float(ins->movf.value);
-        values_known[ins->movf.dst] = true;
-        break;
+      if (ins->opcode == KIT_IR_OPCODE_CALL) {
+        memset(values_known, 0, nvregs * sizeof(bool));
+        values_known[ins->call.dst] = false;
+        continue;
       }
 
-      case KIT_IR_OPCODE_GETG:
-      case KIT_IR_OPCODE_SETG:
-      case KIT_IR_OPCODE_MOVG: break;
+      /* impure instruction. flush state and move on. */
+      if (ins->opcode != KIT_IR_OPCODE_LABEL && ins->opcode != KIT_IR_OPCODE_INDEX_ASSIGN && ins->opcode != KIT_IR_OPCODE_MEMBER_ASSIGN
+          && ins->opcode != KIT_IR_OPCODE_JZ && ins->opcode != KIT_IR_OPCODE_JNZ && is_instruction_impure(ins->opcode)) {
+        /* this is the first optimization pass, assume jumps wreck all registers */
+        memset(values_known, 0, nvregs * sizeof(bool));
+        continue;
+      }
 
-      case KIT_IR_OPCODE_NEQ:
-      case KIT_IR_OPCODE_EQL: {
-        /* special case, if both point to the same register */
-        u32 a   = ins->binop.a;
-        u32 b   = ins->binop.b;
-        u32 dst = ins->binop.dst;
-        if (a == b) {
-          values_known[dst] = true;
-          changed           = true;
-          /* register self comparison will always result in true (for EQL)*/
-          regs[dst] = kit_var_from_bool(ins->opcode == KIT_IR_OPCODE_EQL ? true : false);
+      switch (ins->opcode) {
+        case KIT_IR_OPCODE_NOP: break;
 
-          replace_move_with_constant_load(cc, cfg, ins, dst, &regs[dst]);
+        case KIT_IR_OPCODE_MOV: {
+          u32 dst = ins->mov.dst;
+          u32 src = ins->mov.src;
+
+          /* If the value is already in dst, turn this instruction into a NOOP */
+          if (values_known[dst] && values_known[src] && kit_var_equal(&regs[dst], &regs[src])) {
+            changed     = true;
+            ins->opcode = KIT_IR_OPCODE_NOP;
+            continue;
+          }
+
+          if (values_known[src]) {
+            changed |= true;
+            replace_move_with_constant_load(cc, cfg, ins, dst, &regs[src]);
+            values_known[dst] = true;
+          }
+
+          regs[dst]         = regs[src];
+          values_known[dst] = values_known[src]; /* if the value of src is known, then the value of dst is known */
+
           break;
         }
-        /* fallthrough */
-      }
+        case KIT_IR_OPCODE_MOVI: {
+          regs[ins->movi.dst]         = kit_var_from_int(ins->movi.value);
+          values_known[ins->movi.dst] = true;
+          break;
+        }
+        case KIT_IR_OPCODE_MOVF: {
+          regs[ins->movf.dst]         = kit_var_from_float(ins->movf.value);
+          values_known[ins->movf.dst] = true;
+          break;
+        }
 
-      case KIT_IR_OPCODE_ADD:
-      case KIT_IR_OPCODE_SUB:
-      case KIT_IR_OPCODE_MUL:
-      case KIT_IR_OPCODE_DIV:
-      case KIT_IR_OPCODE_MOD:
-      case KIT_IR_OPCODE_EXP:
-      case KIT_IR_OPCODE_AND:
-      case KIT_IR_OPCODE_OR:
-      case KIT_IR_OPCODE_BAND:
-      case KIT_IR_OPCODE_BOR:
-      case KIT_IR_OPCODE_XOR:
-      case KIT_IR_OPCODE_LT:
-      case KIT_IR_OPCODE_LTE:
-      case KIT_IR_OPCODE_GT:
-      case KIT_IR_OPCODE_GTE:
-        /* if value of both operands are known, compute it and store it */ {
-          if (!values_known[ins->binop.a] || !values_known[ins->binop.b]) {
-            values_known[ins->binop.dst] = false;
+        case KIT_IR_OPCODE_GETG:
+        case KIT_IR_OPCODE_SETG:
+        case KIT_IR_OPCODE_MOVG: break;
+
+        case KIT_IR_OPCODE_NEQ:
+        case KIT_IR_OPCODE_EQL: {
+          /* special case, if both point to the same register */
+          u32 a   = ins->binop.a;
+          u32 b   = ins->binop.b;
+          u32 dst = ins->binop.dst;
+          if (a == b) {
+            values_known[dst] = true;
+            changed           = true;
+            /* register self comparison will always result in true (for EQL)*/
+            regs[dst] = kit_var_from_bool(ins->opcode == KIT_IR_OPCODE_EQL ? true : false);
+
+            replace_move_with_constant_load(cc, cfg, ins, dst, &regs[dst]);
+            break;
+          }
+          /* fallthrough */
+        }
+
+        case KIT_IR_OPCODE_ADD:
+        case KIT_IR_OPCODE_SUB:
+        case KIT_IR_OPCODE_MUL:
+        case KIT_IR_OPCODE_DIV:
+        case KIT_IR_OPCODE_MOD:
+        case KIT_IR_OPCODE_EXP:
+        case KIT_IR_OPCODE_AND:
+        case KIT_IR_OPCODE_OR:
+        case KIT_IR_OPCODE_BAND:
+        case KIT_IR_OPCODE_BOR:
+        case KIT_IR_OPCODE_XOR:
+        case KIT_IR_OPCODE_LT:
+        case KIT_IR_OPCODE_LTE:
+        case KIT_IR_OPCODE_GT:
+        case KIT_IR_OPCODE_GTE:
+          /* if value of both operands are known, compute it and store it */ {
+            if (!values_known[ins->binop.a] || !values_known[ins->binop.b]) {
+              values_known[ins->binop.dst] = false;
+              break;
+            }
+
+            kit_var a      = regs[ins->binop.a];
+            kit_var b      = regs[ins->binop.b];
+            kit_var result = operate(a, b, ins->opcode);
+
+            u32 dst = ins->binop.dst;
+            replace_move_with_constant_load(cc, cfg, ins, dst, &result);
+
+            changed |= true;
+
+            regs[dst]         = result;
+            values_known[dst] = true;
             break;
           }
 
-          kit_var a      = regs[ins->binop.a];
-          kit_var b      = regs[ins->binop.b];
-          kit_var result = operate(a, b, ins->opcode);
+        case KIT_IR_OPCODE_BNOT:
+        case KIT_IR_OPCODE_NEG:
+        case KIT_IR_OPCODE_NOT:
+        case KIT_IR_OPCODE_INC:
+        case KIT_IR_OPCODE_DEC: {
+          if (!values_known[ins->unop.a]) {
+            values_known[ins->unop.dst] = false;
+            break;
+          }
 
-          u32 dst = ins->binop.dst;
+          kit_var a      = regs[ins->unop.a];
+          kit_var result = operate(KIT_NULLVAR, a, ins->opcode);
+
+          u32 dst = ins->unop.dst;
           replace_move_with_constant_load(cc, cfg, ins, dst, &result);
 
-          changed = true;
+          changed |= true;
 
           regs[dst]         = result;
           values_known[dst] = true;
           break;
         }
 
-      case KIT_IR_OPCODE_BNOT:
-      case KIT_IR_OPCODE_NEG:
-      case KIT_IR_OPCODE_NOT:
-      case KIT_IR_OPCODE_INC:
-      case KIT_IR_OPCODE_DEC: {
-        if (!values_known[ins->unop.a]) {
-          values_known[ins->unop.dst] = false;
-          break;
-        }
+        case KIT_IR_OPCODE_LOADK: {
+          u32 id  = ins->loadk.id;
+          u32 dst = ins->loadk.dst;
 
-        kit_var a      = regs[ins->unop.a];
-        kit_var result = operate(KIT_NULLVAR, a, ins->opcode);
+          values_known[dst] = false; // set when we find it.
 
-        u32 dst = ins->unop.dst;
-        replace_move_with_constant_load(cc, cfg, ins, dst, &result);
+          for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
+            kit_var* lit = &cc->lit_table->literals[j];
+            if (cc->lit_table->literal_hashes[j] != id) continue;
 
-        changed = true;
+            kit_var tmp = *lit;
+            replace_move_with_constant_load(cc, cfg, ins, ins->loadk.dst, lit);
 
-        regs[dst]         = result;
-        values_known[dst] = true;
-        break;
-      }
+            changed           = true;
+            regs[dst]         = tmp;
+            values_known[dst] = true;
 
-      case KIT_IR_OPCODE_LOADK: {
-        u32 id  = ins->loadk.id;
-        u32 dst = ins->loadk.dst;
-
-        values_known[dst] = false; // set when we find it.
-
-        for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
-          kit_var* lit = &cc->lit_table->literals[j];
-          if (cc->lit_table->literal_hashes[j] != id) continue;
-
-          kit_var tmp = *lit;
-          replace_move_with_constant_load(cc, cfg, ins, ins->loadk.dst, lit);
-
-          changed           = true;
-          regs[dst]         = tmp;
-          values_known[dst] = true;
+            break;
+          }
 
           break;
         }
 
-        break;
+        case KIT_IR_OPCODE_JZ: {
+          u32 target   = ins->jz.target;
+          u32 cond_reg = ins->jz.condition;
+
+          if (values_known[cond_reg] && kit_cast_to_bool(&regs[cond_reg])) {
+            ins->opcode = KIT_IR_OPCODE_NOP;
+          } else if (values_known[cond_reg] && !kit_cast_to_bool(&regs[cond_reg])) {
+            ins->opcode     = KIT_IR_OPCODE_JMP;
+            ins->jmp.target = target;
+          }
+
+          memset(values_known, 0, nvregs * sizeof(bool));
+          break;
+        }
+        case KIT_IR_OPCODE_JNZ: {
+          u32 target   = ins->jnz.target;
+          u32 cond_reg = ins->jnz.condition;
+
+          if (values_known[cond_reg] && kit_cast_to_bool(&regs[cond_reg])) {
+            ins->opcode     = KIT_IR_OPCODE_JMP;
+            ins->jmp.target = target;
+          } else if (values_known[cond_reg] && !kit_cast_to_bool(&regs[cond_reg])) {
+            ins->opcode = KIT_IR_OPCODE_NOP;
+          }
+
+          memset(values_known, 0, nvregs * sizeof(bool));
+          break;
+        }
+
+        case KIT_IR_OPCODE_JMP: {
+          memset(values_known, 0, nvregs * sizeof(bool));
+          break;
+        }
+
+        case KIT_IR_OPCODE_ASSERT: {
+          u32 cond = ins->assertion.cond;
+
+          /* assertion is always true, noop it. */
+          if (values_known[cond] && kit_var_to_bool(regs[cond])) { ins->opcode = KIT_IR_OPCODE_NOP; }
+
+          break;
+        }
+
+        default: break;
       }
-
-      case KIT_IR_OPCODE_JMP:
-      case KIT_IR_OPCODE_JZ:
-      case KIT_IR_OPCODE_JNZ: {
-        memset(values_known, 0, nvregs * sizeof(bool));
-        break;
-      }
-
-      case KIT_IR_OPCODE_ASSERT: {
-        u32 cond = ins->assertion.cond;
-
-        /* assertion is always true, noop it. */
-        if (values_known[cond] && kit_var_to_bool(regs[cond])) { ins->opcode = KIT_IR_OPCODE_NOP; }
-
-        break;
-      }
-
-      default: break;
     }
   }
 
@@ -4624,9 +4896,9 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
         case KIT_IR_OPCODE_LTE:
         case KIT_IR_OPCODE_GT:
         case KIT_IR_OPCODE_GTE:
+          if (copy_map[ins->binop.a] != ins->binop.a || copy_map[ins->binop.b] != ins->binop.b) { changed = true; }
           ins->binop.a = copy_map[ins->binop.a];
           ins->binop.b = copy_map[ins->binop.b];
-          changed      = true;
           break;
 
         case KIT_IR_OPCODE_NOT:
@@ -4634,6 +4906,7 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
         case KIT_IR_OPCODE_BNOT:
         case KIT_IR_OPCODE_DEC:
         case KIT_IR_OPCODE_INC:
+          if (copy_map[ins->unop.a] != ins->binop.a) { changed = true; }
           ins->unop.a = copy_map[ins->unop.a];
           changed     = true;
           break;
@@ -4645,15 +4918,20 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
         case KIT_IR_OPCODE_CALL: break;
 
         case KIT_IR_OPCODE_INDEX:
+          if (ins->index.index != copy_map[ins->index.index] || ins->index.base != copy_map[ins->index.base]) { changed = true; }
+
           ins->index.base  = copy_map[ins->index.base];
           ins->index.index = copy_map[ins->index.index];
-          changed          = true;
           break;
         case KIT_IR_OPCODE_INDEX_ASSIGN:
+          if (ins->index_assign.value != copy_map[ins->index_assign.value] || ins->index_assign.index != copy_map[ins->index_assign.index]
+              || ins->index_assign.base != copy_map[ins->index_assign.base]) {
+            changed |= true;
+          }
+
           ins->index_assign.value = copy_map[ins->index_assign.value];
           ins->index_assign.index = copy_map[ins->index_assign.index];
           ins->index_assign.base  = copy_map[ins->index_assign.base];
-          changed                 = true;
           break;
 
         case KIT_IR_OPCODE_MEMBER_ACCESS:
@@ -4692,13 +4970,16 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
       if (dst != UINT32_MAX) {
         if (ins->opcode == KIT_IR_OPCODE_MOV) {
           u32 src = ins->mov.src;
-          if (src < KIT_REG_GENERAL_BEGIN) {
+
+          if (dst == src) {
+            ins->opcode = KIT_IR_OPCODE_NOP;
+            changed     = true;
+          } else if (src < KIT_REG_GENERAL_BEGIN) {
             copy_map[dst] = dst; /* fixed registers always die in any circumstance */
             changed       = true;
           } else {
             copy_map[dst] = src;
-            if (dst == src) ins->opcode = KIT_IR_OPCODE_NOP;
-            changed = true;
+            changed       = true;
           }
         } else {
           /* kill the old value */
@@ -4712,7 +4993,7 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
   return changed;
 }
 
-static inline bool
+static bool
 codegraph_local_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
 {
   bool changed = false;
@@ -4740,135 +5021,187 @@ codegraph_local_dead_store_elimination(kit_compiler* cc, codegraph* cfg)
   return changed;
 }
 
-static void
-forward_dead_moves(kit_compiler* cc)
+static inline bool
+is_argument_register(u32 reg)
+{ return reg >= KIT_REG_ARG0 && reg <= KIT_REG_ARG_END; }
+
+static bool
+codegraph_argument_vector_move_coalescing(kit_compiler* cc, codegraph* cfg)
 {
-  return;
-  for (u32 i = 0; i < cc->ninstructions; i++) {
-    kit_ins* mov = &cc->instructions[i];
+  bool changed_ever = false;
+  bool changed      = false;
+
+  for (u32 ip = 0; ip < cc->ninstructions; ip++) {
+    kit_ins* mov = &cc->instructions[ip];
+
     if (mov->opcode != KIT_IR_OPCODE_MOV) continue;
 
     u32 dst = mov->mov.dst;
     u32 src = mov->mov.src;
 
-    // Find the point where dst is redefined (or end)
-    u32 redef_idx = UINT32_MAX;
-    for (u32 j = i + 1; j < cc->ninstructions; j++) {
-      if (is_instruction_noop(cc->instructions[j].opcode)) continue;
-      u32 def = get_destination_reg(&cc->instructions[j]);
-      if (def == dst) {
-        redef_idx = j;
+    if (!is_argument_register(dst)) continue;
+
+    if (src >= cfg->nvregs) continue;
+
+    /* source still needed later */
+    if (cfg->ins_live_out[ip][src]) continue;
+
+    i64 def_ip = -1;
+
+    for (i64 j = (i64)ip - 1; j >= 0; j--) {
+      kit_ins* def = &cc->instructions[j];
+
+      if (is_instruction_noop(def->opcode)) continue;
+      if (is_instruction_impure(def->opcode)) break;
+
+      u32 d = get_destination_reg(def);
+
+      if (d == src) {
+        def_ip = j;
         break;
       }
+
+      /* another definition of dst means stop */
+      if (d == dst) break;
     }
-    u32 limit = (redef_idx == UINT32_MAX) ? cc->ninstructions : redef_idx;
 
-    bool src_redefined = false;
-    for (u32 j = i + 1; j < limit; j++) {
-      const kit_ins* look = &cc->instructions[j];
-      if (is_instruction_noop(look->opcode)) continue;
+    if (def_ip < 0) continue;
 
-      if (is_instruction_impure(look->opcode)) break;
+    kit_ins* def = &cc->instructions[def_ip];
 
-      u32 def = get_destination_reg(look);
-      if (def == src) {
-        src_redefined = true;
-        break;
+    /*
+     * Rewrite: rax = x
+     *          arg0 = rax
+     *
+     * into: arg0 = x
+     *       nop
+     */
+    set_destination_reg(def, dst);
+
+    mov->opcode = KIT_IR_OPCODE_NOP;
+
+    changed      = true;
+    changed_ever = true;
+  }
+
+  return changed_ever;
+}
+
+static void
+shift_and_insert_instruction(kit_compiler* cc, u32 idx, const kit_ins* ins)
+{
+  if (cc->ninstructions + 1 > cc->cinstructions) {
+    u32      new_cap = cc->cinstructions * 2;
+    kit_ins* new_ins = realloc(cc->instructions, sizeof(kit_ins) * new_cap);
+
+    cc->instructions  = new_ins;
+    cc->cinstructions = new_cap;
+  }
+
+  /* Shift right from idx */
+  memmove(&cc->instructions[idx + 1], &cc->instructions[idx], (cc->ninstructions - idx) * sizeof(kit_ins));
+  cc->instructions[idx] = *ins;
+  cc->ninstructions++;
+}
+
+bool
+codegraph_loop_invariant_code_motion(kit_compiler* cc, codegraph* cfg)
+{
+  bool      changed = false;
+  const u32 nvregs  = cc->next_vreg;
+
+  for (u32 l = 0; l < cfg->nloops; l++) {
+    blockloop* loop      = &cfg->loops[l];
+    u32        header    = loop->header;
+    u32        preheader = cfg->blocks[header].idom;
+
+    /* preheader must not  be inside the loop. That'd be dangerous && too expensive to optimize. */
+    if (preheader == UINT32_MAX || loop->is_block_member[preheader]) continue;
+
+    bool* defined_in_loop = kit_arnalloc(cfg->arena, nvregs * sizeof(bool));
+    memset(defined_in_loop, 0, nvregs * sizeof(bool));
+
+    for (u32 b = 0; b < cfg->nblocks; b++) {
+      if (!loop->is_block_member[b]) continue;
+      codeblock* blk = &cfg->blocks[b];
+
+      for (u32 ip = blk->start; ip <= blk->end; ip++) {
+        u32 dst = get_destination_reg(&cc->instructions[ip]);
+        if (dst != UINT32_MAX && dst < nvregs && dst >= KIT_REG_GENERAL_BEGIN) defined_in_loop[dst] = true;
       }
     }
-    if (src_redefined) continue;
 
-    bool any_replaced = false;
-    for (u32 j = i + 1; j < limit; j++) {
-      kit_ins* ins = &cc->instructions[j];
-      if (is_instruction_noop(ins->opcode)) continue;
+    bool* is_instruction_invariant = kit_arnalloc(cfg->arena, cc->ninstructions * sizeof(bool));
+    memset(is_instruction_invariant, 0, cc->ninstructions * sizeof(bool));
 
-      u32  srcs[32];
-      u32  nsrc     = get_source_registers(ins, srcs);
-      bool uses_dst = false;
-      for (u32 s = 0; s < nsrc; s++) {
-        if (srcs[s] == dst) {
-          uses_dst = true;
-          break;
+    u32* invariant_instruction_indices = kit_arnalloc(cfg->arena, cc->ninstructions * sizeof(u32));
+    memset(invariant_instruction_indices, 0, cc->ninstructions * sizeof(u32));
+
+    for (u32 b = 0; b < cfg->nblocks; b++) {
+      if (!loop->is_block_member[b]) continue;
+      codeblock* blk = &cfg->blocks[b];
+
+      for (u32 ip = blk->start; ip <= blk->end; ip++) {
+        kit_ins* ins = &cc->instructions[ip];
+
+        if (is_instruction_impure(ins->opcode)) continue;
+        if (ins->opcode == KIT_IR_OPCODE_LABEL || ins->opcode == KIT_IR_OPCODE_JMP || ins->opcode == KIT_IR_OPCODE_JZ
+            || ins->opcode == KIT_IR_OPCODE_JNZ || ins->opcode == KIT_IR_OPCODE_RET)
+          continue;
+
+        u32 dst = get_destination_reg(ins);
+
+        if (dst == UINT32_MAX || dst >= nvregs || dst < KIT_REG_GENERAL_BEGIN) continue;
+        if (defined_in_loop[dst]) continue;
+
+        u32  srcs[32];
+        u32  nsrcs     = get_source_registers(ins, srcs);
+        bool invariant = true;
+        for (u32 s = 0; s < nsrcs; s++) {
+          u32 src = srcs[s];
+
+          if (src < KIT_REG_GENERAL_BEGIN && src != KIT_REG_NIL) {
+            invariant = false;
+            break;
+          }
+          if (src < nvregs && defined_in_loop[src]) {
+            invariant = false;
+            break;
+          }
         }
-      }
 
-      /* doesn't use our destination, skip */
-      if (!uses_dst) continue;
-
-      /* Replace dst with src in the instruction's source operands */
-      switch (ins->opcode) {
-        case KIT_IR_OPCODE_MOV:
-          if (ins->mov.src == dst) ins->mov.src = src;
-          break;
-        case KIT_IR_OPCODE_SETG:
-          if (ins->setg.src == dst) ins->setg.src = src;
-          break;
-        case KIT_IR_OPCODE_ADD:
-        case KIT_IR_OPCODE_SUB:
-        case KIT_IR_OPCODE_MUL:
-        case KIT_IR_OPCODE_DIV:
-        case KIT_IR_OPCODE_MOD:
-        case KIT_IR_OPCODE_EXP:
-        case KIT_IR_OPCODE_AND:
-        case KIT_IR_OPCODE_OR:
-        case KIT_IR_OPCODE_BAND:
-        case KIT_IR_OPCODE_BOR:
-        case KIT_IR_OPCODE_XOR:
-        case KIT_IR_OPCODE_EQL:
-        case KIT_IR_OPCODE_NEQ:
-        case KIT_IR_OPCODE_LT:
-        case KIT_IR_OPCODE_LTE:
-        case KIT_IR_OPCODE_GT:
-        case KIT_IR_OPCODE_GTE:
-          if (ins->binop.a == dst) ins->binop.a = src;
-          if (ins->binop.b == dst) ins->binop.b = src;
-          break;
-        case KIT_IR_OPCODE_NOT:
-        case KIT_IR_OPCODE_NEG:
-        case KIT_IR_OPCODE_BNOT:
-        case KIT_IR_OPCODE_INC:
-        case KIT_IR_OPCODE_DEC:
-          if (ins->unop.a == dst) ins->unop.a = src;
-          break;
-        case KIT_IR_OPCODE_RET:
-          if (ins->ret.return_value == dst) ins->ret.return_value = src;
-          break;
-        case KIT_IR_OPCODE_INDEX:
-          if (ins->index.base == dst) ins->index.base = src;
-          if (ins->index.index == dst) ins->index.index = src;
-          break;
-        case KIT_IR_OPCODE_INDEX_ASSIGN:
-          if (ins->index_assign.base == dst) ins->index_assign.base = src;
-          if (ins->index_assign.index == dst) ins->index_assign.index = src;
-          if (ins->index_assign.value == dst) ins->index_assign.value = src;
-          break;
-        case KIT_IR_OPCODE_MEMBER_ACCESS:
-          if (ins->member_access.base == dst) ins->member_access.base = src;
-          break;
-        case KIT_IR_OPCODE_MEMBER_ASSIGN:
-          if (ins->member_assign.base == dst) ins->member_assign.base = src;
-          if (ins->member_assign.value == dst) ins->member_assign.value = src;
-          break;
-        case KIT_IR_OPCODE_JZ:
-        case KIT_IR_OPCODE_JNZ:
-          if (ins->cj.condition == dst) ins->cj.condition = src;
-          break;
-        case KIT_IR_OPCODE_PUSH:
-          if (ins->push.reg == dst) ins->push.reg = src;
-          break;
-        case KIT_IR_OPCODE_ASSERT:
-          if (ins->assertion.cond == dst) ins->assertion.cond = src;
-          break;
-        default: break;
+        if (invariant) is_instruction_invariant[ip] = true;
       }
-      any_replaced = true;
     }
 
-    if (any_replaced) {
-      mov->opcode = KIT_IR_OPCODE_NOP; // safe to delete the move
+    u32 ninv = 0;
+    for (u32 b = 0; b < cfg->nblocks; b++) {
+      if (!loop->is_block_member[b]) continue;
+      codeblock* blk = &cfg->blocks[b];
+
+      for (u32 ip = blk->start; ip <= blk->end; ip++) {
+        if (is_instruction_invariant[ip]) invariant_instruction_indices[ninv++] = ip;
+      }
+    }
+
+    codeblock* pre_blk    = &cfg->blocks[preheader];
+    u32        insert_idx = pre_blk->end;
+
+    u32 offset = 0;
+    for (i64 i = (i64)ninv - 1; i >= 0; i--) {
+      u32     orig    = invariant_instruction_indices[i];
+      u32     current = orig + offset;
+      kit_ins tmp     = cc->instructions[current];
+
+      shift_and_insert_instruction(cc, insert_idx, &tmp);
+
+      cc->instructions[current + 1].opcode = KIT_IR_OPCODE_NOP;
+      offset++;
+      changed = true;
     }
   }
+
+  return changed;
 }
 
 static int

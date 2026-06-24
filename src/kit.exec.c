@@ -415,6 +415,8 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
 
         /* Constructing it directly in our register. No need for refcounting here. */
         if (kit_map_init(vm->pool, tmp, npairs, KIT_VAR_AS_MAP(dstp)) != 0) {
+          remove(&regs[dst]);
+
           e = KIT_EMALLOC;
 
           for (u32 i = 0; i < npairs * 2; i++) { remove(&tmp[i]); }
