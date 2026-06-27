@@ -313,7 +313,7 @@ typedef union kit_ast_node_val {
   struct {
     kit_ast_node_type type;
     kit_filespan      span;
-    const char*       function_name; /* interned string ; DO NOT FREE */
+    int               func; /* The node ID containing the function, an identifier or a closure. */
     int*              args;
     u32               nargs;
   } call;

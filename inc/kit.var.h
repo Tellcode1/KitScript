@@ -28,6 +28,7 @@
 #include "kit.list.h"
 #include "kit.map.h"
 #include "kit.mathstrucs.h"
+#include "kit.perr.h"
 #include "kit.pool.h"
 #include "kit.stdafx.h"
 #include "kit.string.h"
@@ -74,6 +75,7 @@ typedef enum kit_var_type {
   KIT_VARTYPE_MAT3       = 1 << 13,
   KIT_VARTYPE_MAT4       = 1 << 14,
   KIT_VARTYPE_DESCRIPTOR = 1 << 15, // pointer, internally
+  KIT_VARTYPE_FUNCTION   = 1 << 16, // function pointer, internally.
 } kit_var_type;
 
 /**
@@ -100,6 +102,11 @@ typedef union kit_var_payload {
   struct kit_refdobj* struc; // Use KIT_VAR_AS_STRUCT to access as kit_struct*
 
   void* descriptor;
+
+  struct {
+    u32             hash;
+    struct kit_var* regs_snapshot; /* The initial state of the registers when the VM calls this, acquired. [REG_COUNT] allocated */
+  } func;
 } kit_var_payload;
 
 typedef struct kit_var {
@@ -180,6 +187,7 @@ kit_var_type_to_string(kit_var_type type)
     case KIT_VARTYPE_MAT3: return "mat3";
     case KIT_VARTYPE_MAT4: return "mat4";
     case KIT_VARTYPE_DESCRIPTOR: return "descriptor";
+    case KIT_VARTYPE_FUNCTION: return "function";
   }
   return "unknown";
 }

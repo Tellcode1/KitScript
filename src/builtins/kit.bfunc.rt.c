@@ -39,6 +39,8 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
   kit_arena              arena    = { 0 };
   kit_compilation_result compiled = { 0 };
   int                    e        = 0;
+  kit_var                gvars[128];
+  for (u32 i = 0; i < 128; i++) gvars[i] = KIT_NULLVAR;
 
   kit_str_interner interner = { 0 };
   if (kit_str_interner_init(4, &interner)) goto RET;
@@ -146,6 +148,7 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
     .nnames          = compiled.names_count,
     .nstructs        = compiled.structs_count,
     .structs         = compiled.structs,
+    .gvars           = gvars,
   };
   kit_ecode err = kit_exec(vm, &exec_info, &ret); // Global variable initialization.
 

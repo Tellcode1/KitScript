@@ -247,6 +247,16 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
         kit_var_deep_cpy(vm->pool, &v, &regs[dst]);
         break;
       }
+
+      case KIT_IR_OPCODE_LOADFN: {
+        u32 id  = ins.loadfn.id;
+        u32 dst = ins.loadfn.dst;
+
+        regs[dst] = (kit_var){ .type = KIT_VARTYPE_FUNCTION, .val.func.hash = id };
+
+        break;
+      }
+
       case KIT_IR_OPCODE_RET: {
         u32 ret_val = ins.ret.return_value;
 
@@ -497,9 +507,9 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
       }
 
       case KIT_IR_OPCODE_CALL: {
-        u32 dst         = ins.call.dst;
-        u32 function_id = ins.call.function_id;
-        u32 nargs       = ins.call.nargs;
+        u32 dst      = ins.call.dst;
+        u32 func_reg = ins.call.reg;
+        u32 nargs    = ins.call.nargs;
 
         kit_var* args = read_args_vector(vm->pool, regs, stack, sp->val.i, nargs);
         if (!args) {
@@ -510,7 +520,16 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
         /* overwriting it */
         remove(&regs[dst]);
 
-        e = call(vm, info, function_id, args, nargs, &regs[dst]);
+        if (regs[func_reg].type != KIT_VARTYPE_FUNCTION) {
+          print_err("[%i] Attempt to call non function object: ", ip->val.i);
+          kit_var_print(&regs[func_reg], stderr);
+          fputc('\n', stderr);
+
+          e = KIT_EMALFORM;
+          goto RET;
+        }
+
+        e = call(vm, info, regs[func_reg].val.func.hash, args, nargs, &regs[dst]);
         /* No need to acquire regs[dst], it's deep copied / preacquired. */
 
         for (u32 i = 0; i < nargs; i++) { remove(&args[i]); }

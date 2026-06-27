@@ -70,6 +70,9 @@ main(int argc, char* argv[])
   // assert(argc == 2);
   kit_var v = { .type = KIT_VARTYPE_NULL };
 
+  kit_var gvars[128] = { 0 };
+  for (u32 i = 0; i < KIT_ARRLEN(gvars); i++) { gvars[i] = KIT_NULLVAR; };
+
   const char* entry_point = "main";
 
   bool wants_to_print_return_value     = false;
@@ -154,9 +157,6 @@ main(int argc, char* argv[])
 
   e = kit_refdobj_pool_init(init_branches, &object_pool);
   if (e) goto RET;
-
-  kit_var gvars[128] = { 0 };
-  for (u32 i = 0; i < KIT_ARRLEN(gvars); i++) { gvars[i] = KIT_NULLVAR; };
 
   kit_exec_info info = {
     .gvars           = gvars,

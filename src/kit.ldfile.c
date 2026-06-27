@@ -25,6 +25,11 @@ read_ins(FILE* f)
       read(&i.loadk.id, f);
       break;
     }
+    case KIT_IR_OPCODE_LOADFN: {
+      read_reg(&i.loadfn.dst, f);
+      read(&i.loadfn.id, f);
+      break;
+    }
     case KIT_IR_OPCODE_MOVG:
     case KIT_IR_OPCODE_GETG:
     case KIT_IR_OPCODE_SETG:
@@ -115,7 +120,7 @@ read_ins(FILE* f)
     }
     case KIT_IR_OPCODE_CALL: {
       read_reg(&i.call.dst, f);
-      read(&i.call.function_id, f);
+      read_reg(&i.call.reg, f);
       read(&i.call.nargs, f);
       break;
     }
@@ -180,6 +185,12 @@ write_ins(kit_ins i, FILE* f)
     case KIT_IR_OPCODE_MOV: {
       write_reg(&i.mov.dst, f);
       write_reg(&i.mov.src, f);
+      break;
+    }
+
+    case KIT_IR_OPCODE_LOADFN: {
+      write_reg(&i.loadfn.dst, f);
+      write(&i.loadfn.id, f);
       break;
     }
 
@@ -264,7 +275,7 @@ write_ins(kit_ins i, FILE* f)
     }
     case KIT_IR_OPCODE_CALL: {
       write_reg(&i.call.dst, f);
-      write(&i.call.function_id, f);
+      write_reg(&i.call.reg, f);
       write(&i.call.nargs, f);
       break;
     }
@@ -674,6 +685,11 @@ kit_read_ins(const u8** ip)
       read_ip(&i.loadk.id, ip);
       break;
     }
+    case KIT_IR_OPCODE_LOADFN: {
+      read_reg_ip(&i.loadfn.dst, ip);
+      read_ip(&i.loadfn.id, ip);
+      break;
+    }
     case KIT_IR_OPCODE_MOVG:
     case KIT_IR_OPCODE_GETG:
     case KIT_IR_OPCODE_SETG:
@@ -764,7 +780,7 @@ kit_read_ins(const u8** ip)
     }
     case KIT_IR_OPCODE_CALL: {
       read_reg_ip(&i.call.dst, ip);
-      read_ip(&i.call.function_id, ip);
+      read_reg_ip(&i.call.reg, ip);
       read_ip(&i.call.nargs, ip);
       break;
     }

@@ -1000,24 +1000,16 @@ err:
 }
 
 static RETURNS_ERRCODE int
-parse_function_call(kit_parser* p, const kit_token* tk, int node)
+parse_function_call(kit_parser* p, int left, int node)
 {
   u32  capacity = 16;
   u32  nargs    = 0;
   int* args     = kit_xalloc(capacity, sizeof(int)); // argument nodes
 
-  const char* func_name = kit_str_intern(tk->val.ident, p->ast->interner);
+  if (!args) goto err;
 
-  if (!func_name || !args) goto err;
-
-  if (kit_ast_expect(p, KIT_TOKEN_TYPE_OPENPAREN)) // (
-  {
-    asterror(prev(p)->span, "Expected '(' after function name, got '%s'\n", kit_token_type_to_string(prev(p)->type));
-    goto err;
-  }
-
-  KIT_GET_NODE(p->ast, node)->type               = KIT_AST_NODE_CALL;
-  KIT_GET_NODE(p->ast, node)->call.function_name = func_name;
+  KIT_GET_NODE(p->ast, node)->type      = KIT_AST_NODE_CALL;
+  KIT_GET_NODE(p->ast, node)->call.func = left;
   // printf("AST: Detected function call: %s\n", tk->val.ident);
 
   while (peek(p) && peek(p)->type != KIT_TOKEN_TYPE_CLOSEPAREN) {
@@ -1286,7 +1278,7 @@ ERR:
 }
 
 static RETURNS_ERRCODE int
-parse_namespace_call(kit_parser* p, const char* name, int node)
+parse_namespace_call(kit_parser* p, int left, int node)
 {
   u32  capacity = 16;
   u32  nargs    = 0;
@@ -1316,10 +1308,10 @@ parse_namespace_call(kit_parser* p, const char* name, int node)
 
   next(p); // ')'
 
-  KIT_GET_NODE(p->ast, node)->type               = KIT_AST_NODE_CALL;
-  KIT_GET_NODE(p->ast, node)->call.function_name = name;
-  KIT_GET_NODE(p->ast, node)->call.args          = args;
-  KIT_GET_NODE(p->ast, node)->call.nargs         = nargs;
+  KIT_GET_NODE(p->ast, node)->type       = KIT_AST_NODE_CALL;
+  KIT_GET_NODE(p->ast, node)->call.func  = left;
+  KIT_GET_NODE(p->ast, node)->call.args  = args;
+  KIT_GET_NODE(p->ast, node)->call.nargs = nargs;
 
   return node;
 
@@ -1356,12 +1348,6 @@ parse_namespace_access(kit_parser* p, int leftidx, int node)
   const char* interned = kit_str_intern(fullname, p->ast->interner);
 
   free(fullname);
-
-  // If function call
-  if (peek(p) && peek(p)->type == KIT_TOKEN_TYPE_OPENPAREN) {
-    if (parse_namespace_call(p, interned, node) < 0) { return -1; }
-    return node;
-  }
 
   // just a namespaced variable.
   KIT_GET_NODE(p->ast, node)->type        = KIT_AST_NODE_VARIABLE;
@@ -1515,12 +1501,6 @@ kit_ast_nud(kit_parser* p, const kit_token* tk)
     }
 
     case KIT_TOKEN_TYPE_IDENT: {
-      // Function call
-      if (peek(p)->type == KIT_TOKEN_TYPE_OPENPAREN) {
-        if (parse_function_call(p, tk, node) < 0) { goto err1; }
-        return node;
-      }
-
       const char* interned = kit_str_intern(tk->val.ident, p->ast->interner);
       if (!interned) goto err1;
 
@@ -1742,6 +1722,10 @@ kit_ast_led(kit_parser* p, const kit_token* tk, int leftidx, int rbp)
   KIT_GET_NODE(p->ast, node)->common.span = clonespan(p->ast, tk->span);
 
   switch (tk->type) {
+    case KIT_TOKEN_TYPE_OPENPAREN:
+      if (parse_function_call(p, leftidx, node) < 0) { return -1; }
+      return node;
+
     case KIT_TOKEN_TYPE_EQUAL: {
       // printf("ASSIGN YAYY!!\n");
 

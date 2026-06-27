@@ -68,6 +68,7 @@ kit_var_deep_cpy(kit_refdobj_pool* object_pool, const kit_var* var, kit_var* dst
     case KIT_VARTYPE_INT:
     case KIT_VARTYPE_BOOL:
     case KIT_VARTYPE_CHAR:
+    case KIT_VARTYPE_FUNCTION:
     case KIT_VARTYPE_VEC2:
     case KIT_VARTYPE_VEC3:
     case KIT_VARTYPE_VEC4:
@@ -178,6 +179,7 @@ kit_var_free(kit_refdobj_pool* object_pool, kit_var* var)
 
   switch (var->type) {
     default:
+    case KIT_VARTYPE_FUNCTION:
     case KIT_VARTYPE_NULL:
     case KIT_VARTYPE_INT:
     case KIT_VARTYPE_CHAR:
@@ -235,6 +237,7 @@ kit_var_print(const struct kit_var* v, FILE* f)
   switch (v->type) {
     default:
     case KIT_VARTYPE_NULL: fprintf(f, "null"); break;
+    case KIT_VARTYPE_FUNCTION: fprintf(f, "%u", v->val.func.hash); break;
     case KIT_VARTYPE_INT: fprintf(f, "%i", v->val.i); break;
     case KIT_VARTYPE_DESCRIPTOR: fprintf(f, "%p", v->val.descriptor); break;
     case KIT_VARTYPE_CHAR: fprintf(f, "%c", v->val.c); break;
@@ -452,6 +455,7 @@ kit_var_hash(const kit_var* var)
   switch (var->type) {
     case KIT_VARTYPE_NULL: return haha ^ kit_hash(&var->type, sizeof(var->type));
     case KIT_VARTYPE_INT: return haha ^ kit_hash(&var->val.i, sizeof(var->val.i));
+    case KIT_VARTYPE_FUNCTION: return haha ^ kit_hash(&var->val.func.hash, sizeof(var->val.func.hash));
     case KIT_VARTYPE_BOOL: return haha ^ kit_hash(&var->val.b, sizeof(bool));
     case KIT_VARTYPE_CHAR: return haha ^ kit_hash(&var->val.c, sizeof(char));
     case KIT_VARTYPE_FLOAT: return haha ^ kit_hash(&var->val.f, sizeof(var->val.f));
@@ -501,6 +505,7 @@ kit_var_equal(const kit_var* a, const kit_var* b)
     }
 
     case KIT_VARTYPE_INT: return is_integral(b->type) && (a->val.i == kit_cast_to_int(b));
+    case KIT_VARTYPE_FUNCTION: return b->type == KIT_VARTYPE_FUNCTION && (a->val.func.hash == b->val.func.hash);
     case KIT_VARTYPE_BOOL: return is_integral(b->type) && (a->val.b == kit_cast_to_bool(b));
     case KIT_VARTYPE_CHAR: return is_integral(b->type) && (a->val.c == kit_cast_to_char(b));
     case KIT_VARTYPE_FLOAT: return is_integral(b->type) && (a->val.f == kit_cast_to_float(b));

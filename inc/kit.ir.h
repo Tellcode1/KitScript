@@ -150,6 +150,7 @@ typedef enum kit_ir_opcode_bits {
    * and error if it is not.
    */
   KIT_IR_OPCODE_ASSERT,
+  KIT_IR_OPCODE_LOADFN,
 } kit_ir_opcode_bits;
 typedef u8 kit_ir_opcode;
 
@@ -219,9 +220,14 @@ typedef union kit_ins {
   struct kit_ir_ins_call {
     kit_ir_opcode opcode;
     kit_reg_t     dst;
-    u32           function_id;
+    kit_reg_t     reg;
     u32           nargs;
   } call;
+  struct kit_ir_ins_loadfn {
+    kit_ir_opcode opcode;
+    kit_reg_t     dst;
+    u32           id;
+  } loadfn;
   struct kit_ir_ins_jmp {
     kit_ir_opcode opcode;
     u32           target;

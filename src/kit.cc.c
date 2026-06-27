@@ -91,6 +91,7 @@ typedef struct loop {
   u32* latches; /* loop latch (connector) indices */
 
   bool* is_block_member; /* which blocks are members of this loop [nblocks] */
+  bool* is_ins_member;   /* which instructions are members of this loop [ninstructions] */
 } blockloop;
 
 /* our CFG */
@@ -133,14 +134,12 @@ static bool codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_local_dead_store_elimination(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_loop_invariant_code_motion(kit_compiler* cc, codegraph* cfg);
 static bool codegraph_argument_vector_move_coalescing(kit_compiler* cc, codegraph* cfg);
-static bool codegraph_constant_jump_reduction(kit_compiler* cc, codegraph* cfg);
 
 static void opt_inline_function_calls(kit_compiler* cc);
 
-static void forward_dead_moves(kit_compiler* cc);
-static int  remove_jmp_where_it_would_fallthrough(kit_compiler* cc);
-static int  strip_noops(kit_compiler* cc);
-static u32  label_pass(kit_arena* arena, kit_ins* instructions, u32 ninstructions, u32 label_count);
+static int remove_jmp_where_it_would_fallthrough(kit_compiler* cc);
+static int strip_noops(kit_compiler* cc);
+static u32 label_pass(kit_arena* arena, kit_ins* instructions, u32 ninstructions, u32 label_count);
 
 static inline RETURNS_ERRCODE int defer_push_scope(kit_compiler* cc);
 static inline void                defer_pop_scope(kit_compiler* cc);
@@ -148,8 +147,6 @@ static inline RETURNS_ERRCODE int defer_emit_current_scope(kit_compiler* cc);
 static inline RETURNS_ERRCODE int defer_emit_all_scopes(kit_compiler* cc);
 static inline RETURNS_ERRCODE int defer_emit_to_depth(kit_compiler* cc, u32 target_depth);
 static inline u32                 defer_get_current_depth(kit_compiler* cc);
-
-static inline int fold_vector(kit_compiler* cc, const int* elems, u32 nelems);
 
 static inline RETURNS_ERRCODE int emit_and_record_jmp(kit_compiler* cc, kit_ir_opcode opcode, kit_vreg_t condition, u32 label_id);
 static inline void                define_and_emit_label(kit_compiler* cc, u32 label_id);
@@ -287,21 +284,21 @@ scope_pop(kit_compiler* cc)
 { cc->scope = cc->scope->parent; }
 
 /* the lesser the bias, the more likely it is to inline a function */
-static int
-get_cost_for_inlining_function(const kit_compiler* cc, int bias, const kitc_function* fn)
-{
-  int cost = bias;
+// static int
+// get_cost_for_inlining_function(const kit_compiler* cc, int bias, const kitc_function* fn)
+// {
+//   int cost = bias;
 
-  /* never inline with optimizations disabled */
-  if (cc->info->opt_level == 0) { return INT32_MAX; }
+//   /* never inline with optimizations disabled */
+//   if (cc->info->opt_level == 0) { return INT32_MAX; }
 
-  if (cc->info->opt_level == 3) { cost -= 1000; /* make it much more likely to be inlined */ }
+//   if (cc->info->opt_level == 3) { cost -= 1000; /* make it much more likely to be inlined */ }
 
-  cost += (int)(fn->code_count > INT32_MAX ? INT32_MAX : fn->code_count) / 30;
-  cost += (int)fn->nargs * 10; /* each further argument increases register pressure in loops */
+//   cost += (int)(fn->code_count > INT32_MAX ? INT32_MAX : fn->code_count) / 30;
+//   cost += (int)fn->nargs * 10; /* each further argument increases register pressure in loops */
 
-  return cost;
-}
+//   return cost;
+// }
 
 /**
  * Operators like SUB (-) can be used
@@ -569,14 +566,11 @@ define_and_emit_label(kit_compiler* cc, u32 label_id)
 static inline RETURNS_ERRCODE int
 compiler_make_fork(const kit_compiler* old_c, kit_compiler* new_c)
 {
-  kitc_scope* top_scope = old_c->scope;
-  while (top_scope && top_scope->parent) { top_scope = top_scope->parent; }
-
   *new_c = (kit_compiler){
     .arena             = old_c->arena,
     .ast               = old_c->ast,
     .info              = old_c->info,
-    .loop              = NULL, // reset loop on function.
+    .loop              = old_c->loop,
     .lit_table         = old_c->lit_table,
     .builtin_var_table = old_c->builtin_var_table,
     .function_table    = old_c->function_table,
@@ -584,7 +578,7 @@ compiler_make_fork(const kit_compiler* old_c, kit_compiler* new_c)
     .next_label        = old_c->next_label,
     .next_global       = old_c->next_global,
     .next_vreg         = KIT_REG_GENERAL_BEGIN, // Seperate register for each function
-    .scope             = top_scope,
+    .scope             = old_c->scope,
     .ns                = old_c->ns,
     .stack             = old_c->stack,
     .instructions      = (kit_ins*)kit_xalloc(sizeof(kit_ins), init_code_capacity),
@@ -605,6 +599,8 @@ compiler_join_fork(kit_compiler* copy, kit_compiler* cc)
     puts("Compiler structure corrupted");
     // abort(); How remove this ?
   }
+
+  scope_pop(copy);
 
   /* Ensure we don't ever get two labels in different streams with the same ID */
   cc->next_label  = copy->next_label;
@@ -745,15 +741,15 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       break;
     }
     case KIT_LVAL_GVAR: {
-      kitc_var* v = scope_lookup_info(cc, lv->val.var.id);
+      kitc_var* v = scope_lookup_info(cc, lv->val.gvar);
 
       if (!v) {
-        cerror(*lv->span, "Undeclared global variable %s\n", lv->val.var.name);
+        cerror(*lv->span, "Undeclared global variable %u\n", lv->val.gvar);
         return -1;
       }
 
       if (v->is_const) {
-        cerror(*lv->span, "Can not assign to const global variable %s\n", lv->val.var.name);
+        cerror(*lv->span, "Can not assign to const global variable %u\n", lv->val.gvar);
         return -1;
       }
 
@@ -898,23 +894,23 @@ is_literal_value(const kit_ast* ast, int node)
 {
   kit_ast_node_type type = KIT_GET_NODE(ast, node)->type;
 
-  if (type == KIT_AST_NODE_CALL) {
-    const char* function_name = KIT_GET_NODE(ast, node)->call.function_name;
-    const int*  args          = KIT_GET_NODE(ast, node)->call.args;
-    u32         nargs         = KIT_GET_NODE(ast, node)->call.nargs;
+  // if (type == KIT_AST_NODE_CALL) {
+  //   const char* function_name = KIT_GET_NODE(ast, node)->call.function_name;
+  //   const int*  args          = KIT_GET_NODE(ast, node)->call.args;
+  //   u32         nargs         = KIT_GET_NODE(ast, node)->call.nargs;
 
-    if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
-      bool constant_vector = true;
-      for (u32 i = 0; i < nargs; i++) {
-        if (!is_literal_value(ast, args[i])) {
-          constant_vector = false;
-          break;
-        }
-      }
+  //   if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
+  //     bool constant_vector = true;
+  //     for (u32 i = 0; i < nargs; i++) {
+  //       if (!is_literal_value(ast, args[i])) {
+  //         constant_vector = false;
+  //         break;
+  //       }
+  //     }
 
-      return constant_vector;
-    }
-  }
+  //     return constant_vector;
+  //   }
+  // }
   return type == KIT_AST_NODE_INT || type == KIT_AST_NODE_CHAR || type == KIT_AST_NODE_BOOL || type == KIT_AST_NODE_STRING
       || type == KIT_AST_NODE_FLOAT;
 }
@@ -931,13 +927,13 @@ convert_node_to_literal(kit_compiler* cc, int node, kit_var* o)
     case KIT_AST_NODE_STRING: return make_string_variable(cc->arena, kit_arnstrdup(cc->arena, KIT_GET_NODE(p, node)->s.s), o);
 
     case KIT_AST_NODE_CALL: {
-      const char* function_name = KIT_GET_NODE(cc->ast, node)->call.function_name;
-      const int*  args          = KIT_GET_NODE(cc->ast, node)->call.args;
-      u32         nargs         = KIT_GET_NODE(cc->ast, node)->call.nargs;
+      // const char* function_name = KIT_GET_NODE(cc->ast, node)->call.function_name;
+      // const int*  args          = KIT_GET_NODE(cc->ast, node)->call.args;
+      // u32         nargs         = KIT_GET_NODE(cc->ast, node)->call.nargs;
 
-      if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
-        return fold_vector(cc, args, nargs);
-      }
+      // if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
+      //   return fold_vector(cc, args, nargs);
+      // }
     }
 
     case KIT_AST_NODE_LIST:
@@ -1221,11 +1217,12 @@ codegraph_rebuild(kit_compiler* cc, codegraph* cfg)
 static kit_vreg_t
 compile_function_definition(kit_compiler* cc, int node)
 {
-  kit_compiler fork          = { 0 };
-  const char*  function_name = KIT_GET_NODE(cc->ast, node)->func.name;
-  char*        full          = qualify_name(cc, function_name);
+  kit_compiler fork = { 0 };
+  // kit_filespan function_span = KIT_GET_NODE(cc->ast, node)->func.span;
+  const char* function_name = KIT_GET_NODE(cc->ast, node)->func.name;
+  char*       full          = qualify_name(cc, function_name);
 
-  const u32 hash = kit_hash(full, strlen(full));
+  const u32 function_hash = kit_hash(full, strlen(full));
 
   int e = 0;
 
@@ -1233,7 +1230,7 @@ compile_function_definition(kit_compiler* cc, int node)
   const kitc_function_table* func_table = cc->function_table;
   for (u32 i = 0; i < func_table->functions_count; i++) {
     kitc_function* func = &func_table->functions[i];
-    if (func->name_hash == hash) {
+    if (func->name_hash == function_hash) {
       cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Function \"%s\" redefined [function definition]\n", function_name);
       e = -1;
       goto ERR;
@@ -1244,7 +1241,7 @@ compile_function_definition(kit_compiler* cc, int node)
   for (u32 i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
     const kit_builtin_func* func      = &kit_builtins_funcs[i];
     u32                     func_hash = kit_hash(func->name, strlen(func->name));
-    if (func_hash == hash) {
+    if (func_hash == function_hash) {
       cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Attempt to overshadow builtin function \"%s\" [function definition]\n", function_name);
       e = -1;
       goto ERR;
@@ -1301,7 +1298,6 @@ compile_function_definition(kit_compiler* cc, int node)
     kit_arena codegraph_arena = { 0 };
     if (kit_arena_init(1, &codegraph_arena) < 0) return -1;
 
-    /* constant folding needs a clean instruction stream */
     if (!fork.info->feature_set.disable_function_inlining) { opt_inline_function_calls(&fork); }
 
     for (u32 pass = 0; pass < 4; pass++) {
@@ -1334,13 +1330,12 @@ compile_function_definition(kit_compiler* cc, int node)
       if (!fork.info->feature_set.disable_dead_branch_elimination) {
         if (codegraph_eliminate_unreachable_code(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
       }
-      codegraph_argument_vector_move_coalescing(&fork, &cfg);
-      codegraph_loop_invariant_code_motion(&fork, &cfg);
+      if (codegraph_argument_vector_move_coalescing(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      if (codegraph_loop_invariant_code_motion(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
 
       /* codegraph invalidated after these calls */
       if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
       if (!fork.info->feature_set.disable_noop_stripping) { strip_noops(&fork); }
-      // if (!fork.info->feature_set.disable_dead_move_forwarding) { forward_dead_moves(&fork); }
 
       codegraph_free(&fork, &cfg);
     }
@@ -1358,7 +1353,7 @@ compile_function_definition(kit_compiler* cc, int node)
   kitc_function f = {
     .code        = fork.instructions,
     .code_count  = fork.ninstructions,
-    .name_hash   = hash,
+    .name_hash   = function_hash,
     .nargs       = nargs,
     .vregs_used  = fork.next_vreg,
     .labels_used = fork.next_label,
@@ -1367,7 +1362,10 @@ compile_function_definition(kit_compiler* cc, int node)
   e = append_function_entry(cc->arena, cc->function_table, &f);
   if (e < 0) goto ERR;
 
-  return e;
+  kit_vreg_t tmp = vreg_alloc(cc);
+  kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = tmp, .id = function_hash } });
+
+  return tmp;
 
 ERR:
   compiler_free_fork_entirely(&fork);
@@ -1611,134 +1609,60 @@ compile_index_assign(kit_compiler* cc, int node)
   return dst;
 }
 
-static inline bool
-is_builtin_func(const char* name)
-{
-  for (size_t i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
-    if (strcmp(kit_builtins_funcs[i].name, name) == 0) return true;
-  }
-  return false;
-}
+// static inline int
+// fold_vector(kit_compiler* cc, const int* elems, u32 nelems)
+// {
+//   kit_vec4 vector = { 0 };
+//   for (u32 i = 0; i < nelems; i++) {
+//     kit_var elem = KIT_NULLVAR;
+//     int     e    = convert_node_to_literal(cc, elems[i], &elem);
+//     if (e < 0) return e;
 
-static inline const kit_builtin_func*
-get_builtin_func(const char* name)
-{
-  for (size_t i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
-    if (strcmp(kit_builtins_funcs[i].name, name) == 0) return &kit_builtins_funcs[i];
-  }
-  return NULL;
-}
+//     double d  = kit_cast_to_float(&elem);
+//     vector[i] = d;
+//   }
 
-static inline int
-fold_vector(kit_compiler* cc, const int* elems, u32 nelems)
-{
-  kit_vec4 vector = { 0 };
-  for (u32 i = 0; i < nelems; i++) {
-    kit_var elem = KIT_NULLVAR;
-    int     e    = convert_node_to_literal(cc, elems[i], &elem);
-    if (e < 0) return e;
+//   kit_var v = {
+//     .type = KIT_VARTYPE_NULL,
+//   };
+//   switch (nelems) {
+//     default:
+//     case 2:
+//       v.type = KIT_VARTYPE_VEC2;
+//       memcpy(v.val.vec2, vector, sizeof(kit_vec2));
+//       break;
+//     case 3:
+//       v.type = KIT_VARTYPE_VEC3;
+//       memcpy(v.val.vec3, vector, sizeof(kit_vec3));
+//       break;
+//     case 4:
+//       v.type = KIT_VARTYPE_VEC4;
+//       memcpy(v.val.vec4, vector, sizeof(kit_vec4));
+//       break;
+//   }
 
-    double d  = kit_cast_to_float(&elem);
-    vector[i] = d;
-  }
+//   /* Compile this vector into a literal */
+//   kit_vreg_t compiled = compile_and_push_literal_variable(cc, &v);
+//   if (compiled < 0) return compiled;
 
-  kit_var v = {
-    .type = KIT_VARTYPE_NULL,
-  };
-  switch (nelems) {
-    default:
-    case 2:
-      v.type = KIT_VARTYPE_VEC2;
-      memcpy(v.val.vec2, vector, sizeof(kit_vec2));
-      break;
-    case 3:
-      v.type = KIT_VARTYPE_VEC3;
-      memcpy(v.val.vec3, vector, sizeof(kit_vec3));
-      break;
-    case 4:
-      v.type = KIT_VARTYPE_VEC4;
-      memcpy(v.val.vec4, vector, sizeof(kit_vec4));
-      break;
-  }
-
-  /* Compile this vector into a literal */
-  kit_vreg_t compiled = compile_and_push_literal_variable(cc, &v);
-  if (compiled < 0) return compiled;
-
-  return compiled;
-}
+//   return compiled;
+// }
 
 static kit_vreg_t
 compile_function_call(kit_compiler* cc, int node)
 {
-  kit_filespan function_span = KIT_GET_NODE(cc->ast, node)->common.span;
-  u32          nargs         = KIT_GET_NODE(cc->ast, node)->call.nargs;
-  int*         args          = KIT_GET_NODE(cc->ast, node)->call.args;
-
-  const char* function_name = KIT_GET_NODE(cc->ast, node)->call.function_name;
-  kit_str_intern(function_name, cc->ast->interner);
-
-  char* full = qualify_name(cc, function_name);
-  u32   hash = kit_hash(full, strlen(full));
-
-  if (is_builtin_func(function_name)) {
-    /* Validate arguments */
-    const kit_builtin_func* func = get_builtin_func(function_name);
-
-    if (nargs > func->max_args || nargs < func->min_args) {
-      cerror(
-          function_span,
-          "Builtin function '%s' expects between [%u-%u] arguments, but [%u] were given\n",
-          func->name,
-          func->min_args,
-          func->max_args,
-          nargs);
-      fprintf(stderr, "[%s:%i] Builtin function is declared as: %s : %s\n", __FILE__, __LINE__, func->signature, func->desc);
-      return -1;
-    }
-
-  }
-  // Find the function (user defined) and check if the argument count matches
-  else {
-    kitc_function*       func       = NULL;
-    kitc_function_table* func_table = cc->function_table;
-    for (u32 i = 0; i < func_table->functions_count; i++) {
-      if (func_table->functions[i].name_hash == hash) {
-        func = &func_table->functions[i];
-        break;
-      }
-    }
-
-    if (func && func->nargs != nargs) {
-      cerror(
-          KIT_GET_NODE(cc->ast, node)->common.span,
-          "User defined function '%s' expects [%u] arguments, but [%u] were given\n",
-          function_name,
-          func->nargs,
-          nargs);
-      return -1;
-    }
-  }
-
-  /**
-   * OPTIMIZATION: Replace vec* initializers with a literal value
-   * if they have constant values.
-   */
-  if (cc->info->opt_level >= 1) {
-    if (strcmp(function_name, "vec2") == 0 || strcmp(function_name, "vec3") == 0 || strcmp(function_name, "vec4") == 0) {
-      bool constant_vector = true;
-      for (u32 i = 0; i < nargs; i++) {
-        if (!is_literal_value(cc->ast, args[i])) {
-          constant_vector = false;
-          break;
-        }
-      }
-
-      if (constant_vector) { return fold_vector(cc, args, nargs); }
-    }
-  }
+  // kit_filespan function_span = KIT_GET_NODE(cc->ast, node)->common.span;
+  int  func_node = KIT_GET_NODE(cc->ast, node)->call.func;
+  u32  nargs     = KIT_GET_NODE(cc->ast, node)->call.nargs;
+  int* args      = KIT_GET_NODE(cc->ast, node)->call.args;
 
   int e = 0;
+
+  kit_vreg_t compiled_function = compile(cc, func_node);
+  if (compiled_function < 0) {
+    cerror(KIT_GET_NODE(cc->ast, func_node)->common.span, "Failed to compile function LHS [function call]\n");
+    return compiled_function;
+  }
 
   kit_vreg_t* arg_registers = (kit_vreg_t*)kit_arnalloc(cc->arena, sizeof(kit_vreg_t) * nargs);
   for (u32 i = 0; i < nargs; i++) {
@@ -1761,15 +1685,9 @@ compile_function_call(kit_compiler* cc, int node)
   }
 
   kit_vreg_t dst = vreg_alloc(cc);
+  kit_emit_ins(cc, (kit_ins){ .call = { .opcode = KIT_IR_OPCODE_CALL, .dst = dst, .reg = compiled_function, .nargs = nargs } });
 
-  kit_emit_ins(cc, (kit_ins){ .call = { .opcode = KIT_IR_OPCODE_CALL, .dst = dst, .function_id = hash, .nargs = nargs } });
-
-  /* Cleanup the stack. */
-  // kit_vreg_t tmp = vreg_alloc(cc);
-  // for (u32 i = KIT_REG_ARG_COUNT; i < nargs; i++) {
-  //   /* pop repeatedly into tmp */
-  //   kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = tmp } });
-  // }
+  /* No need to cleanup spilled arguments from stack, the called function picks up the arguments from the stack */
 
   return dst;
 }
@@ -2690,6 +2608,39 @@ compile_variable_load(kit_compiler* cc, int node)
     }
   }
 
+  for (u32 i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
+    const kit_builtin_func* func = &kit_builtins_funcs[i];
+
+    if (strcmp(func->name, full) == 0) {
+      /* Builtin function, loadfn it and return */
+      kit_vreg_t dst = vreg_alloc(cc);
+      kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
+      return dst;
+    }
+  }
+
+  for (u32 i = 0; i < cc->struct_table->structs_count; i++) {
+    const kitc_struct_information* struct_info = &cc->struct_table->structs[i];
+
+    if (struct_info->name_hash == hash) {
+      /* Builtin function, loadfn it and return */
+      kit_vreg_t dst = vreg_alloc(cc);
+      kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
+      return dst;
+    }
+  }
+
+  for (u32 i = 0; i < cc->function_table->functions_count; i++) {
+    const kitc_function* func = &cc->function_table->functions[i];
+
+    if (func->name_hash == hash) {
+      /* Builtin function, loadfn it and return */
+      kit_vreg_t dst = vreg_alloc(cc);
+      kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
+      return dst;
+    }
+  }
+
   val_t lv;
   int   e = value_init(cc, node, &lv);
   if (e < 0) return e;
@@ -2931,7 +2882,9 @@ get_destination_reg(const kit_ins* i)
     case KIT_IR_OPCODE_MOVI: return i->movi.dst; break; /* values are not registers */
     case KIT_IR_OPCODE_MOVF: return i->movf.dst; break; /* values are not registers */
 
-    case KIT_IR_OPCODE_GETG: return i->mov.dst; break;
+    case KIT_IR_OPCODE_GETG: return i->getg.dst; break;
+
+    case KIT_IR_OPCODE_LOADFN: return i->loadfn.dst; break;
 
     case KIT_IR_OPCODE_ASSERT:
     case KIT_IR_OPCODE_SETG:
@@ -3004,7 +2957,9 @@ set_destination_reg(kit_ins* i, u32 value)
     case KIT_IR_OPCODE_MOVI: i->movi.dst = value; break; /* values are not registers */
     case KIT_IR_OPCODE_MOVF: i->movf.dst = value; break; /* values are not registers */
 
-    case KIT_IR_OPCODE_GETG: i->mov.dst = value; break;
+    case KIT_IR_OPCODE_GETG: i->getg.dst = value; break;
+
+    case KIT_IR_OPCODE_LOADFN: i->loadfn.dst = value; break;
 
     case KIT_IR_OPCODE_ASSERT:
     case KIT_IR_OPCODE_SETG:
@@ -3076,6 +3031,7 @@ get_source_registers(const kit_ins* i, u32 sources[32])
 
     case KIT_IR_OPCODE_ASSERT: sources[n++] = i->assertion.cond; break;
 
+    case KIT_IR_OPCODE_LOADFN:
     case KIT_IR_OPCODE_MOVI:
     case KIT_IR_OPCODE_MOVF: /* values are not registers */
     case KIT_IR_OPCODE_GETG: break;
@@ -3127,6 +3083,7 @@ get_source_registers(const kit_ins* i, u32 sources[32])
     case KIT_IR_OPCODE_CALL:
       /* record only the argument registers that were used */
       for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->call.nargs); j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
+      sources[n++] = i->call.reg;
       break;
 
     case KIT_IR_OPCODE_INDEX:
@@ -3605,8 +3562,10 @@ codegraph_loop_analysis(kit_compiler* cc, codegraph* cfg)
         .latches         = kit_arnalloc(cfg->arena, sizeof(u32) * nedges),
         .nlatches        = 0,
         .is_block_member = kit_arnalloc(cfg->arena, cfg->nblocks * sizeof(bool)),
+        .is_ins_member   = kit_arnalloc(cfg->arena, cc->ninstructions * sizeof(bool)),
       };
       memset(loop->is_block_member, 0, cfg->nblocks * sizeof(bool));
+      memset(loop->is_ins_member, 0, cc->ninstructions * sizeof(bool));
       loop->is_block_member[header] = true;
     }
 
@@ -3641,6 +3600,18 @@ codegraph_loop_analysis(kit_compiler* cc, codegraph* cfg)
           stack[top++]                = pred;
         }
       }
+    }
+  }
+
+  for (u32 l = 0; l < cfg->nloops; l++) {
+    blockloop* loop = &cfg->loops[l];
+
+    for (u32 b = 0; b < cfg->nblocks; b++) {
+      if (!loop->is_block_member[b]) continue;
+
+      codeblock* blk = &cfg->blocks[b];
+
+      for (u32 ip = blk->start; ip <= blk->end; ip++) { loop->is_ins_member[ip] = true; }
     }
   }
 
@@ -3836,30 +3807,33 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
       if (a_dst != b->mov.src) continue; /* isn't chained. */
 
       /* check if the first operation to a is a read (bad) or a write (good). */
-      bool is_a_read_later = false;
-      for (u32 j = b_idx + 1; j < cc->ninstructions; j++) {
-        kit_ins* k   = &cc->instructions[j];
-        u32      dst = get_destination_reg(k);
+      bool is_a_read_later = cfg->ins_live_out[a_dst];
 
-        u32 srcs[32] = { 0 };
-        u32 nsrcs    = get_source_registers(k, srcs);
+      if (!is_a_read_later) {
+        for (u32 j = b_idx + 1; j < cc->ninstructions; j++) {
+          kit_ins* k   = &cc->instructions[j];
+          u32      dst = get_destination_reg(k);
 
-        /* a is read later. can't optimize :( */
-        for (u32 s = 0; s < nsrcs; s++) {
-          if (srcs[s] == a_dst) {
-            is_a_read_later = true;
+          u32 srcs[32] = { 0 };
+          u32 nsrcs    = get_source_registers(k, srcs);
 
-            break;
+          /* a is read later. can't optimize :( */
+          for (u32 s = 0; s < nsrcs; s++) {
+            if (srcs[s] == a_dst) {
+              is_a_read_later = true;
+
+              break;
+            }
           }
+
+          if (is_a_read_later) break;
+
+          /**
+           * First operation to the register is a write
+           * This means we can safely overwrite it.
+           */
+          if (dst == a_dst) break;
         }
-
-        if (is_a_read_later) break;
-
-        /**
-         * First operation to the register is a write
-         * This means we can safely overwrite it.
-         */
-        if (dst == a_dst) break;
       }
 
       if (!is_a_read_later) {
@@ -4416,6 +4390,14 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
       switch (ins->opcode) {
         case KIT_IR_OPCODE_NOP: break;
 
+        case KIT_IR_OPCODE_LOADFN: {
+          u32 dst = ins->loadfn.dst;
+
+          values_known[dst] = false;
+
+          break;
+        }
+
         case KIT_IR_OPCODE_MOV: {
           u32 dst = ins->mov.dst;
           u32 src = ins->mov.src;
@@ -4449,7 +4431,11 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
           break;
         }
 
-        case KIT_IR_OPCODE_GETG:
+        case KIT_IR_OPCODE_GETG: {
+          values_known[ins->getg.dst] = false;
+          break;
+        }
+
         case KIT_IR_OPCODE_SETG:
         case KIT_IR_OPCODE_MOVG: break;
 
@@ -4603,239 +4589,239 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
   return changed;
 }
 
-static inline void
-update_reg(kit_reg_t* ptr, u32 offset)
-{
-  if (*ptr >= KIT_REG_GENERAL_BEGIN) *ptr += offset;
-}
+// static inline void
+// update_reg(kit_reg_t* ptr, u32 offset)
+// {
+//   if (*ptr >= KIT_REG_GENERAL_BEGIN) *ptr += offset;
+// }
 
-/* add the offset to each register in ins and pass it to kit_emit_ins */
-static inline void
-patch_instruction_for_function_inlining(
-    kit_compiler* cc, kit_ins* ins, u32 register_offset, u32 label_offset, kit_vreg_t return_register, u32 exit_label)
-{
-  switch (ins->opcode) {
-    case KIT_IR_OPCODE_LABEL: {
-      ins->label.id += label_offset;
-      break;
-    }
+// /* add the offset to each register in ins and pass it to kit_emit_ins */
+// static inline void
+// patch_instruction_for_function_inlining(
+//     kit_compiler* cc, kit_ins* ins, u32 register_offset, u32 label_offset, kit_vreg_t return_register, u32 exit_label)
+// {
+//   switch (ins->opcode) {
+//     case KIT_IR_OPCODE_LABEL: {
+//       ins->label.id += label_offset;
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_NOP: break;
+//     case KIT_IR_OPCODE_NOP: break;
 
-    case KIT_IR_OPCODE_MOV: {
-      update_reg(&ins->mov.dst, register_offset);
-      update_reg(&ins->mov.src, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_MOVI: {
-      update_reg(&ins->movi.dst, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_MOVF: {
-      update_reg(&ins->movf.dst, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_GETG: {
-      update_reg(&ins->getg.dst, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_SETG: {
-      update_reg(&ins->setg.src, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_MOVG: {
-      break;
-    }
-    case KIT_IR_OPCODE_ADD:
-    case KIT_IR_OPCODE_SUB:
-    case KIT_IR_OPCODE_MUL:
-    case KIT_IR_OPCODE_DIV:
-    case KIT_IR_OPCODE_MOD:
-    case KIT_IR_OPCODE_EXP:
-    case KIT_IR_OPCODE_AND:
-    case KIT_IR_OPCODE_OR:
-    case KIT_IR_OPCODE_BAND:
-    case KIT_IR_OPCODE_BOR:
-    case KIT_IR_OPCODE_XOR:
-    case KIT_IR_OPCODE_EQL:
-    case KIT_IR_OPCODE_NEQ:
-    case KIT_IR_OPCODE_LT:
-    case KIT_IR_OPCODE_LTE:
-    case KIT_IR_OPCODE_GT:
-    case KIT_IR_OPCODE_GTE: {
-      update_reg(&ins->binop.a, register_offset);
-      update_reg(&ins->binop.b, register_offset);
-      update_reg(&ins->binop.dst, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_MOV: {
+//       update_reg(&ins->mov.dst, register_offset);
+//       update_reg(&ins->mov.src, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_MOVI: {
+//       update_reg(&ins->movi.dst, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_MOVF: {
+//       update_reg(&ins->movf.dst, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_GETG: {
+//       update_reg(&ins->getg.dst, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_SETG: {
+//       update_reg(&ins->setg.src, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_MOVG: {
+//       break;
+//     }
+//     case KIT_IR_OPCODE_ADD:
+//     case KIT_IR_OPCODE_SUB:
+//     case KIT_IR_OPCODE_MUL:
+//     case KIT_IR_OPCODE_DIV:
+//     case KIT_IR_OPCODE_MOD:
+//     case KIT_IR_OPCODE_EXP:
+//     case KIT_IR_OPCODE_AND:
+//     case KIT_IR_OPCODE_OR:
+//     case KIT_IR_OPCODE_BAND:
+//     case KIT_IR_OPCODE_BOR:
+//     case KIT_IR_OPCODE_XOR:
+//     case KIT_IR_OPCODE_EQL:
+//     case KIT_IR_OPCODE_NEQ:
+//     case KIT_IR_OPCODE_LT:
+//     case KIT_IR_OPCODE_LTE:
+//     case KIT_IR_OPCODE_GT:
+//     case KIT_IR_OPCODE_GTE: {
+//       update_reg(&ins->binop.a, register_offset);
+//       update_reg(&ins->binop.b, register_offset);
+//       update_reg(&ins->binop.dst, register_offset);
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_BNOT:
-    case KIT_IR_OPCODE_NEG:
-    case KIT_IR_OPCODE_NOT:
-    case KIT_IR_OPCODE_INC:
-    case KIT_IR_OPCODE_DEC: {
-      update_reg(&ins->unop.a, register_offset);
-      update_reg(&ins->unop.dst, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_BNOT:
+//     case KIT_IR_OPCODE_NEG:
+//     case KIT_IR_OPCODE_NOT:
+//     case KIT_IR_OPCODE_INC:
+//     case KIT_IR_OPCODE_DEC: {
+//       update_reg(&ins->unop.a, register_offset);
+//       update_reg(&ins->unop.dst, register_offset);
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_RET: {
-      update_reg(&ins->ret.return_value, register_offset);
+//     case KIT_IR_OPCODE_RET: {
+//       update_reg(&ins->ret.return_value, register_offset);
 
-      /* move the return value to the common return register */
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = return_register, .src = ins->ret.return_value } });
+//       /* move the return value to the common return register */
+//       kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = return_register, .src = ins->ret.return_value } });
 
-      /* convert this ret into a jump to the exit label */
-      ins->jmp.opcode = KIT_IR_OPCODE_JMP;
-      ins->jmp.target = exit_label;
+//       /* convert this ret into a jump to the exit label */
+//       ins->jmp.opcode = KIT_IR_OPCODE_JMP;
+//       ins->jmp.target = exit_label;
 
-      /* gets emitted after the switch */
-      break;
-    }
+//       /* gets emitted after the switch */
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_MK_LIST: {
-      update_reg(&ins->mk_list.dst, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_MK_LIST: {
+//       update_reg(&ins->mk_list.dst, register_offset);
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_MK_MAP: {
-      update_reg(&ins->mk_map.dst, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_MK_MAP: {
+//       update_reg(&ins->mk_map.dst, register_offset);
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_INDEX: {
-      update_reg(&ins->index.dst, register_offset);
-      update_reg(&ins->index.base, register_offset);
-      update_reg(&ins->index.index, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_INDEX_ASSIGN: {
-      update_reg(&ins->index_assign.value, register_offset);
-      update_reg(&ins->index_assign.base, register_offset);
-      update_reg(&ins->index_assign.index, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_MEMBER_ACCESS: {
-      update_reg(&ins->member_access.dst, register_offset);
-      update_reg(&ins->member_access.base, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_MEMBER_ASSIGN: {
-      update_reg(&ins->member_assign.value, register_offset);
-      update_reg(&ins->member_assign.base, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_MK_STRUCT: {
-      update_reg(&ins->mk_struct.dst, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_CALL: {
-      update_reg(&ins->call.dst, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_INDEX: {
+//       update_reg(&ins->index.dst, register_offset);
+//       update_reg(&ins->index.base, register_offset);
+//       update_reg(&ins->index.index, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_INDEX_ASSIGN: {
+//       update_reg(&ins->index_assign.value, register_offset);
+//       update_reg(&ins->index_assign.base, register_offset);
+//       update_reg(&ins->index_assign.index, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_MEMBER_ACCESS: {
+//       update_reg(&ins->member_access.dst, register_offset);
+//       update_reg(&ins->member_access.base, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_MEMBER_ASSIGN: {
+//       update_reg(&ins->member_assign.value, register_offset);
+//       update_reg(&ins->member_assign.base, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_MK_STRUCT: {
+//       update_reg(&ins->mk_struct.dst, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_CALL: {
+//       update_reg(&ins->call.dst, register_offset);
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_JZ:
-    case KIT_IR_OPCODE_JNZ: {
-      ins->cj.target += label_offset;
-      update_reg(&ins->cj.condition, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_JZ:
+//     case KIT_IR_OPCODE_JNZ: {
+//       ins->cj.target += label_offset;
+//       update_reg(&ins->cj.condition, register_offset);
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_JMP: {
-      ins->jmp.target += label_offset;
-      break;
-    }
+//     case KIT_IR_OPCODE_JMP: {
+//       ins->jmp.target += label_offset;
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_PUSH: {
-      update_reg(&ins->push.reg, register_offset);
-      break;
-    }
-    case KIT_IR_OPCODE_POP: {
-      update_reg(&ins->pop.reg, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_PUSH: {
+//       update_reg(&ins->push.reg, register_offset);
+//       break;
+//     }
+//     case KIT_IR_OPCODE_POP: {
+//       update_reg(&ins->pop.reg, register_offset);
+//       break;
+//     }
 
-    case KIT_IR_OPCODE_LOADK: {
-      update_reg(&ins->loadk.dst, register_offset);
-      break;
-    }
+//     case KIT_IR_OPCODE_LOADK: {
+//       update_reg(&ins->loadk.dst, register_offset);
+//       break;
+//     }
 
-    default: break;
-  }
-}
+//     default: break;
+//   }
+// }
 
 static void
 opt_inline_function_calls(kit_compiler* cc)
 {
-  kit_ins* old_instructions = kit_arnalloc(cc->arena, sizeof(kit_ins) * cc->ninstructions);
-  memcpy(old_instructions, cc->instructions, sizeof(kit_ins) * cc->ninstructions);
+  // kit_ins* old_instructions = kit_arnalloc(cc->arena, sizeof(kit_ins) * cc->ninstructions);
+  // memcpy(old_instructions, cc->instructions, sizeof(kit_ins) * cc->ninstructions);
 
-  const u32 old_instruction_count = cc->ninstructions;
+  // const u32 old_instruction_count = cc->ninstructions;
 
-  cc->ninstructions = 0;
-  for (u32 i = 0; i < old_instruction_count; i++) {
-    kit_ins* ins = &old_instructions[i];
+  // cc->ninstructions = 0;
+  // for (u32 i = 0; i < old_instruction_count; i++) {
+  //   kit_ins* ins = &old_instructions[i];
 
-    /* normal instruction, push it to our stream. */
-    if (ins->opcode != KIT_IR_OPCODE_CALL) {
-      kit_emit_ins(cc, *ins);
-      continue;
-    }
+  //   /* normal instruction, push it to our stream. */
+  //   if (ins->opcode != KIT_IR_OPCODE_CALL) {
+  //     kit_emit_ins(cc, *ins);
+  //     continue;
+  //   }
 
-    /* CALL: replace call contents with our stored bytecode */
-    u32            hash   = ins->call.function_id;
-    kitc_function* lookup = NULL;
+  //   /* CALL: replace call contents with our stored bytecode */
+  //   u32            hash   = ins->call.function_id;
+  //   kitc_function* lookup = NULL;
 
-    for (u32 j = 0; j < cc->function_table->functions_count; j++) {
-      kitc_function* func = &cc->function_table->functions[j];
+  //   for (u32 j = 0; j < cc->function_table->functions_count; j++) {
+  //     kitc_function* func = &cc->function_table->functions[j];
 
-      if (func->name_hash == hash) {
-        lookup = func;
-        break;
-      }
-    }
+  //     if (func->name_hash == hash) {
+  //       lookup = func;
+  //       break;
+  //     }
+  //   }
 
-    /* builtin function or something */
-    if (!lookup || get_cost_for_inlining_function(cc, 0, lookup) > 100) {
-      /**
-       * Haha. I spent 2 hours (on and off) trying to find why the main function was empty.
-       * I disabled all optimizations, noticed it was only happening with function inlining.
-       * Oh no? Someone is removing the call println, presumably before inlining starts?
-       * I must tread through the optimizer code and find out what is causing it.
-       * I even went to claude with my problem, to no avail (kill me later).
-       *
-       * If you couldn't tell, any calls to println were being discarded by the absence of this line,
-       * and the optimizer correctly deleted all argument register moves and as it kept optimizing
-       * the function (16 passes btw), it eventually deleted the whole function (I think that's a bug).
-       */
-      kit_emit_ins(cc, *ins);
-      continue;
-    }
+  //   /* builtin function or something */
+  //   if (!lookup || get_cost_for_inlining_function(cc, 0, lookup) > 100) {
+  //     /**
+  //      * Haha. I spent 2 hours (on and off) trying to find why the main function was empty.
+  //      * I disabled all optimizations, noticed it was only happening with function inlining.
+  //      * Oh no? Someone is removing the call println, presumably before inlining starts?
+  //      * I must tread through the optimizer code and find out what is causing it.
+  //      * I even went to claude with my problem, to no avail (kill me later).
+  //      *
+  //      * If you couldn't tell, any calls to println were being discarded by the absence of this line,
+  //      * and the optimizer correctly deleted all argument register moves and as it kept optimizing
+  //      * the function (16 passes btw), it eventually deleted the whole function (I think that's a bug).
+  //      */
+  //     kit_emit_ins(cc, *ins);
+  //     continue;
+  //   }
 
-    kit_vreg_t call_dst = (kit_vreg_t)ins->call.dst;
+  //   kit_vreg_t call_dst = (kit_vreg_t)ins->call.dst;
 
-    u32 register_offset = cc->next_vreg; // All registers in the function get this added to them
-    u32 label_offset    = cc->next_label;
+  //   u32 register_offset = cc->next_vreg; // All registers in the function get this added to them
+  //   u32 label_offset    = cc->next_label;
 
-    u32 exit_label = cc->next_label + lookup->labels_used;
+  //   u32 exit_label = cc->next_label + lookup->labels_used;
 
-    /* start emitting the function code */
-    for (u32 j = 0; j < lookup->code_count; j++) {
-      kit_ins sdf = lookup->code[j];
+  //   /* start emitting the function code */
+  //   for (u32 j = 0; j < lookup->code_count; j++) {
+  //     kit_ins sdf = lookup->code[j];
 
-      patch_instruction_for_function_inlining(cc, &sdf, register_offset, label_offset, call_dst, exit_label);
+  //     patch_instruction_for_function_inlining(cc, &sdf, register_offset, label_offset, call_dst, exit_label);
 
-      kit_emit_ins(cc, sdf);
-    }
+  //     kit_emit_ins(cc, sdf);
+  //   }
 
-    /* push the number of registers up  */
-    cc->next_vreg += (kit_vreg_t)lookup->vregs_used;
-    cc->next_label += lookup->labels_used;
+  //   /* push the number of registers up  */
+  //   cc->next_vreg += (kit_vreg_t)lookup->vregs_used;
+  //   cc->next_label += lookup->labels_used;
 
-    /* return instructions jump here */
-    define_and_emit_label(cc, exit_label);
-    cc->next_label++;
-  }
+  //   /* return instructions jump here */
+  //   define_and_emit_label(cc, exit_label);
+  //   cc->next_label++;
+  // }
 
   // kit_arnfree(cc->arena, old_instructions);
 }
@@ -4867,6 +4853,7 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
           changed             = true;
           break;
 
+        case KIT_IR_OPCODE_LOADFN:
         case KIT_IR_OPCODE_MOVI:
         case KIT_IR_OPCODE_MOVF: /* values are not registers */
         case KIT_IR_OPCODE_GETG: break;
@@ -5104,104 +5091,184 @@ shift_and_insert_instruction(kit_compiler* cc, u32 idx, const kit_ins* ins)
   cc->ninstructions++;
 }
 
+static inline bool
+block_dominates(const codegraph* cfg, u32 b, u32 d)
+{ return cfg->blocks[d].dominators[b]; }
+
 bool
 codegraph_loop_invariant_code_motion(kit_compiler* cc, codegraph* cfg)
 {
-  bool      changed = false;
-  const u32 nvregs  = cc->next_vreg;
+  bool changed_ever = false;
 
-  for (u32 l = 0; l < cfg->nloops; l++) {
-    blockloop* loop      = &cfg->loops[l];
-    u32        header    = loop->header;
-    u32        preheader = cfg->blocks[header].idom;
+  while (true) {
+    bool changed = false;
 
-    /* preheader must not  be inside the loop. That'd be dangerous && too expensive to optimize. */
-    if (preheader == UINT32_MAX || loop->is_block_member[preheader]) continue;
+    const u32 nvregs        = cc->next_vreg;
+    const u32 ninstructions = cc->ninstructions;
 
-    bool* defined_in_loop = kit_arnalloc(cfg->arena, nvregs * sizeof(bool));
-    memset(defined_in_loop, 0, nvregs * sizeof(bool));
+    u32* def_count = kit_arnalloc(cfg->arena, sizeof(u32) * nvregs);
+    u32* def_ip    = kit_arnalloc(cfg->arena, sizeof(u32) * nvregs);
 
-    for (u32 b = 0; b < cfg->nblocks; b++) {
-      if (!loop->is_block_member[b]) continue;
-      codeblock* blk = &cfg->blocks[b];
+    memset(def_count, 0, sizeof(u32) * nvregs);
+    for (u32 i = 0; i < nvregs; i++) def_ip[i] = UINT32_MAX;
 
-      for (u32 ip = blk->start; ip <= blk->end; ip++) {
-        u32 dst = get_destination_reg(&cc->instructions[ip]);
-        if (dst != UINT32_MAX && dst < nvregs && dst >= KIT_REG_GENERAL_BEGIN) defined_in_loop[dst] = true;
-      }
+    for (u32 ip = 0; ip < ninstructions; ip++) {
+      u32 dst = get_destination_reg(&cc->instructions[ip]);
+      if (dst == UINT32_MAX || dst >= nvregs) continue;
+      def_count[dst]++;
+
+      if (def_count[dst] == 1) def_ip[dst] = ip;
+      else def_ip[dst] = UINT32_MAX;
     }
 
-    bool* is_instruction_invariant = kit_arnalloc(cfg->arena, cc->ninstructions * sizeof(bool));
-    memset(is_instruction_invariant, 0, cc->ninstructions * sizeof(bool));
+    for (u32 l = 0; l < cfg->nloops; l++) {
+      blockloop* loop = &cfg->loops[l];
 
-    u32* invariant_instruction_indices = kit_arnalloc(cfg->arena, cc->ninstructions * sizeof(u32));
-    memset(invariant_instruction_indices, 0, cc->ninstructions * sizeof(u32));
+      u32 header    = loop->header;
+      u32 preheader = cfg->blocks[header].idom;
 
-    for (u32 b = 0; b < cfg->nblocks; b++) {
-      if (!loop->is_block_member[b]) continue;
-      codeblock* blk = &cfg->blocks[b];
+      if (preheader == UINT32_MAX) continue;
 
-      for (u32 ip = blk->start; ip <= blk->end; ip++) {
-        kit_ins* ins = &cc->instructions[ip];
+      /* idom is itself inside the loop :( */
+      if (loop->is_block_member[preheader]) continue;
 
-        if (is_instruction_impure(ins->opcode)) continue;
-        if (ins->opcode == KIT_IR_OPCODE_LABEL || ins->opcode == KIT_IR_OPCODE_JMP || ins->opcode == KIT_IR_OPCODE_JZ
-            || ins->opcode == KIT_IR_OPCODE_JNZ || ins->opcode == KIT_IR_OPCODE_RET)
-          continue;
+      u32  exit_block_count = 0;
+      u32* exit_blocks      = kit_arnalloc(cfg->arena, sizeof(u32) * cfg->nblocks);
 
-        u32 dst = get_destination_reg(ins);
-
-        if (dst == UINT32_MAX || dst >= nvregs || dst < KIT_REG_GENERAL_BEGIN) continue;
-        if (defined_in_loop[dst]) continue;
-
-        u32  srcs[32];
-        u32  nsrcs     = get_source_registers(ins, srcs);
-        bool invariant = true;
-        for (u32 s = 0; s < nsrcs; s++) {
-          u32 src = srcs[s];
-
-          if (src < KIT_REG_GENERAL_BEGIN && src != KIT_REG_NIL) {
-            invariant = false;
-            break;
-          }
-          if (src < nvregs && defined_in_loop[src]) {
-            invariant = false;
+      for (u32 b = 0; b < cfg->nblocks; b++) {
+        if (!loop->is_block_member[b]) continue;
+        codeblock* blk = &cfg->blocks[b];
+        for (u32 s = 0; s < blk->nsuccessors; s++) {
+          if (!loop->is_block_member[blk->successors[s]]) {
+            exit_blocks[exit_block_count++] = b;
             break;
           }
         }
-
-        if (invariant) is_instruction_invariant[ip] = true;
       }
-    }
 
-    u32 ninv = 0;
-    for (u32 b = 0; b < cfg->nblocks; b++) {
-      if (!loop->is_block_member[b]) continue;
-      codeblock* blk = &cfg->blocks[b];
+      bool* is_invariant = kit_arnalloc(cfg->arena, sizeof(bool) * ninstructions);
+      memset(is_invariant, 0, sizeof(bool) * ninstructions);
 
-      for (u32 ip = blk->start; ip <= blk->end; ip++) {
-        if (is_instruction_invariant[ip]) invariant_instruction_indices[ninv++] = ip;
+      bool local_changed;
+      do {
+        local_changed = false;
+
+        for (u32 ip = 0; ip < ninstructions; ip++) {
+          if (!loop->is_ins_member[ip]) continue;
+          if (is_invariant[ip]) continue;
+
+          kit_ins* ins = &cc->instructions[ip];
+
+          /* Skip anything that must not be hoisted. */
+          if (is_instruction_impure(ins->opcode)) continue;
+          if (is_instruction_noop(ins->opcode)) continue; /* me after hoisting all my noops to outside the loop :> */
+
+          switch (ins->opcode) {
+            case KIT_IR_OPCODE_LABEL:
+            case KIT_IR_OPCODE_LOADFN:
+            case KIT_IR_OPCODE_JMP:
+            case KIT_IR_OPCODE_JZ:
+            case KIT_IR_OPCODE_JNZ:
+            case KIT_IR_OPCODE_RET: continue;
+            default: break;
+          }
+
+          u32 ins_block = UINT32_MAX;
+          for (u32 b = 0; b < cfg->nblocks; b++) {
+            if (ip >= cfg->blocks[b].start && ip <= cfg->blocks[b].end) {
+              ins_block = b;
+              break;
+            }
+          }
+          if (ins_block == UINT32_MAX) continue;
+
+          bool dominates_all_exits = true;
+          for (u32 x = 0; x < exit_block_count; x++) {
+            if (!block_dominates(cfg, ins_block, exit_blocks[x])) {
+              dominates_all_exits = false;
+              break;
+            }
+          }
+          if (!dominates_all_exits) continue;
+
+          u32  srcs[32];
+          u32  nsrcs = get_source_registers(ins, srcs);
+          bool ok    = true;
+
+          for (u32 s = 0; s < nsrcs; s++) {
+            u32 r = srcs[s];
+            if (r >= nvregs) continue;
+
+            u32 dip = def_ip[r];
+
+            if (dip == UINT32_MAX) {
+              if (def_count[r] > 1) {
+                ok = false;
+                break;
+              }
+              continue;
+            }
+
+            /* Defined outside the loop so it is invariant. */
+            if (!loop->is_ins_member[dip]) continue;
+
+            /* Defined inside the loop by an invariant. */
+            if (is_invariant[dip]) continue;
+
+            /* Defined inside the loop by a variant, continue to search to prove its invariant. */
+            ok = false;
+            break;
+          }
+
+          if (!ok) continue;
+
+          is_invariant[ip] = true;
+          local_changed    = true;
+        }
+      } while (local_changed);
+
+      u32* hoist_ips = kit_arnalloc(cfg->arena, sizeof(u32) * ninstructions);
+      u32  nhoist    = 0;
+
+      for (u32 ip = 0; ip < ninstructions; ip++) {
+        if (is_invariant[ip]) hoist_ips[nhoist++] = ip;
       }
-    }
 
-    codeblock* pre_blk    = &cfg->blocks[preheader];
-    u32        insert_idx = pre_blk->end;
+      if (nhoist == 0) continue;
 
-    u32 offset = 0;
-    for (i64 i = (i64)ninv - 1; i >= 0; i--) {
-      u32     orig    = invariant_instruction_indices[i];
-      u32     current = orig + offset;
-      kit_ins tmp     = cc->instructions[current];
+      /* hoist the instructions */
 
-      shift_and_insert_instruction(cc, insert_idx, &tmp);
+      /* we know which instructions we're going to hoist, copy them over to an internal array and then actually hoist them */
+      kit_ins* saved = kit_arnalloc(cfg->arena, sizeof(kit_ins) * nhoist);
+      for (u32 h = 0; h < nhoist; h++) {
+        saved[h]                              = cc->instructions[hoist_ips[h]];
+        cc->instructions[hoist_ips[h]].opcode = KIT_IR_OPCODE_NOP;
+      }
 
-      cc->instructions[current + 1].opcode = KIT_IR_OPCODE_NOP;
-      offset++;
+      codeblock* pre       = &cfg->blocks[preheader];
+      u32        insert_ip = pre->end;
+
+      /* find the terminator. */
+      while (insert_ip > pre->start && cc->instructions[insert_ip].opcode == KIT_IR_OPCODE_NOP) insert_ip--;
+
+      for (u32 h = 0; h < nhoist; h++) {
+        shift_and_insert_instruction(cc, insert_ip, &saved[h]);
+        insert_ip++;
+      }
+
       changed = true;
+
+      /* modified the IR */
+      codegraph_rebuild(cc, cfg);
+
+      break;
     }
+
+    if (!changed) break;
+    changed_ever = true;
   }
 
-  return changed;
+  return changed_ever;
 }
 
 static int
@@ -5257,6 +5324,8 @@ era_compute_ranges(kit_compiler* cc, era_state* ra)
 
       case KIT_IR_OPCODE_ASSERT: READS_FROM(ins.assertion.cond); break; /* values are not registers */
 
+      case KIT_IR_OPCODE_LOADFN: WRITES_TO(ins.loadfn.dst); break;
+
       case KIT_IR_OPCODE_GETG: WRITES_TO(ins.mov.dst); break;
       case KIT_IR_OPCODE_SETG: READS_FROM(ins.mov.src); break;
       case KIT_IR_OPCODE_MOVG: {
@@ -5299,6 +5368,7 @@ era_compute_ranges(kit_compiler* cc, era_state* ra)
       case KIT_IR_OPCODE_CALL:
         for (u32 j = KIT_REG_ARG0; j < MIN(ins.call.nargs, KIT_REG_ARG_COUNT); j++) { READS_FROM(j); }
         WRITES_TO(ins.call.dst);
+        READS_FROM(ins.call.reg);
         break;
       case KIT_IR_OPCODE_INDEX:
         WRITES_TO(ins.index.dst);
@@ -5483,6 +5553,8 @@ era_rewrite(kit_compiler* cc, const u32* vreg_to_phys)
       case KIT_IR_OPCODE_MOVI: MAP(ins.movi.dst); break;
       case KIT_IR_OPCODE_MOVF: MAP(ins.movf.dst); break;
 
+      case KIT_IR_OPCODE_LOADFN: MAP(ins.loadfn.dst); break;
+
       case KIT_IR_OPCODE_PUSH:
       case KIT_IR_OPCODE_POP: {
         MAP(ins.push.reg);
@@ -5525,7 +5597,10 @@ era_rewrite(kit_compiler* cc, const u32* vreg_to_phys)
         MAP(ins.unop.dst);
         MAP(ins.unop.a);
         break;
-      case KIT_IR_OPCODE_CALL: MAP(ins.call.dst); break;
+      case KIT_IR_OPCODE_CALL:
+        MAP(ins.call.dst);
+        MAP(ins.call.reg);
+        break;
       case KIT_IR_OPCODE_INDEX:
         MAP(ins.index.dst);
         MAP(ins.index.base);
@@ -5546,6 +5621,7 @@ era_rewrite(kit_compiler* cc, const u32* vreg_to_phys)
         break;
       case KIT_IR_OPCODE_RET: MAP(ins.ret.return_value); break;
       case KIT_IR_OPCODE_JZ:
+
       case KIT_IR_OPCODE_JNZ: MAP(ins.cj.condition); break;
       case KIT_IR_OPCODE_GETG: MAP(ins.getg.dst); break;
       case KIT_IR_OPCODE_SETG: MAP(ins.setg.src); break;
@@ -5737,6 +5813,11 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
       break;
     }
 
+    case KIT_IR_OPCODE_LOADFN: {
+      fprintf(f, "loadfn dst=%s, id=%u\n", get_register_name(i.loadfn.dst, buf0), i.loadfn.id);
+      break;
+    }
+
     case KIT_IR_OPCODE_ADD:
       fprintf(
           f,
@@ -5884,13 +5965,7 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
           get_register_name(i.index.index, buf2));
       break;
     case KIT_IR_OPCODE_CALL:
-      fprintf(
-          f,
-          "call dst=%s, id=%u|name=%s, nargs=%u\n",
-          get_register_name(i.call.dst, buf0),
-          i.call.function_id,
-          lookup(r, i.call.function_id),
-          i.call.nargs);
+      fprintf(f, "call dst=%s, fn=%s, nargs=%u\n", get_register_name(i.call.dst, buf0), get_register_name(i.call.reg, buf1), i.call.nargs);
       break;
     case KIT_IR_OPCODE_INDEX_ASSIGN:
       fprintf(
