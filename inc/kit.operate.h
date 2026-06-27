@@ -253,13 +253,13 @@ operate(kit_var l, kit_var r, kit_ir_opcode op)
     case KIT_IR_OPCODE_SUB: return COERCE_BINOP(l, r, -);
     case KIT_IR_OPCODE_MUL: return COERCE_BINOP(l, r, *);
     case KIT_IR_OPCODE_DIV:
-      if (kit_cast_to_int(&r) == 0) return KIT_NULLVAR;
+      if (kit_cast_to_float(&r) == 0.0) return KIT_NULLVAR;
       return COERCE_BINOP(l, r, /);
     case KIT_IR_OPCODE_MOD:
-      if (kit_cast_to_int(&r) == 0) return KIT_NULLVAR;
-      return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) % kit_cast_to_int(&r) };
-    case KIT_IR_OPCODE_EQL: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = kit_var_equal(&l, &r) };
-    case KIT_IR_OPCODE_NEQ: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = (bool)!kit_var_equal(&l, &r) };
+      if (kit_cast_to_float(&r) == 0.0) return KIT_NULLVAR;
+      return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = kit_cast_to_int(&l) % kit_cast_to_int(&r) } };
+    case KIT_IR_OPCODE_EQL: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = kit_var_equal(&l, &r) } };
+    case KIT_IR_OPCODE_NEQ: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = !kit_var_equal(&l, &r) } };
     case KIT_IR_OPCODE_LT: return COERCE_BOOLEAN_BINOP(l, r, <);
     case KIT_IR_OPCODE_LTE: return COERCE_BOOLEAN_BINOP(l, r, <=);
     case KIT_IR_OPCODE_GT: return COERCE_BOOLEAN_BINOP(l, r, >);
@@ -268,16 +268,16 @@ operate(kit_var l, kit_var r, kit_ir_opcode op)
     case KIT_IR_OPCODE_OR: return COERCE_BOOLEAN_BINOP(l, r, ||);
     case KIT_IR_OPCODE_NEG:
       switch (r.type) {
-        case KIT_VARTYPE_INT: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -r.val.i };
-        case KIT_VARTYPE_CHAR: return (kit_var){ .type = KIT_VARTYPE_CHAR, .val.c = (char)-(int)r.val.c };
-        case KIT_VARTYPE_BOOL: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val.b = (bool)-(int)r.val.b };
-        case KIT_VARTYPE_FLOAT: return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val.f = -r.val.f };
+        case KIT_VARTYPE_INT: return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = -r.val.i } };
+        case KIT_VARTYPE_CHAR: return (kit_var){ .type = KIT_VARTYPE_CHAR, .val = { .c = (char)-(int)r.val.c } };
+        case KIT_VARTYPE_BOOL: return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = (bool)-(int)r.val.b } };
+        case KIT_VARTYPE_FLOAT: return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = -r.val.f } };
         default: break;
       }
-    case KIT_IR_OPCODE_BNOT: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = ~kit_cast_to_int(&r) };
-    case KIT_IR_OPCODE_BAND: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) & kit_cast_to_int(&r) };
-    case KIT_IR_OPCODE_BOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) | kit_cast_to_int(&r) };
-    case KIT_IR_OPCODE_XOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val.i = kit_cast_to_int(&l) ^ kit_cast_to_int(&r) };
+    case KIT_IR_OPCODE_BNOT: return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = ~kit_cast_to_int(&r) } };
+    case KIT_IR_OPCODE_BAND: return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = kit_cast_to_int(&l) & kit_cast_to_int(&r) } };
+    case KIT_IR_OPCODE_BOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = kit_cast_to_int(&l) | kit_cast_to_int(&r) } };
+    case KIT_IR_OPCODE_XOR: return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = kit_cast_to_int(&l) ^ kit_cast_to_int(&r) } };
     default: break;
   }
   return KIT_NULLVAR;
