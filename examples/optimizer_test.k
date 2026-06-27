@@ -10,10 +10,15 @@ fn sum(l) {
    return s;
 }
 
-fn main() {
-   assert(2 > 5);
-   println(2+3);
+fn LICM_HELP_ME(x) {
+   let y = 0;
+   for ( i in 0..x ) {
+      y += 10;
+   }
+   return y;
+}
 
+fn main() {
    let a = 10;
    a = 20;
    a = 30;
@@ -54,4 +59,6 @@ fn main() {
    let nomb = [1, 2, 3, 4, 5];
    let bomb = sum(nomb);
    println(bomb);
+
+   println(LICM_HELP_ME(10));
 }

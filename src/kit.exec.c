@@ -546,21 +546,21 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
       case KIT_IR_OPCODE_JMP: {
         u32 target = ins.jmp.target;
 
-        ip->val.i = (int)(target - 1);
+        ip->val.i = (int)(target - 1); /* Loop increments IP */
         break;
       }
       case KIT_IR_OPCODE_JZ: {
         u32 target = ins.cj.target;
         u32 cond   = ins.cj.condition;
 
-        if (!kit_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); }
+        if (!kit_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); } /* Loop increments IP */
         break;
       }
       case KIT_IR_OPCODE_JNZ: {
         u32 target = ins.cj.target;
         u32 cond   = ins.cj.condition;
 
-        if (kit_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); }
+        if (kit_cast_to_bool(&regs[cond])) { ip->val.i = (int)(target - 1); } /* Loop increments IP */
         break;
       }
 

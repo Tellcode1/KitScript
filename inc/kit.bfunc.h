@@ -180,7 +180,7 @@ static const kit_builtin_func kit_builtins_funcs[] = {
   { "print", "Print all provided variables to stdout", "fn print(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_print },
   { "printf", "Print formatted string to stdout", "fn printf(fmt, ...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_print },
   { "println", "Print all provided variables and a newline to stdout", "fn println(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_println },
-  { "printfln", "Print formatted line to stdout", "fn printfln(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_println },
+  // { "printfln", "Print formatted line to stdout", "fn printfln(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_println },
 
   /* Read line from stdin */
   { "readln", "Read a line from stdin and retrieve it as a string. null on error.", "fn readln(...) -> string|null", 0, 0, 0, kit_builtins_readln },
@@ -188,6 +188,7 @@ static const kit_builtin_func kit_builtins_funcs[] = {
   // If you intend to change the name here, goto exec.c and replace the name there too. 
   // Only kept here for signature.
   { KIT_PANIC_FUNCTION_NAME, "Error out and stop execution", "fn " KIT_PANIC_FUNCTION_NAME "() -> null (noreturn)", 0, 0, 0, NULL }, // Function pointer is NULL, handled by VM itself.
+
 
   { "log::info", "Print an informational message to either the log file (or stderr if unset)", "fn log::info(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_log_info },
   { "log::error", "Print an error message to either the log file (or stderr if unset)", "fn log::err(...) -> null", 0xFFFFFFFF, 1, UINT32_MAX, kit_builtins_log_err },

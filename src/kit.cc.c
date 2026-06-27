@@ -636,6 +636,63 @@ value_init(kit_compiler* cc, int node, val_t* d)
 
       u32 id = kit_hash(name, strlen(name));
 
+      for (u32 i = 0; i < cc->builtin_var_table->builtin_vars_count; i++) {
+        const kit_builtin_var* builtin_var      = &cc->builtin_var_table->builtin_vars[i];
+        u32                    builtin_var_hash = cc->builtin_var_table->builtin_var_hashes[i];
+
+        if (builtin_var_hash == id) {
+          l.span         = &KIT_GET_NODE(cc->ast, node)->common.span;
+          l.type         = KIT_LVAL_GVAR;
+          l.val.var.id   = id;
+          l.val.var.name = name;
+
+          *d = l;
+          return 0;
+        }
+      }
+
+      for (u32 i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
+        const kit_builtin_func* func = &kit_builtins_funcs[i];
+
+        if (strcmp(func->name, name) == 0) {
+          l.span         = &KIT_GET_NODE(cc->ast, node)->common.span;
+          l.type         = KIT_LVAL_GVAR;
+          l.val.var.id   = id;
+          l.val.var.name = name;
+
+          *d = l;
+          return 0;
+        }
+      }
+
+      for (u32 i = 0; i < cc->struct_table->structs_count; i++) {
+        const kitc_struct_information* struct_info = &cc->struct_table->structs[i];
+
+        if (struct_info->name_hash == id) {
+          l.span         = &KIT_GET_NODE(cc->ast, node)->common.span;
+          l.type         = KIT_LVAL_GVAR;
+          l.val.var.id   = id;
+          l.val.var.name = name;
+
+          *d = l;
+          return 0;
+        }
+      }
+
+      for (u32 i = 0; i < cc->function_table->functions_count; i++) {
+        const kitc_function* func = &cc->function_table->functions[i];
+
+        if (func->name_hash == id) {
+          l.span         = &KIT_GET_NODE(cc->ast, node)->common.span;
+          l.type         = KIT_LVAL_GVAR;
+          l.val.var.id   = id;
+          l.val.var.name = name;
+
+          *d = l;
+          return 0;
+        }
+      }
+
       kitc_var* v = scope_lookup_info(cc, id);
       if (!v) {
         cerror(span, "Undeclared variable %s\n", name);
@@ -820,6 +877,57 @@ emit_lvalue_load(kit_compiler* cc, val_t* lv)
 {
   switch (lv->type) {
     case KIT_LVAL_VAR: {
+      u32         hash = lv->val.var.id;
+      const char* full = lv->val.var.name;
+
+      for (u32 i = 0; i < cc->builtin_var_table->builtin_vars_count; i++) {
+        const kit_builtin_var* builtin_var      = &cc->builtin_var_table->builtin_vars[i];
+        u32                    builtin_var_hash = cc->builtin_var_table->builtin_var_hashes[i];
+
+        if (builtin_var_hash == hash) {
+          /* Instantiate a builtin variable only if it is used. */
+          kit_var v = {
+            .type = builtin_var->type,
+            .val  = builtin_var->value,
+          };
+
+          return compile_and_push_literal_variable(cc, &v); // compile_literal_variable loads the value! Return.
+        }
+      }
+
+      for (u32 i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
+        const kit_builtin_func* func = &kit_builtins_funcs[i];
+
+        if (strcmp(func->name, full) == 0) {
+          /* Builtin function, loadfn it and return */
+          kit_vreg_t dst = vreg_alloc(cc);
+          kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
+          return dst;
+        }
+      }
+
+      for (u32 i = 0; i < cc->struct_table->structs_count; i++) {
+        const kitc_struct_information* struct_info = &cc->struct_table->structs[i];
+
+        if (struct_info->name_hash == hash) {
+          /* Builtin function, loadfn it and return */
+          kit_vreg_t dst = vreg_alloc(cc);
+          kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
+          return dst;
+        }
+      }
+
+      for (u32 i = 0; i < cc->function_table->functions_count; i++) {
+        const kitc_function* func = &cc->function_table->functions[i];
+
+        if (func->name_hash == hash) {
+          /* Builtin function, loadfn it and return */
+          kit_vreg_t dst = vreg_alloc(cc);
+          kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
+          return dst;
+        }
+      }
+
       kit_vreg_t var_reg = scope_lookup_reg(cc, lv->val.var.id);
       if (var_reg < 0) return -1;
 
@@ -1196,7 +1304,15 @@ append_function_entry(kit_arena* a, kitc_function_table* funcs, const kitc_funct
 static inline int
 codegraph_rebuild(kit_compiler* cc, codegraph* cfg)
 {
-  int e = codegraph_build_successor_list(cc, cfg);
+  kit_arena* arena = cfg->arena;
+  if (kit_arena_reset(arena) < 0) return -1;
+  memset(cfg, 0, sizeof(*cfg));
+  cfg->arena = arena;
+
+  int e = codegraph_init(arena, cc, cfg);
+  if (e < 0) return e;
+
+  e = codegraph_build_successor_list(cc, cfg);
   if (e < 0) return e;
 
   e = codegraph_block_level_liveliness_analysis(cc, cfg);
@@ -1331,7 +1447,7 @@ compile_function_definition(kit_compiler* cc, int node)
         if (codegraph_eliminate_unreachable_code(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
       }
       if (codegraph_argument_vector_move_coalescing(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
-      if (codegraph_loop_invariant_code_motion(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
+      if (fork.info->opt_level >= 3 && codegraph_loop_invariant_code_motion(&fork, &cfg)) { codegraph_rebuild(&fork, &cfg); }
 
       /* codegraph invalidated after these calls */
       if (!fork.info->feature_set.disable_redundant_jump_elimination) { remove_jmp_where_it_would_fallthrough(&fork); }
@@ -1977,7 +2093,7 @@ compile_for_statement(kit_compiler* cc, int node)
   int cond = KIT_GET_NODE(cc->ast, node)->for_stmt.condition;
   cond_reg = compile(cc, cond);
   if (cond_reg < 0) {
-    cerror(KIT_GET_NODE(cc->ast, cond_reg)->common.span, "Failed to compile condition [for statement]");
+    cerror(KIT_GET_NODE(cc->ast, cond)->common.span, "Failed to compile condition [for statement]\n");
     goto ERR;
   }
 
@@ -5159,6 +5275,11 @@ codegraph_loop_invariant_code_motion(kit_compiler* cc, codegraph* cfg)
 
           kit_ins* ins = &cc->instructions[ip];
 
+          /* don't hoist if dst is defined more than once */
+          u32 dst = get_destination_reg(ins);
+          if (dst != UINT32_MAX && dst < nvregs && def_count[dst] > 1) continue;
+          // if (dst != UINT32_MAX && dst < nvregs && cfg->blocks[header].live_in[dst]) continue;
+
           /* Skip anything that must not be hoisted. */
           if (is_instruction_impure(ins->opcode)) continue;
           if (is_instruction_noop(ins->opcode)) continue; /* me after hoisting all my noops to outside the loop :> */
@@ -5181,15 +5302,6 @@ codegraph_loop_invariant_code_motion(kit_compiler* cc, codegraph* cfg)
             }
           }
           if (ins_block == UINT32_MAX) continue;
-
-          bool dominates_all_exits = true;
-          for (u32 x = 0; x < exit_block_count; x++) {
-            if (!block_dominates(cfg, ins_block, exit_blocks[x])) {
-              dominates_all_exits = false;
-              break;
-            }
-          }
-          if (!dominates_all_exits) continue;
 
           u32  srcs[32];
           u32  nsrcs = get_source_registers(ins, srcs);
