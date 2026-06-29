@@ -113,6 +113,23 @@ typedef struct codegraph {
   u32 nvregs;
 } codegraph;
 
+typedef enum kit_name_kind {
+  KIT_NAME_LOCAL,       /* local vreg */
+  KIT_NAME_GLOBAL,      /* global slot (user declared global) */
+  KIT_NAME_BUILTIN_VAR, /* builtin constant variable */
+  KIT_NAME_CALLABLE,    /* function */
+} kit_name_kind;
+
+typedef struct kit_name_resolution {
+  kit_name_kind kind;
+  union {
+    kit_vreg_t reg;         /* LOCAL */
+    u32        global_id;   /* GLOBAL */
+    kit_var    builtin_val; /* BUILTIN_VAR */
+    u32        fn_hash;     /* CALLABLE */
+  };
+} kit_name_resolution;
+
 static ATTR_NODISCARD char* qualify_name(const kit_compiler* cc, const char* name);
 
 static ATTR_NODISCARD int codegraph_init(kit_arena* a, kit_compiler* cc, codegraph* dst);
@@ -282,6 +299,68 @@ scope_push(kit_compiler* cc)
 static void
 scope_pop(kit_compiler* cc)
 { cc->scope = cc->scope->parent; }
+
+static int
+resolve_name(kit_compiler* cc, u32 hash, const char* full, kit_name_resolution* out)
+{
+  for (u32 i = 0; i < cc->builtin_var_table->builtin_vars_count; i++) {
+    if (cc->builtin_var_table->builtin_var_hashes[i] != hash) continue;
+    const kit_builtin_var* bv = &cc->builtin_var_table->builtin_vars[i];
+    *out                      = (kit_name_resolution){ .kind = KIT_NAME_BUILTIN_VAR, .builtin_val = { .type = bv->type, .val = bv->value } };
+    return 0;
+  }
+
+  for (u32 i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
+    if (strcmp(kit_builtins_funcs[i].name, full) != 0) continue;
+    *out = (kit_name_resolution){ .kind = KIT_NAME_CALLABLE, .fn_hash = hash };
+    return 0;
+  }
+
+  for (u32 i = 0; i < cc->struct_table->structs_count; i++) {
+    if (cc->struct_table->structs[i].name_hash != hash) continue;
+    *out = (kit_name_resolution){ .kind = KIT_NAME_CALLABLE, .fn_hash = hash };
+    return 0;
+  }
+
+  for (u32 i = 0; i < cc->function_table->functions_count; i++) {
+    if (cc->function_table->functions[i].name_hash != hash) continue;
+    *out = (kit_name_resolution){ .kind = KIT_NAME_CALLABLE, .fn_hash = hash };
+    return 0;
+  }
+
+  kitc_var* v = scope_lookup_info(cc, hash);
+  if (!v) return -1;
+
+  if (v->is_global) {
+    *out = (kit_name_resolution){ .kind = KIT_NAME_GLOBAL, .global_id = v->slot.global_id };
+  } else {
+    *out = (kit_name_resolution){ .kind = KIT_NAME_LOCAL, .reg = v->slot.reg };
+  }
+  return 0;
+}
+
+static kit_vreg_t
+emit_name_load(kit_compiler* cc, const kit_name_resolution* r)
+{
+  switch (r->kind) {
+    case KIT_NAME_BUILTIN_VAR: return compile_and_push_literal_variable(cc, &r->builtin_val);
+
+    case KIT_NAME_CALLABLE: {
+      kit_vreg_t dst = vreg_alloc(cc);
+      kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = r->fn_hash } });
+      return dst;
+    }
+
+    case KIT_NAME_GLOBAL: {
+      kit_vreg_t dst = vreg_alloc(cc);
+      kit_emit_ins(cc, (kit_ins){ .getg = { .opcode = KIT_IR_OPCODE_GETG, .dst = dst, .src = r->global_id } });
+      return dst;
+    }
+
+    case KIT_NAME_LOCAL: return r->reg;
+  }
+  return -1;
+}
 
 /* the lesser the bias, the more likely it is to inline a function */
 // static int
@@ -637,8 +716,8 @@ value_init(kit_compiler* cc, int node, val_t* d)
       u32 id = kit_hash(name, strlen(name));
 
       for (u32 i = 0; i < cc->builtin_var_table->builtin_vars_count; i++) {
-        const kit_builtin_var* builtin_var      = &cc->builtin_var_table->builtin_vars[i];
-        u32                    builtin_var_hash = cc->builtin_var_table->builtin_var_hashes[i];
+        // const kit_builtin_var* builtin_var      = &cc->builtin_var_table->builtin_vars[i];
+        u32 builtin_var_hash = cc->builtin_var_table->builtin_var_hashes[i];
 
         if (builtin_var_hash == id) {
           l.span         = &KIT_GET_NODE(cc->ast, node)->common.span;
@@ -1511,6 +1590,34 @@ compile_binary_op(kit_compiler* cc, int node)
   if (opcode < 0) {
     cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Operator %u can not be used as a binary operator\n", KIT_GET_NODE(cc->ast, node)->binaryop.op);
     goto err;
+  }
+
+  /* handle && and || explicitly to support short circuiting */
+  if (opcode == KIT_IR_OPCODE_AND || opcode == KIT_IR_OPCODE_OR) {
+    u32 short_circuit_label = make_label_id(cc);
+    u32 end_label           = make_label_id(cc);
+
+    kit_vreg_t dst = vreg_alloc(cc);
+    kit_vreg_t lhs = compile(cc, left);
+    if (lhs < 0) goto err;
+
+    if (opcode == KIT_IR_OPCODE_AND) {
+      if (emit_and_record_jmp(cc, KIT_IR_OPCODE_JZ, lhs, short_circuit_label) < 0) { return -1; }
+    } else {
+      if (emit_and_record_jmp(cc, KIT_IR_OPCODE_JNZ, lhs, short_circuit_label) < 0) return -1;
+    }
+
+    kit_vreg_t rhs = compile(cc, right);
+    if (rhs < 0) goto err;
+
+    kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = dst, .src = rhs } });
+    if (emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, end_label) < 0) return -1;
+
+    define_and_emit_label(cc, short_circuit_label);
+    kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = dst, .src = lhs } });
+
+    define_and_emit_label(cc, end_label);
+    return dst;
   }
 
   /* optimization level 2 because requires a bit of work here and produces minimal gains */
@@ -2709,66 +2816,12 @@ compile_variable_load(kit_compiler* cc, int node)
   char* full = qualify_name(cc, KIT_GET_NODE(cc->ast, node)->ident.ident);
   u32   hash = kit_hash(full, strlen(full));
 
-  for (u32 i = 0; i < cc->builtin_var_table->builtin_vars_count; i++) {
-    const kit_builtin_var* builtin_var      = &cc->builtin_var_table->builtin_vars[i];
-    u32                    builtin_var_hash = cc->builtin_var_table->builtin_var_hashes[i];
-
-    if (builtin_var_hash == hash) {
-      /* Instantiate a builtin variable only if it is used. */
-      kit_var v = {
-        .type = builtin_var->type,
-        .val  = builtin_var->value,
-      };
-
-      return compile_and_push_literal_variable(cc, &v); // compile_literal_variable loads the value! Return.
-    }
-  }
-
-  for (u32 i = 0; i < KIT_ARRLEN(kit_builtins_funcs); i++) {
-    const kit_builtin_func* func = &kit_builtins_funcs[i];
-
-    if (strcmp(func->name, full) == 0) {
-      /* Builtin function, loadfn it and return */
-      kit_vreg_t dst = vreg_alloc(cc);
-      kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
-      return dst;
-    }
-  }
-
-  for (u32 i = 0; i < cc->struct_table->structs_count; i++) {
-    const kitc_struct_information* struct_info = &cc->struct_table->structs[i];
-
-    if (struct_info->name_hash == hash) {
-      /* Builtin function, loadfn it and return */
-      kit_vreg_t dst = vreg_alloc(cc);
-      kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
-      return dst;
-    }
-  }
-
-  for (u32 i = 0; i < cc->function_table->functions_count; i++) {
-    const kitc_function* func = &cc->function_table->functions[i];
-
-    if (func->name_hash == hash) {
-      /* Builtin function, loadfn it and return */
-      kit_vreg_t dst = vreg_alloc(cc);
-      kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = dst, .id = hash } });
-      return dst;
-    }
-  }
-
-  val_t lv;
-  int   e = value_init(cc, node, &lv);
-  if (e < 0) return e;
-
-  kit_vreg_t dst = emit_lvalue_load(cc, &lv);
-  if (e < 0) {
-    value_free(&lv);
+  kit_name_resolution res;
+  if (resolve_name(cc, hash, full, &res) < 0) {
+    cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Undeclared variable '%s'\n", full);
     return -1;
   }
-
-  value_free(&lv);
-  return dst;
+  return emit_name_load(cc, &res);
 }
 
 static kit_vreg_t

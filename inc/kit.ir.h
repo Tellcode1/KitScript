@@ -60,8 +60,8 @@ typedef enum kit_ir_opcode_bits {
   KIT_IR_OPCODE_EXP,
   KIT_IR_OPCODE_AND,
   KIT_IR_OPCODE_OR,
-  KIT_IR_OPCODE_BAND,
-  KIT_IR_OPCODE_BOR,
+  KIT_IR_OPCODE_BAND, /* Bitwise AND */
+  KIT_IR_OPCODE_BOR,  /* Bitwise OR */
   KIT_IR_OPCODE_XOR,
   KIT_IR_OPCODE_EQL,
   KIT_IR_OPCODE_NEQ,
