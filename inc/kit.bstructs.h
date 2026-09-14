@@ -52,8 +52,8 @@ static const kit_builtin_struct kit_builtins_structs[] = {
   { .name = "time::timestamp", .fields = (const char*[]){ "sec", "min", "hour", "day", "wday", "yday", "mon", "year" }, .fields_count = 8 },
 
   { .name         = "kit::exec_info",
-    .fields       = (const char*[]){ "source_code", "entry_point", "optimization_level", "arguments", "command_line_arguments" },
-    .fields_count = 5 },
+    .fields       = (const char*[]){ "source_code", "entry_point", "optimization_level", "arguments", "command_line_arguments", "libraries" },
+    .fields_count = 6 },
   { .name = "kit::structure", .fields = (const char*[]){ "num_members", "member_names" }, .fields_count = 2 },
   { .name = "kit::constant", .fields = (const char*[]){ "name", "value" }, .fields_count = 2 },
   { .name = "kit::operator", .fields = (const char*[]){ "chr", "is_compound" }, .fields_count = 2 }, // Token value

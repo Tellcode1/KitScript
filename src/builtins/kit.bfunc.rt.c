@@ -53,6 +53,7 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
     goto RET;
   }
 
+  /* Goto inc/kit.bstructs.h to modify the struct. */
   const kit_struct* st = KIT_VAR_AS_STRUCT(&args[0]);
 
   const char* code               = KIT_VAR_AS_STRING(kit_struct_get_member(strhash("source_code"), st))->s;
@@ -61,6 +62,7 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
 
   kit_list* arguments     = KIT_VAR_AS_LIST(kit_struct_get_member(strhash("arguments"), st));
   kit_list* cmd_arguments = KIT_VAR_AS_LIST(kit_struct_get_member(strhash("command_line_arguments"), st));
+  kit_list* libs          = KIT_VAR_AS_LIST(kit_struct_get_member(strhash("libraries"), st));
 
   e = kit_tokenize(code, "<RT compiled>", &interner, &tokens, &ntoks);
   if (e) {

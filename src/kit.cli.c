@@ -29,11 +29,13 @@
 #include "../inc/kit.cc.h"
 #include "../inc/kit.exec.h"
 #include "../inc/kit.lex.h"
+#include "../inc/kit.library.h"
 #include "../inc/kit.rwhelp.h"
 #include "../inc/kit.stdafx.h"
 #include "../inc/kit.strint.h"
 
 #include <assert.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -194,6 +196,12 @@ compile_to_obj(bool dont_write_file, int argc, char* argv[], kit_arena* arena, k
       compiler_option_set.disable_redundant_jump_elimination = true;
     } else if (strcmp(opt, "no-register-allocation-i-know-what-im-doing") == 0) {
       compiler_option_set.disable_register_allocation_i_know_what_im_doing = true;
+    }
+
+    /* providing library, we have no use for that here */
+    else if (strcmp(opt, "lib") == 0 || strcmp(opt, "l") == 0) {
+      i++;
+      continue;
     }
 
     else if (isnt_option) {
@@ -405,6 +413,12 @@ find_and_load_file(int argc, char* argv[], kit_compilation_result* r)
       opt++;
     }
 
+    if (strcmp(opt, "lib") == 0) {
+      /* skip library option and its name */
+      i++;
+      continue;
+    }
+
     if (!file && isnt_file) { // interpret first non option string as file
       file = argv[i];
     }
@@ -445,6 +459,34 @@ static const char* const help = "kitexec: [-e/r] [--entry ENTRYPOINT] <FILE/->\n
                                 "- If the - switch is used, program will be read from stdin";
 
 static int
+load_library(const char* path, kit_builtin_func** out_funcs, u32* out_count)
+{
+  void* handle = dlopen(path, RTLD_NOW);
+  if (!handle) {
+    fprintf(stderr, "dlopen: %s\n", dlerror());
+    return -1;
+  };
+
+  kit_library_entry_point_fn entry = (kit_library_entry_point_fn)dlsym(handle, "kit_library_entry_point");
+  if (!entry) {
+    fprintf(stderr, "dlsym: %s\n", dlerror());
+    return -1;
+  }
+
+  const kit_library_info* mod = entry();
+
+  kit_builtin_func* funcs = kit_xalloc(mod->nexports, sizeof(kit_builtin_func));
+  for (u32 i = 0; i < mod->nexports; i++) {
+    funcs[i].name = mod->exports[i].name;
+    funcs[i].func = mod->exports[i].funcp;
+  }
+
+  *out_funcs = funcs;
+  *out_count = mod->nexports;
+  return 0;
+}
+
+static int
 execute_obj(kit_compilation_result* obj, int argc, char* argv[])
 {
   // assert(argc == 2);
@@ -463,6 +505,9 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
   kit_var time_as_str = KIT_NULLVAR;
 
   kit_refdobj_pool object_pool = { 0 };
+
+  kit_builtin_func* library_funcs      = NULL;
+  u32               library_func_count = 0;
 
   int e = 0;
 
@@ -494,6 +539,32 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
       wants_to_print_return_value = true;
     } else if (strcmp(opt, "e") == 0 || strcmp(opt, "error") == 0) {
       interpret_return_value_as_error = true;
+    }
+
+    else if (strcmp(opt, "lib") == 0) {
+      if (i + 1 >= argc || !argv[i + 1]) {
+        print_err("Expected library name after -lib/-l\n");
+        goto RET;
+      }
+
+      i++;
+
+      kit_builtin_func* tmp_lib_funcs      = NULL;
+      u32               tmp_lib_func_count = 0;
+
+      if (load_library(argv[i], &tmp_lib_funcs, &tmp_lib_func_count)) {
+        print_err("Failed to load library: %s\n", argv[i]);
+        goto RET;
+      }
+
+      /* merge */
+      kit_builtin_func* new_lib_funcs = realloc(library_funcs, sizeof(kit_builtin_func) * (library_func_count + tmp_lib_func_count));
+      memcpy(new_lib_funcs + library_func_count, tmp_lib_funcs, sizeof(kit_builtin_func) * tmp_lib_func_count);
+
+      free(tmp_lib_funcs);
+
+      library_func_count += tmp_lib_func_count;
+      // fprintf(stderr, "Loaded %s (%u functions)\n", argv[i], builtin_func_count);
     }
   }
 
@@ -527,13 +598,14 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
     .code_count      = obj->instructions_count,
     .nliterals       = obj->literals_count,
     .nfuncs          = obj->functions_count,
-    .nextern_funcs   = 0,
-    .extern_funcs    = NULL,
     .names           = (const char**)obj->names,
     .names_hashes    = obj->names_hashes,
     .nnames          = obj->names_count,
     .structs         = obj->structs,
     .nstructs        = obj->structs_count,
+
+    .extern_funcs  = library_funcs,
+    .nextern_funcs = library_func_count,
   };
 
   kit_vm vm = { 0 };

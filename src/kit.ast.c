@@ -1649,6 +1649,9 @@ kit_ast_nud(kit_parser* p, const kit_token* tk)
     }
 
     case KIT_TOKEN_TYPE_EXTERN: {
+      /* handle extern fn [ident](); */
+      if (peek(p)->type == KIT_TOKEN_TYPE_FN) { next(p); }
+
       if (parse_function(p, true, node) < 0) {
         kit_ast_node_free(p->ast, node);
         return -1;

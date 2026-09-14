@@ -163,6 +163,7 @@ fn main() {
       /* optimization_level */ 0,
       /* arguments */ [],
       /* command_line_arguments */ [ "-123456789" ],
+      /* libraries */ []
    );
    let r = kit::compile_and_exec(exec_info);
    if (r != -123456789) {
