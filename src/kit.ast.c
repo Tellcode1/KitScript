@@ -1278,50 +1278,6 @@ ERR:
 }
 
 static RETURNS_ERRCODE int
-parse_namespace_call(kit_parser* p, int left, int node)
-{
-  u32  capacity = 16;
-  u32  nargs    = 0;
-  int* args     = kit_xalloc(capacity, sizeof(int));
-  if (!args) { goto ERR; }
-
-  next(p); // '('
-
-  while (peek(p) && peek(p)->type != KIT_TOKEN_TYPE_CLOSEPAREN) {
-    if (nargs >= capacity) {
-      u32  newcap   = MAX(capacity * 2, 1);
-      int* new_args = realloc(args, sizeof(int) * newcap);
-      if (!new_args) { goto ERR; }
-      args     = new_args;
-      capacity = newcap;
-    }
-
-    args[nargs++] = kit_ast_expr(p, 0);
-
-    if (peek(p)->type == KIT_TOKEN_TYPE_CLOSEPAREN) break;
-
-    if (kit_ast_expect(p, KIT_TOKEN_TYPE_COMMA)) {
-      asterror(prev(p)->span, "Expected ',' or ')' [qualified function call]\n");
-      goto ERR;
-    }
-  }
-
-  next(p); // ')'
-
-  KIT_GET_NODE(p->ast, node)->type       = KIT_AST_NODE_CALL;
-  KIT_GET_NODE(p->ast, node)->call.func  = left;
-  KIT_GET_NODE(p->ast, node)->call.args  = args;
-  KIT_GET_NODE(p->ast, node)->call.nargs = nargs;
-
-  return node;
-
-ERR:
-  for (u32 i = 0; i < nargs; i++) kit_ast_node_free(p->ast, args[i]);
-  free(args);
-  return -1;
-}
-
-static RETURNS_ERRCODE int
 parse_namespace_access(kit_parser* p, int leftidx, int node)
 {
   if (!peek(p) || peek(p)->type != KIT_TOKEN_TYPE_IDENT) {
@@ -1420,6 +1376,90 @@ ERR:
   for (u32 i = 0; i < nstmts; i++) kit_ast_node_free(p->ast, stmts[i]);
   free(stmts);
   return e ? e : -1;
+}
+
+static RETURNS_ERRCODE int
+parse_struct_fill(kit_parser* p, int left, int node)
+{
+  int* member_names    = NULL;
+  int* assigned_values = NULL;
+  u32  capacity        = 0;
+  u32  nmembers        = 0;
+
+  capacity     = 16;
+  nmembers     = 0;
+  member_names = kit_xalloc(capacity, sizeof(int));
+  if (!member_names) goto err;
+
+  assigned_values = kit_xalloc(capacity, sizeof(int));
+  if (!assigned_values) goto err;
+
+  KIT_GET_NODE(p->ast, node)->type = KIT_AST_NODE_STRUCT_FILL;
+
+  if (KIT_GET_NODE(p->ast, left)->type != KIT_AST_NODE_VARIABLE) {
+    asterror(KIT_GET_NODE(p->ast, left)->common.span, "Expected structure name\n");
+    goto err;
+  }
+  KIT_GET_NODE(p->ast, node)->struct_fill.struct_name = kit_str_intern(KIT_GET_NODE(p->ast, left)->ident.ident, p->ast->interner);
+
+  // fprintf(stderr, "left=%i structname=%s\n", left, KIT_GET_NODE(p->ast, node)->struct_fill.struct_name);
+
+  while (peek(p) && peek(p)->type != KIT_TOKEN_TYPE_CLOSEBRACE) {
+    if (nmembers >= capacity) {
+      u32 newcap = MAX(capacity * 2, 1);
+
+      int* new_member_names = realloc(member_names, newcap * sizeof(int));
+      if (new_member_names == NULL) goto err;
+
+      int* new_assigned_values = realloc(assigned_values, newcap * sizeof(int));
+      if (new_assigned_values == NULL) goto err;
+
+      u32 new_capacity = newcap;
+
+      member_names    = new_member_names;
+      assigned_values = new_assigned_values;
+      capacity        = new_capacity;
+    }
+
+    int member_name = kit_ast_expr(p, 0);
+    if (member_name < 0) goto err;
+
+    if (kit_ast_expect(p, KIT_TOKEN_TYPE_COLON)) {
+      asterror(prev(p)->span, "Expected '=' after member name, got '%s'\n", kit_token_type_to_string(prev(p)->type));
+      goto err;
+    }
+
+    int assigned_value = kit_ast_expr(p, 0);
+    if (assigned_value < 0) goto err;
+
+    // fprintf(stderr, "member=%s %u\n", KIT_GET_NODE(p->ast, member_name)->ident.ident, nmembers);
+
+    member_names[nmembers]    = member_name;
+    assigned_values[nmembers] = assigned_value;
+    nmembers++;
+
+    if (peek(p)->type == KIT_TOKEN_TYPE_CLOSEBRACE) { break; }
+
+    if (kit_ast_expect(p, KIT_TOKEN_TYPE_COMMA)) {
+      asterror(prev(p)->span, "Expected ',' or '}', got '%s'\n", kit_token_type_to_string(prev(p)->type));
+      goto err;
+    }
+  }
+  // consume }
+  next(p);
+
+  KIT_GET_NODE(p->ast, node)->struct_fill.members         = member_names;
+  KIT_GET_NODE(p->ast, node)->struct_fill.assigned_values = assigned_values;
+  KIT_GET_NODE(p->ast, node)->struct_fill.nmembers        = nmembers;
+
+  return node;
+
+err:
+  for (u32 i = 0; i < nmembers; i++) kit_ast_node_free(p->ast, member_names[i]);
+  for (u32 i = 0; i < nmembers; i++) kit_ast_node_free(p->ast, assigned_values[i]);
+  free(member_names);
+  free(assigned_values);
+  return -1;
 }
 
 int
@@ -1727,6 +1767,10 @@ kit_ast_led(kit_parser* p, const kit_token* tk, int leftidx, int rbp)
   switch (tk->type) {
     case KIT_TOKEN_TYPE_OPENPAREN:
       if (parse_function_call(p, leftidx, node) < 0) { return -1; }
+      return node;
+
+    case KIT_TOKEN_TYPE_OPENBRACE:
+      if (parse_struct_fill(p, leftidx, node) < 0) { return -1; }
       return node;
 
     case KIT_TOKEN_TYPE_EQUAL: {

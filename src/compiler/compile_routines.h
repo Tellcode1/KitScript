@@ -40,6 +40,7 @@ RETURNS_ERRCODE kit_vreg_t compile_builtin_structures(kit_compiler* cc);
 RETURNS_ERRCODE kit_vreg_t compile_function(kit_compiler* cc, int node);
 RETURNS_ERRCODE kit_vreg_t compile_root(kit_compiler* cc, int node);
 RETURNS_ERRCODE kit_vreg_t compile_struct_constructor(kit_compiler* fork, kit_filespan span, const kitc_struct_information* struc);
+RETURNS_ERRCODE kit_vreg_t compile_struct_fill(kit_compiler* cc, int node);
 RETURNS_ERRCODE kit_vreg_t compile(kit_compiler* cc, int node);
 
 #endif // KIT_COMPILER_ROUTINES_H

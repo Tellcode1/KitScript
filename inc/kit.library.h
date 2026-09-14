@@ -16,7 +16,7 @@ typedef struct kit_library_info {
 } kit_library_info;
 
 /* Your library must expose this!! It will be loaded through dlsym */
-const kit_library_info* kit_library_entry_point();
+const kit_library_info* kit_library_entry_point(void);
 typedef const kit_library_info* (*kit_library_entry_point_fn)(void);
 
 #endif // KIT_LIBRARY_H

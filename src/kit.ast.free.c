@@ -83,6 +83,13 @@ kit_ast_node_free(kit_ast* p, int id)
       free(node->call.args);
       break;
 
+    case KIT_AST_NODE_STRUCT_FILL:
+      for (u32 i = 0; i < node->struct_fill.nmembers; i++) kit_ast_node_free(p, node->struct_fill.members[i]);
+      for (u32 i = 0; i < node->struct_fill.nmembers; i++) kit_ast_node_free(p, node->struct_fill.assigned_values[i]);
+      free(node->struct_fill.members);
+      free(node->struct_fill.assigned_values);
+      break;
+
     case KIT_AST_NODE_ASSERT:
       free(node->assertion.assertion_line);
       kit_ast_node_free(p, node->assertion.stmt);

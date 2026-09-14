@@ -245,7 +245,10 @@ compile_function(kit_compiler* cc, int node)
   u32  nstmts = KIT_GET_NODE(cc->ast, node)->func.nstmts;
   int* stmts  = KIT_GET_NODE(cc->ast, node)->func.stmts;
   for (u32 i = 0; i < nstmts; i++) {
-    if (compile(cc, stmts[i]) < 0) return -1;
+    if (compile(cc, stmts[i]) < 0) {
+      cerror(KIT_GET_NODE(cc->ast, stmts[i])->common.span, "Failed to compile statement [function]\n");
+      return -1;
+    }
 
     /**
      * OPTIMIZATION: If we're in the function stream,
@@ -255,11 +258,7 @@ compile_function(kit_compiler* cc, int node)
     // if (cc->info->opt_level >= 1) pop_value_if_pushes(cc, stmts[i]);
   }
 
-  kit_var    nil    = KIT_NULLVAR;
-  kit_vreg_t nilvar = compile_and_push_literal_variable(cc, &nil);
-  if (nilvar < 0) return nilvar;
-
-  kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = KIT_IR_OPCODE_RET, .return_value = nilvar } });
+  kit_emit_ins(cc, (kit_ins){ .ret = { .opcode = KIT_IR_OPCODE_RET, .return_value = KIT_REG_NIL } });
   return 0;
 }
 
@@ -312,6 +311,83 @@ ERR:
   free((void*)st.field_names);
   compiler_free_fork_entirely(&fork);
   return e >= 0 ? -1 : e;
+}
+
+RETURNS_ERRCODE kit_vreg_t
+compile_struct_fill(kit_compiler* cc, int node)
+{
+  kit_vreg_t dst = vreg_alloc(cc);
+
+  /* lookup which structure we're filling */
+  const char* struct_name = KIT_GET_NODE(cc->ast, node)->struct_fill.struct_name;
+  u32         struct_hash = kit_hash(struct_name, strlen(struct_name));
+
+  int* member_names    = KIT_GET_NODE(cc->ast, node)->struct_fill.members;
+  int* assigned_values = KIT_GET_NODE(cc->ast, node)->struct_fill.assigned_values;
+
+  u32 nfilled_values = KIT_GET_NODE(cc->ast, node)->struct_fill.nmembers;
+
+  kitc_struct_information* si = NULL;
+
+  for (u32 i = 0; i < cc->struct_table->structs_count; i++) {
+    if (cc->struct_table->structs[i].name_hash != struct_hash) continue;
+
+    si = &cc->struct_table->structs[i];
+    break;
+  }
+
+  if (si == NULL) {
+    cerror(KIT_GET_NODE(cc->ast, node)->common.span, "Structure %s undefined [Structure fill]\n", struct_name);
+    return -1;
+  }
+
+  for (u32 i = 0; i < si->fields_count; i++) {
+    const char* field = si->field_names[i];
+
+    u32  idx   = 0;
+    bool found = false;
+    for (u32 j = 0; j < nfilled_values; j++) {
+      const char* member_name = KIT_GET_NODE(cc->ast, member_names[j])->ident.ident;
+
+      if (strcmp(member_name, field) == 0) {
+        idx   = j;
+        found = true;
+        break;
+      }
+    }
+
+    /* Aren't filling in the value at idx. Move null to it */
+    if (!found) {
+      /* mov arg+i, nil */
+      /* +i and not +idx since i is the member we have to fill */
+      if (i < KIT_REG_ARG_COUNT) {
+        kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = KIT_REG_NIL } });
+      } else {
+        kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = KIT_REG_NIL } });
+      }
+      continue;
+    }
+
+    /* We're filling in the value at idx */
+    /* Compile and move to argument vector */
+    kit_vreg_t compiled = compile(cc, assigned_values[idx]);
+
+    if (i < KIT_REG_ARG_COUNT) {
+      /* mov arg+i, compiled */
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = compiled } });
+    } else {
+      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = compiled } });
+    }
+  }
+
+  /* Call the constructor */
+
+  /* Loadfn the struct constructor in a temp register and call it */
+  kit_vreg_t tmp = vreg_alloc(cc);
+  kit_emit_ins(cc, (kit_ins){ .loadfn = { .opcode = KIT_IR_OPCODE_LOADFN, .dst = tmp, .id = struct_hash } });
+  kit_emit_ins(cc, (kit_ins){ .call = { .opcode = KIT_IR_OPCODE_CALL, .dst = dst, .nargs = si->fields_count, .reg = tmp } });
+
+  return dst;
 }
 
 /**
@@ -388,6 +464,7 @@ compile(kit_compiler* cc, int node)
     case KIT_AST_NODE_WHILE: return compile_while_statement(cc, node);
     case KIT_AST_NODE_IF: return compile_if_statement(cc, node);
     case KIT_AST_NODE_STRUCT_DECL: return compile_struct_decleration(cc, node);
+    case KIT_AST_NODE_STRUCT_FILL: return compile_struct_fill(cc, node);
     case KIT_AST_NODE_MEMBER_ACCESS: return compile_member_access(cc, node);
     case KIT_AST_NODE_MEMBER_ASSIGN: return compile_member_assign(cc, node);
     case KIT_AST_NODE_NAMESPACE_DECL: return compile_namespace_decleration(cc, node);
@@ -441,7 +518,11 @@ compile(kit_compiler* cc, int node)
       return 0;
     }
 
-    default: return -1;
+    default: {
+      kit_filespan span = KIT_GET_NODE(cc->ast, node)->common.span;
+      cerror(span, "Unknown node type: %i\n", KIT_GET_NODE(cc->ast, node)->common.type);
+      return -1;
+    }
   }
 }
 

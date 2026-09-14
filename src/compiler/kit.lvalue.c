@@ -158,7 +158,7 @@ value_free(val_t* lv)
   memset(lv, 0, sizeof(*lv));
 }
 
-inline int
+int
 emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
 {
   switch (lv->type) {

@@ -15,7 +15,7 @@
       "program": "${workspaceRoot}/build/kscript",
       "args": [
         "-cx",
-        "examples/epicLibCaller.k",
+        "struct.k",
       ],
       "stopOnEntry": false,
       "cwd": "${workspaceFolder}",

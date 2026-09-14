@@ -66,6 +66,15 @@ typedef enum kit_ast_nodetype {
   KIT_AST_NODE_NAMESPACE_DECL,
   KIT_AST_NODE_STRUCT_DECL,
 
+  /**
+   * Fill members of a structure by name
+   * For example: vec2{
+   *    x : 0.0,
+   *    y : 1.0
+   * }
+   */
+  KIT_AST_NODE_STRUCT_FILL,
+
   KIT_AST_NODE_CALL,
   KIT_AST_NODE_INT,
   KIT_AST_NODE_CHAR,
@@ -358,6 +367,15 @@ typedef union kit_ast_node_val {
   } for_range_stmt;
 
   kit_if_stmt if_stmt;
+
+  struct {
+    kit_ast_node_type type;
+    kit_filespan      span;
+    int*              members;
+    int*              assigned_values;
+    u32               nmembers;
+    const char*       struct_name;
+  } struct_fill;
 } kit_ast_node_val;
 
 typedef kit_ast_node_val kit_ast_node;

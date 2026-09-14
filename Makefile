@@ -1,6 +1,6 @@
-CC=gcc
-CFLAGS ?= -std=c99 -Wall -Wpedantic -g3 -fPIC
-LDFLAGS ?= -lm -Wall -Wpedantic -g3
+CC=clang
+CFLAGS ?= -std=c99 -Wall -Wpedantic -g3 -fPIC -fsanitize=address,undefined
+LDFLAGS ?= -lm -Wall -Wpedantic -g3 -fsanitize=address,undefined
 PREFIX?=/usr/bin/
 
 SRC_DIR=src

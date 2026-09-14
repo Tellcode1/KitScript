@@ -499,7 +499,6 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
 
   bool wants_to_print_return_value     = false;
   bool interpret_return_value_as_error = false;
-  bool run_from_stdin                  = false;
 
   kit_var time_now    = KIT_NULLVAR;
   kit_var time_as_str = KIT_NULLVAR;
@@ -511,23 +510,12 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
 
   int e = 0;
 
-  const char* file = NULL;
   for (int i = 1; i < argc; i++) {
     const char* opt = argv[i];
-    if (strcmp(opt, "-") == 0) {
-      run_from_stdin = true;
-      continue;
-    }
+    if (strcmp(opt, "-") == 0) { continue; }
 
-    bool isnt_file = true;
-    if (*opt == '-') {
-      isnt_file = false;
-      opt++;
-    }
-    if (*opt == '-') {
-      isnt_file = false;
-      opt++;
-    }
+    if (*opt == '-') { opt++; }
+    if (*opt == '-') { opt++; }
 
     if (strcmp(opt, "entry") == 0 && i + 1 < argc) {
       entry_point = argv[i + 1];
@@ -702,7 +690,7 @@ main(int argc, char* argv[])
       kit_compilation_result obj = { 0 };
       if (find_and_load_file(argc, argv, &obj)) { goto RET; }
 
-      int e = execute_obj(&obj, argc, argv);
+      (void)execute_obj(&obj, argc, argv);
 
       kit_compilation_result_free(&obj);
 

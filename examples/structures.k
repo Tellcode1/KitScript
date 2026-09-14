@@ -31,4 +31,15 @@ fn main() {
    fvec.v2 = rand::vec2();
    fvec.v3 = rand::vec2();
    println(fvec);
+
+   struct Fill {
+      let a;
+      let b;
+   };
+
+   let filled = Fill{};
+   println(filled);
+
+   filled = Fill{ a:10, b:20 };
+   println(filled);
 }

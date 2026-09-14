@@ -25,7 +25,7 @@ typedef struct kit_name_resolution {
  * Use the namespace stack to build
  * a fully qualified name for the variable.
  */
-static char*
+static inline char*
 qualify_name(const kit_compiler* cc, const char* name)
 {
   size_t len = strlen(name) + 1;
@@ -48,7 +48,7 @@ qualify_name(const kit_compiler* cc, const char* name)
   return out;
 }
 
-static kit_vreg_t
+static inline kit_vreg_t
 scope_define(kit_compiler* cc, kit_filespan span, const char* name, bool is_const)
 {
   kit_vreg_t reg = vreg_alloc(cc);
@@ -70,7 +70,7 @@ scope_define(kit_compiler* cc, kit_filespan span, const char* name, bool is_cons
   return v->is_global ? (kit_vreg_t)v->slot.global_id : v->slot.reg;
 }
 
-static void
+static inline void
 scope_define_in_register(kit_compiler* cc, kit_vreg_t reg, kit_filespan span, const char* name, bool is_const)
 {
   kitc_var* v     = (kitc_var*)kit_arnalloc(cc->arena, sizeof(kitc_var));
@@ -86,7 +86,7 @@ scope_define_in_register(kit_compiler* cc, kit_vreg_t reg, kit_filespan span, co
   v->slot.reg = reg;
 }
 
-static int
+static inline int
 scope_lookup_reg(kit_compiler* cc, u32 hash)
 {
   kitc_scope* s = cc->scope;
@@ -101,7 +101,7 @@ scope_lookup_reg(kit_compiler* cc, u32 hash)
   return -1;
 }
 
-static kitc_var*
+static inline kitc_var*
 scope_lookup_info(kit_compiler* cc, u32 hash)
 {
   kitc_scope* s = cc->scope;
@@ -116,7 +116,7 @@ scope_lookup_info(kit_compiler* cc, u32 hash)
   return NULL;
 }
 
-static void
+static inline void
 scope_push(kit_compiler* cc)
 {
   kitc_scope* s = (kitc_scope*)kit_arnalloc(cc->arena, sizeof(kitc_scope));
@@ -125,7 +125,7 @@ scope_push(kit_compiler* cc)
   cc->scope     = s;
 }
 
-static void
+static inline void
 scope_pop(kit_compiler* cc)
 { cc->scope = cc->scope->parent; }
 
