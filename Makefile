@@ -39,6 +39,5 @@ $(BUILD_DIR)/%.eb: %.e $(BUILD_DIR)/ec | $(BUILD_DIR)
 clean:
 	rm -rf $(BUILD_DIR)
 
-install: $(BUILD_DIR)/kitc $(BUILD_DIR)/kitexec
-	ln -sf -T $(realpath $(BUILD_DIR)/kitc) $(PREFIX)/kitc
-	ln -sf -T $(realpath $(BUILD_DIR)/kitexec) $(PREFIX)/kitexec
+install: $(BUILD_DIR)/kscript
+	ln -sf -T $(realpath $(BUILD_DIR)/kscript) $(PREFIX)/kscript

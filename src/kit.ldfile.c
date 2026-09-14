@@ -401,9 +401,9 @@ kit_file_write(const kit_compilation_result* r, FILE* f)
 }
 
 kit_file_read_error
-kit_file_load(kit_compilation_result* r, void** root_allocation, FILE* f)
+kit_file_load(kit_compilation_result* r, FILE* f)
 {
-  *root_allocation = NULL;
+  r->root_allocation = NULL;
 
   memset(r, 0, sizeof(kit_compilation_result));
 
@@ -419,10 +419,10 @@ kit_file_load(kit_compilation_result* r, void** root_allocation, FILE* f)
     fprintf(stderr, "[%s:%i] Warning: Loading a file with requested size > INT32_MAX. Possible file corruption. Continuing.\n", __FILE__, __LINE__);
   }
 
-  *root_allocation = kit_xalloc(bytes_req, 1);
-  if (*root_allocation == NULL) return KIT_FILE_READ_ERR_ROOT_ALLOCATION_FAILED;
+  r->root_allocation = kit_xalloc(bytes_req, 1);
+  if (r->root_allocation == NULL) return KIT_FILE_READ_ERR_ROOT_ALLOCATION_FAILED;
 
-  uchar* alloc = (uchar*)*root_allocation;
+  uchar* alloc = (uchar*)r->root_allocation;
 
   if (fread(&r->literals_count, sizeof(r->literals_count), 1, f) != 1) goto ERR;
 
@@ -583,8 +583,8 @@ kit_file_load(kit_compilation_result* r, void** root_allocation, FILE* f)
   return KIT_FILE_READ_SUCCESS;
 
 ERR:
-  free(*root_allocation);
-  *root_allocation = NULL;
+  free(r->root_allocation);
+  r->root_allocation = NULL;
   return KIT_FILE_READ_ERR_INVALID_FILE;
 }
 

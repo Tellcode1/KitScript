@@ -94,4 +94,10 @@ bool codegraph_local_dead_store_elimination(struct kit_compiler* cc, codegraph* 
 bool codegraph_loop_invariant_code_motion(struct kit_compiler* cc, codegraph* cfg);
 bool codegraph_argument_vector_move_coalescing(struct kit_compiler* cc, codegraph* cfg);
 
+/**
+ * Remove any functions that are not used throught all the functions in cc.
+ * This function is only expected to be called on the root stream.
+ */
+bool codegraph_root_unused_function_elimination(struct kit_compiler* cc, codegraph* cfg);
+
 #endif // KIT_COMPILER_CODEGRAPH_H

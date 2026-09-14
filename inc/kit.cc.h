@@ -294,6 +294,9 @@ typedef struct kit_compiler {
 } kit_compiler;
 
 typedef struct kit_compilation_result {
+  /* If not NULL, the single allocation that we're using. You will only need to free this. */
+  void* root_allocation;
+
   u32 literals_count;
   u32 functions_count;
   u32 instructions_count;
@@ -330,6 +333,13 @@ kitc_stream_resize(kit_compiler* cc, u32 new_cap)
 static inline void
 kit_compilation_result_free(kit_compilation_result* r)
 {
+  /* using a single allocation, free it and return */
+  if (r->root_allocation != NULL) {
+    free(r->root_allocation);
+    memset(r, 0, sizeof(*r));
+    return;
+  }
+
   for (u32 i = 0; i < r->functions_count; i++) { free(r->functions[i].code); }
   for (u32 i = 0; i < r->names_count; i++) { free(r->names[i]); }
   for (u32 i = 0; i < r->structs_count; i++) {

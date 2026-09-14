@@ -381,7 +381,7 @@ find_func(const char* name, u32 nfuncs, const kitc_function* funcs, kitc_functio
 }
 
 static inline int
-find_and_load_file(int argc, char* argv[], kit_compilation_result* r, void** root_allocation)
+find_and_load_file(int argc, char* argv[], kit_compilation_result* r)
 {
   FILE* f              = NULL;
   int   e              = 0;
@@ -426,7 +426,7 @@ find_and_load_file(int argc, char* argv[], kit_compilation_result* r, void** roo
     goto RET;
   }
 
-  e = kit_file_load(r, root_allocation, f);
+  e = kit_file_load(r, f);
   if (e) {
     print_err("Failed to parse input file: 0x%x\n", e);
     goto RET;
@@ -627,20 +627,17 @@ main(int argc, char* argv[])
       goto RET;
     }
     if (strcmp(opt, "e") == 0 || strcmp(opt, "exec") == 0) {
-      kit_compilation_result obj             = { 0 };
-      void*                  root_allocation = NULL;
-      if (find_and_load_file(argc, argv, &obj, &root_allocation)) { goto RET; }
+      kit_compilation_result obj = { 0 };
+      if (find_and_load_file(argc, argv, &obj)) { goto RET; }
 
       int e = execute_obj(&obj, argc, argv);
 
       kit_compilation_result_free(&obj);
-      free(root_allocation);
 
       goto RET;
     }
     if (strcmp(opt, "cx") == 0 || strcmp(opt, "compile-and-exec") == 0) {
-      kit_compilation_result obj             = { 0 };
-      void*                  root_allocation = NULL;
+      kit_compilation_result obj = { 0 };
 
       /* Don't write to file since we're executing the program directly */
       int e = compile_to_obj(true, argc, argv, &arena, &obj);
@@ -649,7 +646,6 @@ main(int argc, char* argv[])
       e = execute_obj(&obj, argc, argv);
 
       kit_compilation_result_free(&obj);
-      free(root_allocation);
 
       goto RET;
     }

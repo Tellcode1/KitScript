@@ -60,7 +60,7 @@ typedef enum kit_file_read_error {
 void    kit_emit_ins(kit_compiler* cc, kit_ins ins);
 kit_ins kit_read_ins(const u8** ip);
 
-kit_file_read_error kit_file_load(kit_compilation_result* r, void** root_allocation, FILE* f);
+kit_file_read_error kit_file_load(kit_compilation_result* r, FILE* f);
 
 u32  kit_file_bytes_required(const kit_compilation_result* r);
 void kit_file_write(const kit_compilation_result* r, FILE* f);

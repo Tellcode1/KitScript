@@ -14,8 +14,8 @@
       // ],
       "program": "${workspaceRoot}/build/kscript",
       "args": [
-        "-cx",
-        "examples/testbed.k",
+        "-e",
+        "lib",
       ],
       "stopOnEntry": false,
       "cwd": "${workspaceFolder}",
