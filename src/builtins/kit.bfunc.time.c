@@ -57,10 +57,7 @@ static double
 pl_now(void)
 {
   struct timespec ts;
-
-#  if defined(CLOCK_REALTIME)
   clock_gettime(CLOCK_REALTIME, &ts);
-#  endif
 
   return (double)ts.tv_sec + ((double)ts.tv_nsec / 1e9);
 }
@@ -132,7 +129,7 @@ kit_builtins_time_local(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 
   memcpy(&t, tmp, sizeof(struct tm));
 
-  kit_var s   = { 0 };
+  kit_var s   = KIT_NULLVAR;
   s.type      = KIT_VARTYPE_STRUCT;
   s.val.struc = kit_refdobj_pool_acquire(vm->pool);
 
@@ -168,7 +165,7 @@ kit_builtins_time_utc(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 
   memcpy(&t, tmp, sizeof(struct tm));
 
-  kit_var s   = { 0 };
+  kit_var s   = KIT_NULLVAR;
   s.type      = KIT_VARTYPE_STRUCT;
   s.val.struc = kit_refdobj_pool_acquire(vm->pool);
 

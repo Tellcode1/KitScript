@@ -17,8 +17,7 @@ typedef union kit_lval_value {
   struct {
     u32   id;
     char* name; // allocated
-  } var;
-  u32 gvar;
+  } var, gvar;
   struct {
     int         base;
     u32         member_hash;

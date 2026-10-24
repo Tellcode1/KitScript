@@ -6,6 +6,7 @@
 
 struct kit_arena;
 struct kit_compiler;
+struct kitc_function;
 union kit_ins;
 
 typedef struct codeblock {
@@ -72,8 +73,6 @@ u32  get_source_registers(const union kit_ins* i, u32 sources[32]);
 
 u32 next_real_ins(struct kit_compiler* cc, u32 start);
 
-void opt_inline_function_calls(struct kit_compiler* cc);
-
 bool is_instruction_impure(kit_ir_opcode op);
 bool is_instruction_noop(kit_ir_opcode opcode);
 
@@ -93,6 +92,11 @@ bool codegraph_local_copy_propagation(struct kit_compiler* cc, codegraph* cfg);
 bool codegraph_local_dead_store_elimination(struct kit_compiler* cc, codegraph* cfg);
 bool codegraph_loop_invariant_code_motion(struct kit_compiler* cc, codegraph* cfg);
 bool codegraph_argument_vector_move_coalescing(struct kit_compiler* cc, codegraph* cfg);
+
+/**
+ * Called by constant propogation when it knows the callee.
+ */
+bool codegraph_inline_one_call(struct kit_compiler* cc, u32 call_ip, const struct kitc_function* callee);
 
 /**
  * Remove any functions that are not used throught all the functions in cc.

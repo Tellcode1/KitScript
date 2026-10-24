@@ -14,8 +14,9 @@
       // ],
       "program": "${workspaceRoot}/build/kscript",
       "args": [
-        "-cx",
-        "struct.k",
+        "-x",
+        "-O3",
+        "examples/benchmark.k",
       ],
       "stopOnEntry": false,
       "cwd": "${workspaceFolder}",

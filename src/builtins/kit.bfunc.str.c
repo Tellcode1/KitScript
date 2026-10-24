@@ -72,9 +72,9 @@ kit_builtins_str_substr(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
   int         len   = kit_cast_to_int(&args[2]);
 
   size_t s_len = strlen(s);
-  if (start > s_len) {
+  if (start > s_len || start + len > strlen(s)) {
     *result = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = -1 };
-    return KIT_OK;
+    return KIT_ERANGE;
   }
 
   size_t copy_len = MIN(len, s_len - start);

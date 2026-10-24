@@ -3,6 +3,15 @@
 #include "../../../inc/kit.cc.h"
 #include "../../../inc/kit.reg.h"
 
+static void
+invalidate_copies(u32* copy_map, u32 nregs, u32 reg)
+{
+  copy_map[reg] = reg;
+  for (u32 r = 0; r < nregs; r++) {
+    if (copy_map[r] == reg) copy_map[r] = r;
+  }
+}
+
 bool
 codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
 {
@@ -138,16 +147,14 @@ codegraph_local_copy_propagation(kit_compiler* cc, codegraph* cfg)
           if (dst == src) {
             ins->opcode = KIT_IR_OPCODE_NOP;
             changed     = true;
-          } else if (src < KIT_REG_GENERAL_BEGIN) {
-            copy_map[dst] = dst; /* fixed registers always die in any circumstance */
-            changed       = true;
           } else {
-            copy_map[dst] = src;
-            changed       = true;
+            invalidate_copies(copy_map, cc->next_vreg, dst);
+            if (src >= KIT_REG_GENERAL_BEGIN) copy_map[dst] = src;
+            changed = true;
           }
         } else {
           /* kill the old value */
-          copy_map[dst] = dst;
+          invalidate_copies(copy_map, cc->next_vreg, dst);
         }
       }
     }

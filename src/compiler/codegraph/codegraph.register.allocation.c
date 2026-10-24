@@ -300,7 +300,7 @@ era_rewrite(kit_compiler* cc, const u32* vreg_to_phys)
       }
 
       case KIT_IR_OPCODE_LOADK: MAP(ins.loadk.dst); break;
-      // case KIT_IR_OPCODE_LOADK: break;
+
       case KIT_IR_OPCODE_ADD:
       case KIT_IR_OPCODE_SUB:
       case KIT_IR_OPCODE_MUL:

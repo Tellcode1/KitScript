@@ -15,12 +15,12 @@ fn main()
 
     defer io::close(fd);
 
-    // why this no work?
-    let line = null;
-    while (line = io::readln(fd))
+    // declare a variable line every iteration of the loop.
+    while (let line = io::readln(fd))
     {
       println(line);
     }
+
 
     // Flush stdout after each file.
     io::flush(io::STDOUT);

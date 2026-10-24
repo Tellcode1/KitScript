@@ -75,18 +75,18 @@ kit_refdobj_pool_free(kit_refdobj_pool* pool)
 static inline int
 first_unset_bit_in_array(const u32* x, u32 n, u32* word_idx, u32* bit_idx)
 {
-#if defined(__has_builtin) && __has_builtin(__builtin_ctzl)
+#if defined(__has_builtin) && __has_builtin(__builtin_ctz)
   for (u32 i = 0; i < n; i++) {
     if (x[i] == 0xFFFFFFFF) continue;
     if (word_idx) *word_idx = i;
-    if (bit_idx) *bit_idx = __builtin_ctzl(~x[i]);
+    if (bit_idx) *bit_idx = __builtin_ctz(~x[i]);
     return 0;
   }
 #else
   for (u32 j = 0; j < n; j++) {
-    for (u32 i = 0; i < sizeof(u32) * 8; i++) {
+    for (u32 i = 0; i < 32; i++) {
       if (!(x[j] & (1 << i))) {
-        if (byte_idx) *byte_idx = j;
+        if (word_idx) *word_idx = j;
         if (bit_idx) *bit_idx = i;
         return 0;
       }
@@ -115,22 +115,23 @@ kit_refdobj_pool_acquire(kit_refdobj_pool* pool)
         (void*)pool->branches, old_branch_count * sizeof(kit_refdobj_branch*), new_branch_count * sizeof(kit_refdobj_branch*), 16);
     if (!new_branches) return NULL;
 
+    pool->branches = new_branches;
+
     u32* new_free_lists = KIT_ARR_REALLOC(pool->in_use_masks, u32, new_branch_count);
     if (!new_free_lists) return NULL;
 
-    pool->branches     = new_branches;
     pool->in_use_masks = new_free_lists;
-    pool->nbranches    = new_branch_count;
 
-    for (u32 i = pool->nbranches; i < new_branch_count; i++) { pool->in_use_masks[i] = 0; }
+    for (u32 i = old_branch_count; i < new_branch_count; i++) pool->in_use_masks[i] = 0;
 
     /* Setup all new branches. Running from old branch count to new branch count. */
-    for (u32 i = old_branch_count; i < pool->nbranches; i++) {
+    for (u32 i = old_branch_count; i < new_branch_count; i++) {
       pool->branches[i] = (kit_refdobj_branch*)kit_aligned_malloc(sizeof(kit_refdobj_branch), 16);
       if (!pool->branches[i]) return NULL;
 
       branch_init(pool, pool->branches[i]);
     }
+    pool->nbranches = new_branch_count;
 
     /* Recurse */
     return kit_refdobj_pool_acquire(pool);

@@ -49,15 +49,10 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
     for (u32 i = blk->start; i <= blk->end; i++) {
       kit_ins* ins = &cc->instructions[i];
 
-      if (ins->opcode == KIT_IR_OPCODE_CALL) {
-        memset(values_known, 0, nvregs * sizeof(bool));
-        values_known[ins->call.dst] = false;
-        continue;
-      }
-
       /* impure instruction. flush state and move on. */
       if (ins->opcode != KIT_IR_OPCODE_LABEL && ins->opcode != KIT_IR_OPCODE_INDEX_ASSIGN && ins->opcode != KIT_IR_OPCODE_MEMBER_ASSIGN
-          && ins->opcode != KIT_IR_OPCODE_JZ && ins->opcode != KIT_IR_OPCODE_JNZ && is_instruction_impure(ins->opcode)) {
+          && ins->opcode != KIT_IR_OPCODE_JZ && ins->opcode != KIT_IR_OPCODE_JNZ && ins->opcode != KIT_IR_OPCODE_CALL
+          && is_instruction_impure(ins->opcode)) {
         /* this is the first optimization pass, assume jumps wreck all registers */
         memset(values_known, 0, nvregs * sizeof(bool));
         continue;
@@ -68,8 +63,10 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
         case KIT_IR_OPCODE_LOADFN: {
           u32 dst = ins->loadfn.dst;
+          u32 id  = ins->loadfn.id;
 
-          values_known[dst] = false;
+          values_known[dst] = true;
+          regs[dst]         = (kit_var){ .type = KIT_VARTYPE_FUNCTION, .val.func = { .hash = id } };
 
           break;
         }
@@ -130,7 +127,19 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
             replace_move_with_constant_load(cc, cfg, ins, dst, &regs[dst]);
             break;
           }
-          /* fallthrough */
+
+          bool values_are_equal = false;
+
+          if (values_known[a] && values_known[b]) {
+            values_are_equal = kit_var_equal(&regs[a], &regs[b]);
+            regs[dst]        = kit_var_from_bool(ins->opcode == KIT_IR_OPCODE_EQL ? values_are_equal : !values_are_equal);
+            replace_move_with_constant_load(cc, cfg, ins, dst, &regs[dst]);
+            values_known[dst] = true;
+            changed           = true;
+            break;
+          }
+          values_known[dst] = false;
+          break;
         }
 
         case KIT_IR_OPCODE_ADD:
@@ -197,19 +206,19 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
           values_known[dst] = false; // set when we find it.
 
-          for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
-            kit_var* lit = &cc->lit_table->literals[j];
-            if (cc->lit_table->literal_hashes[j] != id) continue;
+          // for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
+          //   kit_var* lit = &cc->lit_table->literals[j];
+          //   if (cc->lit_table->literal_hashes[j] != id) continue;
 
-            kit_var tmp = *lit;
-            replace_move_with_constant_load(cc, cfg, ins, ins->loadk.dst, lit);
+          //   kit_var tmp = *lit;
+          //   replace_move_with_constant_load(cc, cfg, ins, ins->loadk.dst, lit);
 
-            changed           = true;
-            regs[dst]         = tmp;
-            values_known[dst] = true;
+          //   changed           = true;
+          //   regs[dst]         = tmp;
+          //   values_known[dst] = true;
 
-            break;
-          }
+          //   break;
+          // }
 
           break;
         }
@@ -220,9 +229,11 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
 
           if (values_known[cond_reg] && kit_cast_to_bool(&regs[cond_reg])) {
             ins->opcode = KIT_IR_OPCODE_NOP;
+            changed     = true;
           } else if (values_known[cond_reg] && !kit_cast_to_bool(&regs[cond_reg])) {
             ins->opcode     = KIT_IR_OPCODE_JMP;
             ins->jmp.target = target;
+            changed         = true;
           }
 
           memset(values_known, 0, nvregs * sizeof(bool));
@@ -235,8 +246,10 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
           if (values_known[cond_reg] && kit_cast_to_bool(&regs[cond_reg])) {
             ins->opcode     = KIT_IR_OPCODE_JMP;
             ins->jmp.target = target;
+            changed         = true;
           } else if (values_known[cond_reg] && !kit_cast_to_bool(&regs[cond_reg])) {
             ins->opcode = KIT_IR_OPCODE_NOP;
+            changed     = true;
           }
 
           memset(values_known, 0, nvregs * sizeof(bool));
@@ -257,7 +270,46 @@ codegraph_local_constant_propagation(kit_compiler* cc, codegraph* cfg)
           break;
         }
 
-        default: break;
+        case KIT_IR_OPCODE_CALL: {
+          u32 dst = ins->call.dst;
+          u32 reg = ins->call.reg;
+
+          /* know which function is being called */
+          if (!values_known[reg]) {
+            values_known[dst] = false;
+            break;
+          }
+
+          u32            id = regs[reg].val.func.hash;
+          kitc_function* fn = NULL;
+          for (u32 i = 0; i < cc->function_table->functions_count; i++) {
+            kitc_function* f = &cc->function_table->functions[i];
+            if (f->name_hash == id) {
+              fn = f;
+              break;
+            }
+          }
+
+          if (!fn) {
+            values_known[dst] = false;
+            break;
+          }
+
+          if (cc->info->opt_level >= 3) {
+            codegraph_inline_one_call(cc, i, fn);
+
+            /* Return :: we modified the codegraph */
+            return true;
+          }
+
+          break;
+        }
+
+        default: {
+          u32 d = get_destination_reg(ins);
+          if (d != UINT32_MAX) values_known[d] = false;
+          break;
+        }
       }
     }
   }

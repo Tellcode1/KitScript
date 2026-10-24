@@ -20,7 +20,7 @@ remove_jmp_where_it_would_fallthrough(kit_compiler* cc)
     if (ins->opcode != KIT_IR_OPCODE_JMP) continue;
 
     u32 target = label_map[ins->jmp.target];
-    if (i > target) continue; /* skip backward jumps */
+    if (target == UINT32_MAX || i > target) continue; /* skip backward jumps */
 
     /* check if there is nothing but noops in between the jump and the target */
     bool useless = true;
@@ -53,9 +53,7 @@ strip_noops(kit_compiler* cc)
 
   u32 ctr = 0;
   for (u32 i = 0; i < cc->ninstructions; i++) {
-    if (copy[i].opcode == KIT_IR_OPCODE_NOP) continue;
-
-    cc->instructions[ctr++] = copy[i];
+    if (copy[i].opcode != KIT_IR_OPCODE_NOP) { cc->instructions[ctr++] = copy[i]; }
   }
 
   cc->ninstructions = ctr;

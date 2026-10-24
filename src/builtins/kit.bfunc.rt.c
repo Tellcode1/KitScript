@@ -12,6 +12,9 @@
 #include "../../inc/kit.struct.h"
 #include "../../inc/kit.var.h"
 
+#include <assert.h>
+#include <stdlib.h>
+
 static inline int
 find_func(const char* name, const kit_compilation_result* r, kitc_function* out)
 {
@@ -55,10 +58,11 @@ kit_builtins_rt_compile_and_exec(kit_vm* vm, kit_var* args, u32 nargs, kit_var* 
 
   /* Goto inc/kit.bstructs.h to modify the struct. */
   const kit_struct* st = KIT_VAR_AS_STRUCT(&args[0]);
+  KIT_ASSERT(KIT_VAR_AS_STRUCT(&args[0]) != NULL && strcmp(st->name, "kit::exec_info") == 0)
 
   const char* code               = KIT_VAR_AS_STRING(kit_struct_get_member(strhash("source_code"), st))->s;
   const char* entry_point        = KIT_VAR_AS_STRING(kit_struct_get_member(strhash("entry_point"), st))->s;
-  int         optimization_level = kit_struct_get_member(strhash("optimization_level"), st)->val.i;
+  const int   optimization_level = kit_struct_get_member(strhash("optimization_level"), st)->val.i;
 
   kit_list* arguments     = KIT_VAR_AS_LIST(kit_struct_get_member(strhash("arguments"), st));
   kit_list* cmd_arguments = KIT_VAR_AS_LIST(kit_struct_get_member(strhash("command_line_arguments"), st));
@@ -180,6 +184,38 @@ kit_ecode
 kit_builtins_rt_tokenize(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   *result = KIT_NULLVAR;
+
+  KIT_EXPECT_TYPE(&args[0], KIT_VARTYPE_STRING);
+
+  const char* input = KIT_VAR_AS_STRING(&args[0])->s;
+
+  kit_token* tokens = NULL;
+  u32        ntoks  = 0;
+
+  if (kit_tokenize(input, "rt::tokenize", vm->interner, &tokens, &ntoks)) { return KIT_EMALFORM; }
+
+  kit_var* toks = calloc(ntoks, sizeof(kit_var));
+  assert(toks != NULL);
+
+  for (u32 i = 0; i < ntoks; i++) {
+    toks[i] = (kit_var){ .type = KIT_VARTYPE_STRUCT, .val.struc = kit_refdobj_pool_acquire(vm->pool) };
+    kit_struct_init("kit::token", 2, (const char*[]){ "type", "value" }, KIT_VAR_AS_STRUCT(&toks[i]));
+
+    kit_var value = KIT_NULLVAR;
+    if (tokens[i].type == KIT_TOKEN_TYPE_STRING) { value = kit_make_var_from_string(vm->pool, kit_strdup(tokens[i].val.s)); }
+
+    kit_struct_set_member_by_index(KIT_VAR_AS_STRUCT(&toks[i]), 0, &(kit_var){ .type = KIT_VARTYPE_INT, .val.i = tokens[i].type });
+    kit_struct_set_member_by_index(KIT_VAR_AS_STRUCT(&toks[i]), 1, &value);
+  }
+
+  kit_var list = { .type = KIT_VARTYPE_LIST, .val.list = kit_refdobj_pool_acquire(vm->pool) };
+  kit_list_init(vm->pool, toks, ntoks, KIT_VAR_AS_LIST(&list));
+
+  free(toks);
+  free(tokens);
+
+  *result = list;
+
   return KIT_OK;
 }
 

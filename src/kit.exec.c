@@ -112,7 +112,7 @@ call(kit_vm* vm, const kit_exec_info* info, u32 hash, kit_var* args, u32 nargs, 
       .funcs           = info->funcs,
       .extern_funcs    = info->extern_funcs,
       .code_count      = info->funcs[f].code_count,
-      .nargs           = info->funcs[f].nargs,
+      .nargs           = nargs,
       .nliterals       = info->nliterals,
       .nfuncs          = info->nfuncs,
       .nextern_funcs   = info->nextern_funcs,
@@ -155,6 +155,8 @@ pop_and_ret:
 kit_var*
 read_args_vector(kit_refdobj_pool* pool, kit_var* regs, kit_var* stack, u32 sp, u32 nelems)
 {
+  if (nelems == 0) return NULL;
+
   kit_var* tmp = kit_aligned_malloc(nelems * sizeof(kit_var), 32);
   if (!tmp) return NULL;
 
@@ -163,12 +165,19 @@ read_args_vector(kit_refdobj_pool* pool, kit_var* regs, kit_var* stack, u32 sp, 
   /* copy first 16 arguments from registers */
   for (; i < MIN(nelems, KIT_REG_ARG_COUNT); i++) {
     memcpy(&tmp[i], &regs[KIT_REG_ARG0 + i], sizeof(kit_var));
+    // fprintf(stderr, "pushed: ");
+    // kit_var_print(&tmp[i], stderr);
+    // fprintf(stderr, "\n");
+
     kit_var_acquire(pool, &tmp[i]);
   }
 
   /* copy rest of the arguments from the stack */
   for (; i < nelems; i++) {
     memcpy(&tmp[i], &stack[sp - nelems + i], sizeof(kit_var));
+    // fprintf(stderr, "pushed: ");
+    // kit_var_print(&tmp[i], stderr);
+    // fprintf(stderr, "\n");
     kit_var_acquire(pool, &tmp[i]);
   }
 
@@ -192,10 +201,12 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
   kit_var regs[KIT_REG_COUNT];
   for (u32 i = 0; i < KIT_REG_COUNT; i++) { regs[i] = KIT_NULLVAR; }
 
-  size_t   stack_capacity = 256;
-  kit_var* stack          = kit_xalloc(stack_capacity, sizeof(kit_var));
-  kit_var* sp             = &regs[KIT_REG_SP];
-  kit_var* ip             = &regs[KIT_REG_IP];
+  size_t  stack_capacity = 256;
+  kit_var stack[256];
+  for (u32 i = 0; i < stack_capacity; i++) { stack[i] = KIT_NULLVAR; }
+
+  kit_var* sp = &regs[KIT_REG_SP];
+  kit_var* ip = &regs[KIT_REG_IP];
 
   regs[KIT_REG_NIL] = KIT_NULLVAR;
 
@@ -271,11 +282,11 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
       }
 
       case KIT_IR_OPCODE_ASSERT: {
-        u32 cond    = ins.assertion.cond;
-        u32 line_id = ins.assertion.line_id;
+        u32   cond    = ins.assertion.cond;
+        u32   line_id = ins.assertion.line_id;
+        char* line    = NULL;
 
         if (kit_cast_to_bool(&regs[cond]) == false) {
-          char* line = NULL;
           for (u32 i = 0; i < info->nliterals; i++) {
             if (info->literals_hashes[i] == line_id) {
               line = KIT_VAR_AS_STRING(&info->literals[i])->s;
@@ -431,12 +442,12 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
           e = KIT_EMALLOC;
 
           for (u32 i = 0; i < npairs * 2; i++) { remove(&tmp[i]); }
-          kit_aligned_free(tmp);
+          if (tmp) kit_aligned_free(tmp);
           goto RET;
         }
 
         for (u32 i = 0; i < npairs * 2; i++) { remove(&tmp[i]); }
-        kit_aligned_free(tmp);
+        if (tmp) kit_aligned_free(tmp);
         break;
       }
         // default: printf("%i\n", ins.opcode); assert(0);
@@ -466,7 +477,7 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
         }
 
         for (u32 i = 0; i < nelems; i++) { remove(&tmp[i]); }
-        kit_aligned_free(tmp);
+        if (tmp) { kit_aligned_free(tmp); }
 
         break;
       }
@@ -513,7 +524,7 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
         u32 nargs    = ins.call.nargs;
 
         kit_var* args = read_args_vector(vm->pool, regs, stack, sp->val.i, nargs);
-        if (!args) {
+        if (nargs > 0 && !args) {
           e = KIT_EMALLOC;
           goto RET;
         }
@@ -533,7 +544,7 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
         /* No need to acquire regs[dst], it's deep copied / preacquired. */
 
         for (u32 i = 0; i < nargs; i++) { remove(&args[i]); }
-        kit_aligned_free(args);
+        if (args) { kit_aligned_free(args); }
 
         if (e) {
           print_err("[%i] call() returned error: %s\n", ip->val.i, kit_ecode_str(e));
@@ -704,7 +715,7 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
 
           remove(&args[i]);
         }
-        kit_aligned_free(args);
+        if (args) kit_aligned_free(args);
         break;
       }
       case KIT_IR_OPCODE_GETG: {
@@ -737,18 +748,6 @@ kit_exec(kit_vm* vm, const kit_exec_info* const info, kit_var* ret)
       case KIT_IR_OPCODE_PUSH: {
         u32 reg = ins.push.reg;
 
-        if (sp->val.i >= stack_capacity) {
-          size_t   new_capacity = stack_capacity * 2;
-          kit_var* new_stack    = realloc(stack, sizeof(kit_var) * new_capacity);
-          if (!new_stack) {
-            e = KIT_EMALLOC;
-            goto RET;
-          }
-
-          stack          = new_stack;
-          stack_capacity = new_capacity;
-        }
-
         remove(&stack[sp->val.i]); /* overwriting it. */
         stack[sp->val.i] = regs[reg];
         kit_var_acquire(vm->pool, &stack[sp->val.i]); /* temporary hold */
@@ -774,7 +773,6 @@ RET:
   const u32 sp_save = sp->val.i;
   for (u32 i = 0; i < KIT_REG_COUNT; i++) { remove(&regs[i]); }
   for (i32 i = 0; i < sp_save; i++) { remove(&stack[i]); }
-  free(stack);
   return e;
 }
 

@@ -1,6 +1,10 @@
 fn main() {
-  let fd = io::open("examples/cat.e", "rb");
+  let fd = io::open("examples/cat.k", "rb");
   defer io::close(fd);
+
+  if (!fd) {
+    println("Failed to open examples/cat.k: ", io::error());
+  }
 
   let file_contents = "";
   let line = null;
@@ -8,13 +12,15 @@ fn main() {
     file_contents = str::cat(file_contents, line, "\n");
   }
 
-  let exec_info = kit::exec_info(
-      /* source_code */ file_contents,
-      /* entry_point */ "main",
-      /* optimization_level */ 0,
-      /* arguments */ [],
-      /* command_line_arguments */ [ "examples/cat.e" ],
-  );
+
+  let exec_info = kit::exec_info{
+    source_code: file_contents,
+    entry_point: "main",
+    optimization_level: 0,
+    arguments: [],
+    command_line_arguments: [ "examples/cat.k" ],
+  };
+  print(exec_info);
   let r = kit::compile_and_exec(exec_info);
-  println("we just executed cat.e (presumably) dynamically!!!");
+  println("we just executed cat.k (presumably) dynamically!!!");
 }

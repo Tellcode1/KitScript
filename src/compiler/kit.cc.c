@@ -142,8 +142,6 @@ compile_function_call(kit_compiler* cc, int node)
   u32  nargs     = KIT_GET_NODE(cc->ast, node)->call.nargs;
   int* args      = KIT_GET_NODE(cc->ast, node)->call.args;
 
-  int e = 0;
-
   kit_vreg_t compiled_function = compile(cc, func_node);
   if (compiled_function < 0) {
     cerror(KIT_GET_NODE(cc->ast, func_node)->common.span, "Failed to compile function LHS [function call]\n");
@@ -155,7 +153,7 @@ compile_function_call(kit_compiler* cc, int node)
     arg_registers[i] = compile(cc, args[i]); // Pushes stack top
     if (arg_registers[i] < 0) {
       cerror(KIT_GET_NODE(cc->ast, args[i])->common.span, "Failed to compile argument #%i [function call]\n", i);
-      return e;
+      return arg_registers[i];
     }
   }
 
@@ -322,8 +320,8 @@ compile_struct_fill(kit_compiler* cc, int node)
   const char* struct_name = KIT_GET_NODE(cc->ast, node)->struct_fill.struct_name;
   u32         struct_hash = kit_hash(struct_name, strlen(struct_name));
 
-  int* member_names    = KIT_GET_NODE(cc->ast, node)->struct_fill.members;
-  int* assigned_values = KIT_GET_NODE(cc->ast, node)->struct_fill.assigned_values;
+  const int* fill_names      = KIT_GET_NODE(cc->ast, node)->struct_fill.members;
+  const int* assigned_values = KIT_GET_NODE(cc->ast, node)->struct_fill.assigned_values;
 
   u32 nfilled_values = KIT_GET_NODE(cc->ast, node)->struct_fill.nmembers;
 
@@ -341,13 +339,15 @@ compile_struct_fill(kit_compiler* cc, int node)
     return -1;
   }
 
+  kit_vreg_t* vals = kit_arnalloc(cc->arena, sizeof(kit_vreg_t) * si->fields_count);
+
   for (u32 i = 0; i < si->fields_count; i++) {
     const char* field = si->field_names[i];
 
     u32  idx   = 0;
     bool found = false;
     for (u32 j = 0; j < nfilled_values; j++) {
-      const char* member_name = KIT_GET_NODE(cc->ast, member_names[j])->ident.ident;
+      const char* member_name = KIT_GET_NODE(cc->ast, fill_names[j])->ident.ident;
 
       if (strcmp(member_name, field) == 0) {
         idx   = j;
@@ -358,25 +358,20 @@ compile_struct_fill(kit_compiler* cc, int node)
 
     /* Aren't filling in the value at idx. Move null to it */
     if (!found) {
-      /* mov arg+i, nil */
-      /* +i and not +idx since i is the member we have to fill */
-      if (i < KIT_REG_ARG_COUNT) {
-        kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = KIT_REG_NIL } });
-      } else {
-        kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = KIT_REG_NIL } });
-      }
+      vals[i] = KIT_REG_NIL;
       continue;
     }
 
     /* We're filling in the value at idx */
     /* Compile and move to argument vector */
-    kit_vreg_t compiled = compile(cc, assigned_values[idx]);
+    vals[i] = compile(cc, assigned_values[idx]);
+  }
 
-    if (i < KIT_REG_ARG_COUNT) {
-      /* mov arg+i, compiled */
-      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = compiled } });
+  for (u32 i = 0; i < si->fields_count; i++) {
+    if (i < KIT_REG_COUNT) {
+      kit_emit_ins(cc, (kit_ins){ .mov = { .opcode = KIT_IR_OPCODE_MOV, .dst = KIT_REG_ARG0 + i, .src = vals[i] } });
     } else {
-      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = compiled } });
+      kit_emit_ins(cc, (kit_ins){ .push = { .opcode = KIT_IR_OPCODE_PUSH, .reg = vals[i] } });
     }
   }
 
@@ -427,7 +422,7 @@ make_string_variable(kit_arena* a, char* s, kit_var* v) // s will be onwed by va
   kit_refdobj* obj = kit_arnalloc(a, sizeof(kit_refdobj));
   if (!obj) return -1;
 
-  obj->refc                 = 1;
+  obj->refc                 = 69420;
   KIT_OBJ_AS_STRING(obj)->s = s;
 
   *v = (kit_var){ .type = KIT_VARTYPE_STRING, .val.s = obj };
@@ -497,6 +492,7 @@ compile(kit_compiler* cc, int node)
       u32 target = cc->loop->continue_label;
       return emit_and_record_jmp(cc, KIT_IR_OPCODE_JMP, -1, target);
     }
+
     case KIT_AST_NODE_ASSERT: {
       int   condition = KIT_GET_NODE(cc->ast, node)->assertion.stmt;
       char* line      = KIT_GET_NODE(cc->ast, node)->assertion.assertion_line;
@@ -510,7 +506,6 @@ compile(kit_compiler* cc, int node)
 
       kit_var line_str = KIT_NULLVAR;
       if (make_string_variable(cc->arena, line, &line_str) < 0) return -1;
-
       if (add_literal_to_track(cc, &line_str) < 0) return -1;
 
       kit_emit_ins(cc, (kit_ins){ .assertion = { .opcode = KIT_IR_OPCODE_ASSERT, .cond = cond, .line_id = kit_var_hash(&line_str) } });

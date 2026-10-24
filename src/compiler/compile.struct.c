@@ -33,7 +33,7 @@ collect_struct_declerations(kit_compiler* cc, int* stmts, u32 nstmts, kitc_struc
 
       int initializer = KIT_GET_NODE(cc->ast, stmts[i])->let.initializer;
       if (initializer >= 0) {
-        cerror(KIT_GET_NODE(cc->ast, stmts[i])->let.span, "Initializer given in decleration of struct member [struct decleration]\n");
+        cerror(KIT_GET_NODE(cc->ast, initializer)->common.span, "Initializer given in decleration of struct member [struct decleration]\n");
         return -1;
       }
 
@@ -68,6 +68,7 @@ compile_struct_constructor(kit_compiler* fork, kit_filespan span, const kitc_str
       kit_vreg_t reg = (kit_vreg_t)(KIT_REG_ARG0 + i);                        /* Define our variable in the argument register */
       scope_define_in_register(fork, reg, span, struc->field_names[i], true); // let the compiler say it's constant
     } else {
+      scope_define(fork, span, struc->field_names[i], true);
       /* The rest of the arguments will already be on the stack (call's job). We don't need to do anything. */
     }
   }

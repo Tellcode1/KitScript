@@ -54,10 +54,26 @@ static const kit_builtin_struct kit_builtins_structs[] = {
   { .name         = "kit::exec_info",
     .fields       = (const char*[]){ "source_code", "entry_point", "optimization_level", "arguments", "command_line_arguments", "libraries" },
     .fields_count = 6 },
+
+  /* RT structs */
   { .name = "kit::structure", .fields = (const char*[]){ "num_members", "member_names" }, .fields_count = 2 },
   { .name = "kit::constant", .fields = (const char*[]){ "name", "value" }, .fields_count = 2 },
   { .name = "kit::operator", .fields = (const char*[]){ "chr", "is_compound" }, .fields_count = 2 }, // Token value
   { .name = "kit::token", .fields = (const char*[]){ "type", "value" }, .fields_count = 2 },
+
+  {
+      .name = "kit::rt::if_stmt",
+      .fields =
+          (const char*[]){
+              "nstmts",
+              "stmts",
+              "nelse_ifs",
+              "else_ifs" /* kit::rt::if_stmt */,
+              "else",
+          },
+      .fields_count = 5,
+  },
+
   { .name         = "kit::compile_info",
     .fields       = (const char*[]){ "ast", "entry_point", "optimization_level", "builtin_structures", "builtin_constants" },
     .fields_count = 5 },

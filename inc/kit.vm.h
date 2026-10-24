@@ -28,6 +28,7 @@
 #include "kit.pool.h"
 #include "kit.reg.h"
 #include "kit.stdafx.h"
+#include "kit.strint.h"
 #include "kit.var.h"
 
 #include <stddef.h>
@@ -47,9 +48,10 @@ typedef struct kit_vm {
   u32 hash_state[4]; /* Initialize to random integers */
 
   kit_refdobj_pool* pool;
+  kit_str_interner* interner;
 } kit_vm;
 
-int  kit_vm_init(int argc, const char** argv, kit_refdobj_pool* pool, u32 function_id, kit_vm* vm);
+int  kit_vm_init(int argc, const char** argv, kit_str_interner* interner, kit_refdobj_pool* pool, u32 function_id, kit_vm* vm);
 void kit_vm_free(kit_vm* vm);
 int  kit_vm_fork(u32 new_function_id, const kit_vm* old_vm, kit_vm* new_vm);
 

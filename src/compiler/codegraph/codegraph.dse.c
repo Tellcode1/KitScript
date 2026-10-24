@@ -127,8 +127,8 @@ codegraph_redundant_move_elimination(kit_compiler* cc, codegraph* cfg)
             break;
 
           case KIT_IR_OPCODE_LOADK:
-            // loadk a,id  ;  mov b,a  →  loadk b,id
-            b->opcode    = KIT_IR_OPCODE_LOADK;
+            // loadk a, id;
+            // mov b, a  → loadk b, id b->opcode = KIT_IR_OPCODE_LOADK;
             b->loadk.dst = b->mov.dst; // reuse the dst slot
             b->loadk.id  = a->loadk.id;
             a->opcode    = KIT_IR_OPCODE_NOP;

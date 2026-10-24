@@ -63,7 +63,9 @@ kit_print_instruction(kit_ins i, const kit_compilation_result* r, FILE* f)
     }
 
     case KIT_IR_OPCODE_LOADFN: {
-      fprintf(f, "loadfn dst=%s, id=%u\n", get_register_name(i.loadfn.dst, buf0), i.loadfn.id);
+      const char* name = lookup(r, i.loadfn.id);
+      if (name) fprintf(f, "loadfn dst=%s, name=%s id=%u\n", get_register_name(i.loadfn.dst, buf0), name, i.loadfn.id);
+      else fprintf(f, "loadfn dst=%s, id=%u\n", get_register_name(i.loadfn.dst, buf0), i.loadfn.id);
       break;
     }
 

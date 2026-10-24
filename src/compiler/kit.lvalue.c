@@ -36,10 +36,10 @@ value_init(kit_compiler* cc, int node, val_t* d)
         const kit_builtin_func* func = &kit_builtins_funcs[i];
 
         if (strcmp(func->name, name) == 0) {
-          l.span         = &KIT_GET_NODE(cc->ast, node)->common.span;
-          l.type         = KIT_LVAL_GVAR;
-          l.val.var.id   = id;
-          l.val.var.name = name;
+          l.span          = &KIT_GET_NODE(cc->ast, node)->common.span;
+          l.type          = KIT_LVAL_GVAR;
+          l.val.gvar.id   = id;
+          l.val.gvar.name = name;
 
           *d = l;
           return 0;
@@ -179,15 +179,15 @@ emit_lvalue_assign(kit_compiler* cc, kit_vreg_t value, val_t* lv)
       break;
     }
     case KIT_LVAL_GVAR: {
-      kitc_var* v = scope_lookup_info(cc, lv->val.gvar);
+      kitc_var* v = scope_lookup_info(cc, lv->val.gvar.id);
 
       if (!v) {
-        cerror(*lv->span, "Undeclared global variable %u\n", lv->val.gvar);
+        cerror(*lv->span, "Undeclared global variable \"%s\"\n", lv->val.gvar.name);
         return -1;
       }
 
       if (v->is_const) {
-        cerror(*lv->span, "Can not assign to const global variable %u\n", lv->val.gvar);
+        cerror(*lv->span, "Can not assign to const global variable \"%s\"\n", lv->val.gvar.name);
         return -1;
       }
 

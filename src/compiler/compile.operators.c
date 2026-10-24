@@ -8,7 +8,9 @@
 
 void
 define_and_emit_label(kit_compiler* cc, u32 label_id)
-{ kit_emit_ins(cc, (kit_ins){ .label = { .opcode = KIT_IR_OPCODE_LABEL, .id = label_id } }); }
+{
+  kit_emit_ins(cc, (kit_ins){ .label = { .opcode = KIT_IR_OPCODE_LABEL, .id = label_id } });
+}
 
 static inline kit_ir_opcode
 kit_binary_operator_to_opcode(kit_operator op)
@@ -35,45 +37,6 @@ kit_binary_operator_to_opcode(kit_operator op)
     case KIT_OPERATOR_BNOT: return KIT_IR_OPCODE_BNOT;
     case KIT_OPERATOR_DEC: return KIT_IR_OPCODE_DEC;
     case KIT_OPERATOR_INC: return KIT_IR_OPCODE_INC;
-  }
-  return -1;
-}
-
-static inline bool
-is_instruction_binary_operation(kit_ir_opcode op)
-{
-  switch (op) {
-    case KIT_IR_OPCODE_ADD:
-    case KIT_IR_OPCODE_SUB:
-    case KIT_IR_OPCODE_MUL:
-    case KIT_IR_OPCODE_DIV:
-    case KIT_IR_OPCODE_MOD:
-    case KIT_IR_OPCODE_EXP:
-    case KIT_IR_OPCODE_AND:
-    case KIT_IR_OPCODE_OR:
-    case KIT_IR_OPCODE_BAND:
-    case KIT_IR_OPCODE_BOR:
-    case KIT_IR_OPCODE_XOR:
-    case KIT_IR_OPCODE_EQL:
-    case KIT_IR_OPCODE_NEQ:
-    case KIT_IR_OPCODE_LT:
-    case KIT_IR_OPCODE_LTE:
-    case KIT_IR_OPCODE_GT:
-    case KIT_IR_OPCODE_GTE: return true;
-    default: return false;
-  }
-  return -1;
-}
-
-static inline bool
-is_instruction_unary_operation(kit_ir_opcode op)
-{
-  switch (op) {
-    case KIT_IR_OPCODE_NOT:
-    case KIT_IR_OPCODE_BNOT:
-    case KIT_IR_OPCODE_DEC:
-    case KIT_IR_OPCODE_INC: return true;
-    default: return false;
   }
   return -1;
 }
@@ -121,6 +84,12 @@ compile_binary_op(kit_compiler* cc, int node)
     return dst;
   }
 
+  /* 1++ my favourite expression */
+  if (is_compound && !can_make_value(cc->ast, left)) {
+    cerror(KIT_GET_NODE(cc->ast, left)->common.span, "Can not assign to left\n");
+    goto err;
+  }
+
   /* optimization level 2 because requires a bit of work here and produces minimal gains */
   if (cc->info->opt_level >= 2 && is_literal_value(cc->ast, left) && is_literal_value(cc->ast, right)) {
     kit_var lhs = KIT_NULLVAR;
@@ -136,11 +105,6 @@ compile_binary_op(kit_compiler* cc, int node)
 
     /* both input operands are constant. result must be a constant too */
     return compile_and_push_literal_variable(cc, &result);
-  }
-
-  if (is_compound && !can_make_value(cc->ast, left)) {
-    cerror(KIT_GET_NODE(cc->ast, left)->common.span, "Can not assign to left\n");
-    goto err;
   }
 
   kit_vreg_t dst = vreg_alloc(cc);
@@ -225,9 +189,13 @@ compile_unary_op(kit_compiler* cc, int node)
   kit_operator oper = KIT_GET_NODE(cc->ast, node)->unaryop.op;
   if (oper == KIT_OPERATOR_INC || oper == KIT_OPERATOR_DEC) { return compile_inc_or_dec(cc, node); }
 
-  int           right       = KIT_GET_NODE(cc->ast, node)->unaryop.right;
-  bool          is_compound = KIT_GET_NODE(cc->ast, node)->unaryop.is_compound;
-  kit_ir_opcode opcode      = -1;
+  int  right       = KIT_GET_NODE(cc->ast, node)->unaryop.right;
+  bool is_compound = KIT_GET_NODE(cc->ast, node)->unaryop.is_compound;
+
+  /* +x */
+  if (oper == KIT_OPERATOR_ADD && !is_compound) return compile(cc, right);
+
+  kit_ir_opcode opcode = -1;
 
   switch (KIT_GET_NODE(cc->ast, node)->unaryop.op) {
     case KIT_OPERATOR_NOT: opcode = KIT_IR_OPCODE_NOT; break;

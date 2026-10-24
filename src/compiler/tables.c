@@ -61,13 +61,22 @@ RETURNS_ERRCODE int
 add_literal_to_track(kit_compiler* cc, const kit_var* v)
 {
   kitc_literal_table* literals = cc->lit_table;
-  u32                 hash     = kit_var_hash(v);
+  const u32           hash     = kit_var_hash(v);
   bool                found    = false;
 
   for (u32 i = 0; i < literals->literals_count; i++) {
     if (literals->literal_hashes[i] == hash && kit_var_equal(v, &literals->literals[i])) {
+      if (found) {
+        fprintf(stderr, "Hit! Hash %u is equal, and vars are:", hash);
+        exit(-1);
+        kit_var_print(v, stderr);
+        fprintf(stderr, " | ");
+        kit_var_print(&literals->literals[i], stderr);
+        fprintf(stderr, "\n");
+      }
+
       found = true;
-      break;
+      // break;
     }
   }
 
@@ -126,15 +135,16 @@ append_struct_decleration(kit_arena* a, const char* name, kitc_struct_informatio
     u32* field_hashes_new = (u32*)realloc(deposit->field_hashes, field_cap_new * sizeof(u32));
     if (!field_hashes_new) { return -1; }
 
+    deposit->field_capacity = field_cap_new;
+    deposit->field_hashes   = field_hashes_new;
+
     char** field_names_new = (char**)realloc((void*)deposit->field_names, field_cap_new * sizeof(char*));
     if (!field_names_new) {
       free(field_hashes_new);
       return -1;
     }
 
-    deposit->field_capacity = field_cap_new;
-    deposit->field_hashes   = field_hashes_new;
-    deposit->field_names    = field_names_new;
+    deposit->field_names = field_names_new;
   }
 
   deposit->field_hashes[deposit->fields_count] = hash;

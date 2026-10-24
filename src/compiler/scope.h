@@ -18,7 +18,7 @@ typedef struct kit_name_resolution {
     u32        global_id;   /* GLOBAL */
     kit_var    builtin_val; /* BUILTIN_VAR */
     u32        fn_hash;     /* CALLABLE */
-  };
+  } as;
 } kit_name_resolution;
 
 /**

@@ -43,14 +43,13 @@ kit_builtins_sys_get_cmd_args(kit_vm* vm, kit_var* args, u32 nargs, kit_var* res
   (void)args;
   (void)nargs;
 
-  kit_var l = {
-    .type     = KIT_VARTYPE_LIST,
-    .val.list = kit_refdobj_pool_acquire(vm->pool),
-  };
+  kit_var l = { .type = KIT_VARTYPE_LIST, .val.list = kit_refdobj_pool_acquire(vm->pool) };
   kit_list_init(vm->pool, NULL, 0, KIT_VAR_AS_LIST(&l));
 
   /* Start from 2. We don't need to expose the executor and script file */
   for (u32 i = 2; i < vm->argc; i++) {
+    if (vm->argv[i][0] == '-') continue; /* option */
+
     kit_var arg = kit_make_var_from_string(vm->pool, kit_strdup(vm->argv[i]));
     kit_list_append(vm->pool, &arg, KIT_VAR_AS_LIST(&l));
 
@@ -95,10 +94,7 @@ kit_builtins_sys_get_cwd(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
   s[len]     = '/';
   s[len + 1] = 0;
 
-  kit_var cwd = {
-    .type  = KIT_VARTYPE_STRING,
-    .val.s = kit_refdobj_pool_acquire(vm->pool),
-  };
+  kit_var cwd                = { .type = KIT_VARTYPE_STRING, .val.s = kit_refdobj_pool_acquire(vm->pool) };
   KIT_VAR_AS_STRING(&cwd)->s = s;
 
   *result = cwd;
@@ -109,10 +105,7 @@ kit_ecode
 kit_builtins_sys_shell(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
 {
   const char* cmd = KIT_VAR_AS_STRING(&args[0])->s;
-  *result         = (kit_var){
-    .type  = KIT_VARTYPE_INT,
-    .val.i = system(cmd),
-  };
+  *result         = (kit_var){ .type = KIT_VARTYPE_INT, .val.i = system(cmd) };
   return KIT_OK;
 }
 

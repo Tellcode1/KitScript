@@ -1712,6 +1712,7 @@ kit_ast_nud(kit_parser* p, const kit_token* tk)
       return node;
     }
 
+    case KIT_TOKEN_TYPE_PLUS:
     case KIT_TOKEN_TYPE_MINUS:
     case KIT_TOKEN_TYPE_NOT:
     case KIT_TOKEN_TYPE_BNOT: {

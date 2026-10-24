@@ -72,15 +72,11 @@ compile_and_push_literal_variable(kit_compiler* cc, const kit_var* v)
 
   if (cc->info->opt_level >= 1 && v->type == KIT_VARTYPE_NULL) { return KIT_REG_NIL; }
 
-  /* Search for the literal in our table. */
-  u32 hash = kit_var_hash(v);
-
   int e = add_literal_to_track(cc, v);
   if (e < 0) return e;
 
   kit_vreg_t dst = vreg_alloc(cc);
-
-  kit_emit_ins(cc, (kit_ins){ .loadk = { .opcode = KIT_IR_OPCODE_LOADK, .dst = dst, .id = hash } });
+  kit_emit_ins(cc, (kit_ins){ .loadk = { .opcode = KIT_IR_OPCODE_LOADK, .dst = dst, .id = kit_var_hash(v) } });
 
   return dst;
 }

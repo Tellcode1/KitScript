@@ -35,12 +35,17 @@
 #include "../inc/kit.strint.h"
 
 #include <assert.h>
-#include <dlfcn.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef _WIN32
+#  include <dlfcn.h>
+#else
+#  include <windows.h>
+#endif
 
 static inline int
 create_and_cat(const char* s, size_t* to_capacity, char** to_ptr)
@@ -461,6 +466,7 @@ static const char* const help = "kitexec: [-e/r] [--entry ENTRYPOINT] <FILE/->\n
 static int
 load_library(const char* path, kit_builtin_func** out_funcs, u32* out_count)
 {
+#ifndef _WIN32
   void* handle = dlopen(path, RTLD_NOW);
   if (!handle) {
     fprintf(stderr, "dlopen: %s\n", dlerror());
@@ -472,6 +478,20 @@ load_library(const char* path, kit_builtin_func** out_funcs, u32* out_count)
     fprintf(stderr, "dlsym: %s\n", dlerror());
     return -1;
   }
+#else
+  HINSTANCE hGetProcIDDLL = LoadLibraryA(path);
+
+  if (!hGetProcIDDLL) {
+    fprintf(stderr, "LoadLibrary returned error\n");
+    return -1;
+  }
+
+  kit_library_entry_point_fn entry = (kit_library_entry_point_fn)GetProcAddress(hGetProcIDDLL, "kit_library_entry_point");
+  if (!entry) {
+    fprintf(stderr, "Library has no kit_library_entry_point defined\n");
+    return -1;
+  }
+#endif
 
   const kit_library_info* mod = entry();
 
@@ -504,6 +524,7 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
   kit_var time_as_str = KIT_NULLVAR;
 
   kit_refdobj_pool object_pool = { 0 };
+  kit_str_interner interner    = { 0 };
 
   kit_builtin_func* library_funcs      = NULL;
   u32               library_func_count = 0;
@@ -556,6 +577,8 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
     }
   }
 
+  kit_str_interner_init(64, &interner);
+
   kitc_function entry_point_func;
   e = find_func(entry_point, obj->functions_count, obj->functions, &entry_point_func);
   if (e) {
@@ -597,7 +620,7 @@ execute_obj(kit_compilation_result* obj, int argc, char* argv[])
   };
 
   kit_vm vm = { 0 };
-  kit_vm_init(argc, (const char**)argv, &object_pool, entry_point_func.name_hash, &vm);
+  kit_vm_init(argc, (const char**)argv, &interner, &object_pool, entry_point_func.name_hash, &vm);
 
   /* Initialize PRNG subroutine */
   kit_builtins_time_now(&vm, NULL, 0, &time_now);
@@ -654,6 +677,7 @@ RET:
 
   kit_var_release(&object_pool, &v);
   kit_refdobj_pool_free(&object_pool);
+  kit_str_interner_free(&interner);
 
   kit_vm_free(&vm);
 
@@ -696,7 +720,7 @@ main(int argc, char* argv[])
 
       goto RET;
     }
-    if (strcmp(opt, "cx") == 0 || strcmp(opt, "compile-and-exec") == 0) {
+    if (strcmp(opt, "ce") == 0 || strcmp(opt, "x") == 0 || strcmp(opt, "compile-and-exec") == 0) {
       kit_compilation_result obj = { 0 };
 
       /* Don't write to file since we're executing the program directly */

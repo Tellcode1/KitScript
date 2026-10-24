@@ -40,6 +40,8 @@ codegraph_init(struct kit_arena* a, struct kit_compiler* cc, codegraph* dst)
 
       if (target < code_size) is_blk_header[target] = true;
       if (i + 1 < code_size) is_blk_header[i + 1] = true; // fallthrough
+    } else if (ins->opcode == KIT_IR_OPCODE_RET && i + 1 < code_size) {
+      is_blk_header[i + 1] = true;
     }
   }
 
@@ -306,20 +308,20 @@ get_source_registers(const kit_ins* i, u32 sources[32])
     case KIT_IR_OPCODE_INC: sources[n++] = i->unop.a; break;
 
     case KIT_IR_OPCODE_MK_LIST:
-      for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->mk_list.nelems); j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
+      for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->mk_list.nelems); j++) { sources[n++] = j; }
       break;
 
     case KIT_IR_OPCODE_MK_MAP:
-      for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->mk_map.npairs * 2); j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
+      for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->mk_map.npairs * 2); j++) { sources[n++] = j; }
       break;
 
     case KIT_IR_OPCODE_MK_STRUCT:
       /* finding out which argument registers to clear will take some time. just kill the entire vector. */
-      for (u32 j = KIT_REG_ARG0; j < KIT_REG_ARG_COUNT; j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
+      for (u32 j = KIT_REG_ARG0; j < KIT_REG_ARG_COUNT; j++) { sources[n++] = j; }
       break;
     case KIT_IR_OPCODE_CALL:
       /* record only the argument registers that were used */
-      for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->call.nargs); j++) { sources[n++] = (kit_vreg_t)(KIT_REG_ARG0 + j); }
+      for (u32 j = KIT_REG_ARG0; j < MIN(KIT_REG_ARG_COUNT, i->call.nargs); j++) { sources[n++] = j; }
       sources[n++] = i->call.reg;
       break;
 

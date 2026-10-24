@@ -168,7 +168,7 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
 
   /* compute reverse post order for this graph */
   u32   nblocks = dst->nblocks;
-  bool* visited = kit_arnalloc(dst->arena, nblocks * sizeof(bool));
+  bool* visited = kit_arnalloc(dst->arena, ((size_t)nblocks * 2 * +1) * sizeof(bool));
 
   memset(visited, 0, nblocks * sizeof(bool));
 
@@ -178,12 +178,6 @@ codegraph_block_level_liveliness_analysis(kit_compiler* cc, codegraph* dst)
   u32 top_trav           = 0;
   u32 top_post           = 0;
   stack_trav[top_trav++] = dst->entry_block;
-
-  while (top_trav > 0) {
-    u32 b = stack_trav[--top_trav];
-    if (visited[b]) continue;
-    visited[b] = true;
-  }
 
   memset(visited, 0, nblocks * sizeof(bool));
   top_trav               = 0;

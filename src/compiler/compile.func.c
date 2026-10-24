@@ -93,14 +93,23 @@ compile_function_definition(kit_compiler* cc, int node)
     kit_arena codegraph_arena = { 0 };
     if (kit_arena_init(1, &codegraph_arena) < 0) return -1;
 
-    if (!fork.info->feature_set.disable_function_inlining) { opt_inline_function_calls(&fork); }
-
-    for (u32 pass = 0; pass < 4; pass++) {
+    for (u32 pass = 0; pass < 8; pass++) {
       if (kit_arena_reset(&codegraph_arena) < 0) return -1;
       codegraph cfg = { 0 };
 
       e = codegraph_init(&codegraph_arena, &fork, &cfg);
       if (e < 0) goto ERR;
+
+      e = codegraph_build_successor_list(&fork, &cfg);
+      if (e < 0) return e;
+      e = codegraph_block_level_liveliness_analysis(&fork, &cfg);
+      if (e < 0) return e;
+      e = codegraph_instruction_level_liveliness_analysis(&fork, &cfg);
+      if (e < 0) return e;
+      e = codegraph_domination_analysis(&fork, &cfg);
+      if (e < 0) return e;
+      e = codegraph_loop_analysis(&fork, &cfg);
+      if (e < 0) return e;
 
       // codegraph_preliminary_dead_store_elimination(&fork, &cfg);
 

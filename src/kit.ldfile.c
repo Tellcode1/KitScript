@@ -342,7 +342,7 @@ kit_file_write(const kit_compilation_result* r, FILE* f)
     fwrite(&lit->type, sizeof(lit->type), 1, f);
 
     if (lit->type == KIT_VARTYPE_STRING) {
-      u32 len = strlen(KIT_VAR_AS_STRING(lit)->s);
+      u64 len = strlen(KIT_VAR_AS_STRING(lit)->s);
       fwrite(&len, sizeof(len), 1, f);
       fwrite(KIT_VAR_AS_STRING(lit)->s, sizeof(char), len, f);
     } else {
@@ -440,7 +440,7 @@ kit_file_load(kit_compilation_result* r, FILE* f)
     kit_var* lit = &r->literals[i];
     switch (lit->type) {
       case KIT_VARTYPE_STRING: {
-        u32 len = 0;
+        u64 len = 0;
         if (fread(&len, sizeof(len), 1, f) != 1) goto ERR;
 
         alloc      = kit_align_ptr(alloc, 16);

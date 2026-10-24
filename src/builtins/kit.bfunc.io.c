@@ -278,7 +278,10 @@ kit_builtins_io_open(kit_vm* vm, kit_var* args, u32 nargs, kit_var* result)
   const char* mode = KIT_VAR_AS_STRING(&args[1])->s;
 
   FILE* f = fopen(path, mode);
-  if (!f) { *result = (kit_var){ .type = KIT_VARTYPE_NULL }; }
+  if (!f) {
+    *result = (kit_var){ .type = KIT_VARTYPE_NULL };
+    return KIT_OK; /* Not necessarily a runtime error */
+  }
 
   *result = var_from_file(f);
   return KIT_OK;

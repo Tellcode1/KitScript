@@ -236,8 +236,13 @@ kit_var_print(const struct kit_var* v, FILE* f)
     case KIT_VARTYPE_DESCRIPTOR: fprintf(f, "%p", v->val.descriptor); break;
     case KIT_VARTYPE_CHAR: fprintf(f, "%c", v->val.c); break;
     case KIT_VARTYPE_BOOL: fprintf(f, "%s", (int)v->val.b ? "true" : "false"); break;
-    case KIT_VARTYPE_FLOAT: fprintf(f, "%g", v->val.f); break;
-    case KIT_VARTYPE_STRING: fprintf(f, "%s", KIT_VAR_AS_STRING(v)->s); break;
+    case KIT_VARTYPE_FLOAT: fprintf(f, "%f", v->val.f); break;
+    case KIT_VARTYPE_STRING: {
+      const char* s = NULL;
+      if (v->val.s != NULL && KIT_VAR_AS_STRING(v) != NULL) { s = KIT_VAR_AS_STRING(v)->s; }
+      fprintf(f, "%s", s);
+      break;
+    }
     case KIT_VARTYPE_LIST: {
       fputc('[', f);
       for (u32 i = 0; i < KIT_VAR_AS_LIST(v)->size; i++) {
@@ -348,7 +353,7 @@ kit_var_to_string(const struct kit_var* v, char* buffer, size_t buffer_size)
     case KIT_VARTYPE_DESCRIPTOR: snprintf(buffer, buffer_size, "%p", v->val.descriptor); break;
     case KIT_VARTYPE_CHAR: snprintf(buffer, buffer_size, "%c", v->val.c); break;
     case KIT_VARTYPE_BOOL: snprintf(buffer, buffer_size, "%s", (int)v->val.b ? "true" : "false"); break;
-    case KIT_VARTYPE_FLOAT: snprintf(buffer, buffer_size, "%g", v->val.f); break;
+    case KIT_VARTYPE_FLOAT: snprintf(buffer, buffer_size, "%f", v->val.f); break;
     case KIT_VARTYPE_STRING: snprintf(buffer, buffer_size, "%s", KIT_VAR_AS_STRING(v)->s); break;
     case KIT_VARTYPE_VEC2: snprintf(buffer, buffer_size, "<x=%g y=%g>", v->val.vec2[0], v->val.vec2[1]); break;
     case KIT_VARTYPE_VEC3: snprintf(buffer, buffer_size, "<x=%g y=%g z=%g>", v->val.vec3[0], v->val.vec3[1], v->val.vec3[2]); break;
@@ -376,7 +381,57 @@ kit_var_to_string(const struct kit_var* v, char* buffer, size_t buffer_size)
 
       break;
     }
-    case KIT_VARTYPE_MAP: break;
+
+    case KIT_VARTYPE_STRUCT: {
+      strncpy("<", buffer, buffer_size - 1);
+      kit_strlcat(buffer, KIT_VAR_AS_STRUCT(v)->name, buffer_size);
+      kit_strlcat(buffer, ">{", buffer_size); // look at him hes angry mustache
+
+      for (u32 i = 0; i < KIT_VAR_AS_STRUCT(v)->member_count; i++) {
+        const kit_var* elem        = &KIT_VAR_AS_STRUCT(v)->members[i];
+        const char*    member_name = KIT_VAR_AS_STRUCT(v)->member_names[i];
+
+        kit_strlcat(buffer, member_name, buffer_size);
+        kit_strlcat(buffer, "=", buffer_size);
+
+        if (elem->type == KIT_VARTYPE_STRING) kit_strlcat(buffer, "\"", buffer_size);
+
+        size_t offset = strlen(buffer);
+        kit_var_to_string(elem, buffer + offset, buffer_size - offset);
+
+        if (elem->type == KIT_VARTYPE_STRING) kit_strlcat(buffer, "\"", buffer_size);
+
+        if (i < KIT_VAR_AS_STRUCT(v)->member_count - 1) { kit_strlcat(buffer, ",", buffer_size); }
+      }
+      kit_strlcat(buffer, "}", buffer_size);
+      break;
+    }
+
+    case KIT_VARTYPE_MAP: {
+      strncpy(buffer, "#{", buffer_size - 1);
+      for (u32 i = 0; i < KIT_VAR_AS_MAP(v)->size; i++) {
+        const kit_var* key = &KIT_VAR_AS_MAP(v)->keys[i];
+        const kit_var* val = &KIT_VAR_AS_MAP(v)->vals[i];
+
+        if (key->type == KIT_VARTYPE_STRING) kit_strlcat(buffer, "\"", buffer_size);
+
+        size_t offset = strlen(buffer);
+        kit_var_to_string(key, buffer + offset, buffer_size - offset);
+
+        if (key->type == KIT_VARTYPE_STRING) kit_strlcat(buffer, "\"", buffer_size);
+
+        kit_strlcat(buffer, ":", buffer_size);
+
+        if (val->type == KIT_VARTYPE_STRING) kit_strlcat(buffer, "\"", buffer_size);
+        offset = strlen(buffer);
+        kit_var_to_string(val, buffer + offset, buffer_size - offset);
+        if (val->type == KIT_VARTYPE_STRING) kit_strlcat(buffer, "\"", buffer_size);
+
+        if (i < KIT_VAR_AS_MAP(v)->size - 1) { kit_strlcat(buffer, ",", buffer_size); }
+      }
+      kit_strlcat(buffer, "}", buffer_size);
+      break;
+    }
   }
 }
 
@@ -390,7 +445,7 @@ kit_var_to_string_size(const struct kit_var* v)
     case KIT_VARTYPE_INT: total += snprintf(NULL, 0, "%i", v->val.i); break;
     case KIT_VARTYPE_CHAR: total += snprintf(NULL, 0, "%c", v->val.c); break;
     case KIT_VARTYPE_BOOL: total += strlen((int)v->val.b ? "true" : "false"); break;
-    case KIT_VARTYPE_FLOAT: total += snprintf(NULL, 0, "%g", v->val.f); break;
+    case KIT_VARTYPE_FLOAT: total += snprintf(NULL, 0, "%f", v->val.f); break;
     case KIT_VARTYPE_VEC2:
     case KIT_VARTYPE_VEC3:
     case KIT_VARTYPE_VEC4: {

@@ -19,13 +19,10 @@ shift_and_insert_instruction(kit_compiler* cc, u32 idx, const kit_ins* ins)
   cc->ninstructions++;
 }
 
-static inline bool
-block_dominates(const codegraph* cfg, u32 b, u32 d)
-{ return cfg->blocks[d].dominators[b]; }
-
 bool
 codegraph_loop_invariant_code_motion(kit_compiler* cc, codegraph* cfg)
 {
+  return false;
   bool changed_ever = false;
 
   while (true) {

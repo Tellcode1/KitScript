@@ -72,7 +72,11 @@ kit_cast_to_bool(const kit_var* v)
     case KIT_VARTYPE_FLOAT: return (bool)v->val.f;
     case KIT_VARTYPE_CHAR: return (bool)v->val.c;
     case KIT_VARTYPE_BOOL: return (bool)v->val.b;
-    case KIT_VARTYPE_STRING: return strcmp(KIT_VAR_AS_STRING(v)->s, "") != 0;
+    case KIT_VARTYPE_STRING: /* referenced structures always evaluate to true */
+    case KIT_VARTYPE_LIST:
+    case KIT_VARTYPE_MAP:
+    case KIT_VARTYPE_MAT3:
+    case KIT_VARTYPE_MAT4: return true;
     default: return false;
   }
 }
@@ -94,23 +98,33 @@ kit_cast_to_float(const kit_var* v)
 
 static inline kit_var
 kit_var_from_int(int x)
-{ return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = x } }; }
+{
+  return (kit_var){ .type = KIT_VARTYPE_INT, .val = { .i = x } };
+}
 
 static inline kit_var
 kit_var_from_char(char x)
-{ return (kit_var){ .type = KIT_VARTYPE_CHAR, .val = { .c = x } }; }
+{
+  return (kit_var){ .type = KIT_VARTYPE_CHAR, .val = { .c = x } };
+}
 
 static inline kit_var
 kit_var_from_bool(bool x)
-{ return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = x } }; }
+{
+  return (kit_var){ .type = KIT_VARTYPE_BOOL, .val = { .b = x } };
+}
 
 static inline kit_var
 kit_var_from_float(double x)
-{ return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = x } }; }
+{
+  return (kit_var){ .type = KIT_VARTYPE_FLOAT, .val = { .f = x } };
+}
 
 static inline kit_var
 kit_var_from_pointer(void* x)
-{ return (kit_var){ .type = KIT_VARTYPE_DESCRIPTOR, .val = { .descriptor = x } }; }
+{
+  return (kit_var){ .type = KIT_VARTYPE_DESCRIPTOR, .val = { .descriptor = x } };
+}
 
 /* The actual cast functions like int(), string(), etc. Do everything in your power to represent it in the other type. */
 

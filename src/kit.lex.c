@@ -374,6 +374,38 @@ kit_tokenize(const char* input, const char* advertised_file, kit_str_interner* i
       advance(s, line, col);
     }
 
+    else if (*s == '`') {
+      const int line_snap = line;
+      const int col_snap  = col;
+
+      advance(s, line, col);
+
+      const char* snap = s;
+      while (*s && *s != '`') {
+        if (*s == '\\') advance(s, line, col);
+        advance(s, line, col);
+      }
+
+      // reached end of file
+      if (!*s || *s == '\n' || *s == '\r') {
+        lexerror(line_snap, col_snap, "Unterminated string literal\n");
+        goto err;
+      }
+
+      u32 len = (u32)(s - snap);
+
+      char* parsed = parse_backslash_sequences(snap, len);
+
+      kit_token tk = (kit_token){
+        .type = KIT_TOKEN_TYPE_STRING,
+        .val  = { .s = parsed },
+        .span = SPAN,
+      };
+      tklist_append(&toks, &tk);
+
+      advance(s, line, col);
+    }
+
     else if (*s == '\'') {
       advance(s, line, col);
 

@@ -11,7 +11,6 @@ bool
 codegraph_argument_vector_move_coalescing(kit_compiler* cc, codegraph* cfg)
 {
   bool changed_ever = false;
-  bool changed      = false;
 
   for (u32 ip = 0; ip < cc->ninstructions; ip++) {
     kit_ins* mov = &cc->instructions[ip];
@@ -33,6 +32,7 @@ codegraph_argument_vector_move_coalescing(kit_compiler* cc, codegraph* cfg)
     for (i64 j = (i64)ip - 1; j >= 0; j--) {
       kit_ins* def = &cc->instructions[j];
 
+      if (def->opcode == KIT_IR_OPCODE_LABEL) break;
       if (is_instruction_noop(def->opcode)) continue;
       if (is_instruction_impure(def->opcode)) break;
 
@@ -45,6 +45,14 @@ codegraph_argument_vector_move_coalescing(kit_compiler* cc, codegraph* cfg)
 
       /* another definition of dst means stop */
       if (d == dst) break;
+
+      u32  srcs[32];
+      u32  nsrcs   = get_source_registers(def, srcs);
+      bool touches = (d == dst);
+      for (u32 s = 0; s < nsrcs; s++) {
+        if (srcs[s] == src || srcs[s] == dst) touches = true;
+      }
+      if (touches) break;
     }
 
     if (def_ip < 0) continue;
@@ -62,7 +70,6 @@ codegraph_argument_vector_move_coalescing(kit_compiler* cc, codegraph* cfg)
 
     mov->opcode = KIT_IR_OPCODE_NOP;
 
-    changed      = true;
     changed_ever = true;
   }
 

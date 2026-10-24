@@ -5,21 +5,18 @@ fn disallow_optimizations(var) {
 }
 
 fn main() {
+
+  const iterations = 100000;
+
+  let vectors = [69];
+
   let start = time::mono();
-
-  const iterations = 10000;
-
-  let vectors = [];
-  for (let i = 0; i < iterations; i++) {
-    list::append(vectors, rand::vec2());
-  }
-
   let sum = vec2::ZERO;
   for (let i = 0; i < iterations; i++) {
-    sum += vectors[i];
+    sum += vectors[0];
     disallow_optimizations(sum);
   }
 
-
   let end = time::mono();
+  println("Took ", end - start, " seconds");
 }

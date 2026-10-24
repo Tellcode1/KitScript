@@ -32,7 +32,7 @@ compile_list(kit_compiler* cc, int node)
 
   /* remove spilled elements from the stack */
   kit_vreg_t tmp = vreg_alloc(cc);
-  for (u32 i = KIT_REG_ARG_END + 1; i < nelems; i++) {
+  for (u32 i = KIT_REG_ARG_COUNT; i < nelems; i++) {
     /* pop repeatedly into tmp */
     kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = tmp } });
   }
@@ -85,6 +85,7 @@ compile_map(kit_compiler* cc, int node)
   kit_vreg_t tmp = vreg_alloc(cc);
   for (u32 i = (KIT_REG_ARG_COUNT / 2); i < npairs; i++) {
     /* pop repeatedly into tmp */
+    kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = tmp } });
     kit_emit_ins(cc, (kit_ins){ .pop = { .opcode = KIT_IR_OPCODE_POP, .reg = tmp } });
   }
 

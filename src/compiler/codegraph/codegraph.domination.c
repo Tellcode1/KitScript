@@ -80,7 +80,9 @@ codegraph_domination_analysis(kit_compiler* cc, codegraph* cfg)
          * If e dominates d,
          * then d is not closest.
          */
-        if (cfg->blocks[d].dominators[e]) {
+
+        /* fuck you */
+        if (cfg->blocks[e].dominators[d]) {
           closest = false;
           break;
         }

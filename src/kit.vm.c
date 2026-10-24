@@ -25,7 +25,7 @@
 #include "../inc/kit.vm.h"
 
 int
-kit_vm_init(int argc, const char** argv, kit_refdobj_pool* pool, u32 function_id, kit_vm* vm)
+kit_vm_init(int argc, const char** argv, kit_str_interner* interner, kit_refdobj_pool* pool, u32 function_id, kit_vm* vm)
 {
   *vm = (kit_vm){
     .instruction_idx = 0,
@@ -34,6 +34,7 @@ kit_vm_init(int argc, const char** argv, kit_refdobj_pool* pool, u32 function_id
     .argv            = argv,
     .log_file        = stderr,
     .pool            = pool,
+    .interner        = interner,
   };
   for (u32 i = 0; i < KIT_ARRLEN(vm->hash_state); i++) { vm->hash_state[i] = rand(); }
 

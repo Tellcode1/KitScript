@@ -73,7 +73,7 @@ get_instruction_constant_result(const kit_compiler* cc, const kit_ins* i, kit_va
       u32 id = i->loadk.id;
       for (u32 j = 0; j < cc->lit_table->literals_count; j++) {
         kit_var* lit = &cc->lit_table->literals[j];
-        if (cc->lit_table->literal_hashes[j] != id) continue;
+        if ((cc->lit_table->literal_hashes[j] != id)) continue;
 
         kit_var_shallow_cpy(lit, result);
 
@@ -84,6 +84,24 @@ get_instruction_constant_result(const kit_compiler* cc, const kit_ins* i, kit_va
     default: break;
   }
   return -1;
+}
+
+static inline bool
+is_instruction_commutative(kit_ir_opcode op)
+{
+  switch (op) {
+    case KIT_IR_OPCODE_ADD:
+    case KIT_IR_OPCODE_MUL:
+    case KIT_IR_OPCODE_AND:
+    case KIT_IR_OPCODE_OR:
+    case KIT_IR_OPCODE_BAND:
+    case KIT_IR_OPCODE_BOR:
+    case KIT_IR_OPCODE_XOR:
+    case KIT_IR_OPCODE_EQL:
+    case KIT_IR_OPCODE_NEQ: return true;
+
+    default: return false;
+  }
 }
 
 bool
@@ -112,13 +130,16 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
       u32 one_idx   = i;
       u32 two_idx   = next_real_ins(cc, one_idx + 1);
       u32 three_idx = next_real_ins(cc, two_idx + 1);
+
       if (one_idx == UINT32_MAX || two_idx == UINT32_MAX || three_idx == UINT32_MAX) break;
 
-      i = three_idx;
+      i = three_idx + 1;
 
       kit_ins* one   = &cc->instructions[one_idx];
       kit_ins* two   = &cc->instructions[two_idx];
       kit_ins* three = &cc->instructions[three_idx];
+      // printf("CF: %u %u %u\n", one_idx, two_idx, three_idx);
+      // printf("    opcodes: %d %d %d\n", one->opcode, two->opcode, three->opcode);
 
       if (!instruction_produces_constant_value(one->opcode) || !instruction_produces_constant_value(two->opcode)) continue;
       if (!is_instruction_binary_operation(three->opcode)) continue;
@@ -133,12 +154,10 @@ codegraph_constant_folding(kit_compiler* cc, codegraph* cfg)
       bool found_one = three_sources[0] == one_dst;
       bool found_two = three_sources[1] == two_dst;
 
-      /* if in reverse order, for some reason, swap one and two */
-      bool order_dependant = three->opcode == KIT_IR_OPCODE_DIV || three->opcode == KIT_IR_OPCODE_MUL || three->opcode == KIT_IR_OPCODE_EXP;
-      if (order_dependant) continue;
-
       /* only swap out if the operation is associative */
       if ((three_sources[0] == two_dst && three_sources[1] == one_dst)) {
+        if (!is_instruction_commutative(three->opcode)) continue;
+
         kit_ins* tmp = one;
         one          = two;
         two          = tmp;

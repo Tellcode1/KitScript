@@ -320,7 +320,6 @@ static const kit_builtin_func kit_builtins_funcs[] = {
   { "sys::getenv", "Get the value of the enivronment variable as a string. NULL if no such env var.", "fn sys::getenv(name : string) -> string|null", KIT_VARTYPE_STRING, 1, 1, kit_builtins_sys_getenv},
   { "sys::setenv", "Set the environment variable to given value, creating if it doesn't exist, overwriting if it does.", "fn sys::setenv(name : string, value : string) -> null", KIT_VARTYPE_STRING, 1, 1, kit_builtins_sys_setenv},
  
-  // We dispatch to the correct length inside the function. Having each individual function for each vector type is bloat.
 #define X(d)\
   { "vec"#d"::norm", "Get the normalized vector", "fn vec"#d"::norm(vec) -> vec"#d"|null", KIT_VARTYPE_VEC##d, 1, 1, kit_builtins_vec_norm },\
   { "vec"#d"::len", "Get the length (magnitude) of a vector", "fn vec"#d"::len(vec) -> float|null", KIT_VARTYPE_VEC##d, 1, 1, kit_builtins_vec_len },\
@@ -334,8 +333,8 @@ static const kit_builtin_func kit_builtins_funcs[] = {
   X(4)
 #undef X
 
-  { "vec3::zx", "Zero extend given vector up to a vec3. If input is vec4, truncates 4th dimension", "fn vec3::zx(vec) -> vec3", KIT_VARTYPE_VEC2|KIT_VARTYPE_VEC3|KIT_VARTYPE_VEC4, 1, 1, kit_builtins_vec3_zx },
-  { "vec4::zx", "Zero extend given vector up to a vec4.", "fn vec4::zx(vec) -> vec4", KIT_VARTYPE_VEC2|KIT_VARTYPE_VEC3|KIT_VARTYPE_VEC4, 1, 1, kit_builtins_vec4_zx },
+  { "vec3::zx", "Zero extend or truncate given vector to a vec3", "fn vec3::zx(vec) -> vec3", KIT_VARTYPE_VEC2|KIT_VARTYPE_VEC3|KIT_VARTYPE_VEC4, 1, 1, kit_builtins_vec3_zx },
+  { "vec4::zx", "Zero extend given vector up to a vec4", "fn vec4::zx(vec) -> vec4", KIT_VARTYPE_VEC2|KIT_VARTYPE_VEC3|KIT_VARTYPE_VEC4, 1, 1, kit_builtins_vec4_zx },
   { "vec3::cross", "Get the cross product of two vector3s.", "fn vec3::cross(v1,v2) -> vec3", KIT_VARTYPE_VEC3, 2, 2, kit_builtins_vec3_cross },
 
   { "time::now", "Get the number of seconds since unix epoch as a float", "fn time::now() -> float", 0, 0, 0, kit_builtins_time_now },

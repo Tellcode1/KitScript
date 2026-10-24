@@ -53,12 +53,12 @@ fn main() {
 
    let x = null;
    if (opaque(x)) {
-      println(x);
+      println(x); /* won't print */
    }
 
    let nomb = [1, 2, 3, 4, 5];
    let bomb = sum(nomb);
-   println(bomb);
+   println("Expect 15: ", bomb);
 
-   println(LICM_HELP_ME(10));
+   println("Expect 100: ", LICM_HELP_ME(10));
 }

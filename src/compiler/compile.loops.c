@@ -26,6 +26,9 @@ compile_while_statement(kit_compiler* cc, int node)
 {
   int e = 0;
 
+  /* Ensure we don't overwrite it... */
+  kitc_loop_location* last = cc->loop;
+
   /* Computes the condition and jumps to the end label (breaks) if condition is false */
   const u32 pre_condition_label = make_label_id(cc);
 
@@ -33,14 +36,6 @@ compile_while_statement(kit_compiler* cc, int node)
   const u32 end_label = make_label_id(cc);
 
   define_and_emit_label(cc, pre_condition_label);
-
-  /* CONDITION */
-  kit_vreg_t cond = compile(cc, KIT_GET_NODE(cc->ast, node)->while_stmt.condition);
-  if (cond < 0) goto ERR;
-
-  // Break out of loop if condition is false.
-  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JZ, cond, end_label);
-  if (e < 0) goto ERR;
 
   scope_push(cc);
 
@@ -50,6 +45,14 @@ compile_while_statement(kit_compiler* cc, int node)
   e = defer_push_scope(cc);
   if (e < 0) goto ERR;
 
+  /* CONDITION */
+  kit_vreg_t cond = compile(cc, KIT_GET_NODE(cc->ast, node)->while_stmt.condition);
+  if (cond < 0) goto ERR;
+
+  // Break out of loop if condition is false.
+  e = emit_and_record_jmp(cc, KIT_IR_OPCODE_JZ, cond, end_label);
+  if (e < 0) goto ERR;
+
   /* Append a loop entry to our compiler. */
   kitc_loop_location loop = {
     .continue_label = pre_condition_label,
@@ -57,9 +60,7 @@ compile_while_statement(kit_compiler* cc, int node)
     .defer_depth    = defer_get_current_depth(cc),
   };
 
-  /* Ensure we don't overwrite it... */
-  kitc_loop_location* last = cc->loop;
-  cc->loop                 = &loop;
+  cc->loop = &loop;
 
   // WHILE BODY
   const int* while_body = KIT_GET_NODE(cc->ast, node)->while_stmt.stmts;
@@ -88,6 +89,7 @@ compile_while_statement(kit_compiler* cc, int node)
   return 0;
 
 ERR:
+  cc->loop = last;
   return e ? e : -1;
 }
 
@@ -170,7 +172,8 @@ compile_for_statement(kit_compiler* cc, int node)
   u32        nstmts = KIT_GET_NODE(cc->ast, node)->for_stmt.nstmts;
   const int* stmts  = KIT_GET_NODE(cc->ast, node)->for_stmt.stmts;
   for (u32 i = 0; i < nstmts; i++) {
-    if (compile(cc, stmts[i]) < 0) {
+    e = compile(cc, stmts[i]);
+    if (e < 0) {
       cerror(KIT_GET_NODE(cc->ast, stmts[i])->common.span, "Failed to compile statement in body [for statement]\n");
       goto ERR;
     }

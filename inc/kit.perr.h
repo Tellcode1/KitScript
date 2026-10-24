@@ -25,6 +25,18 @@
 #ifndef KIT_PROGRAM_ERROR_H
 #define KIT_PROGRAM_ERROR_H
 
+#define KIT_EXPECT_TYPE(varp, expect)                                                                                                                \
+  if ((varp)->type != (expect)) {                                                                                                                    \
+    fprintf(stderr, "Function expected type %s, instead got %s\n", kit_var_type_to_string((varp)->type), kit_var_type_to_string(expect));            \
+    return KIT_ETYPE;                                                                                                                                \
+  }
+
+#define KIT_ASSERT(var)                                                                                                                              \
+  if (!(bool)(var)) {                                                                                                                                \
+    fprintf(stderr, "Assertion `%s` failed\n", #var);                                                                                                \
+    return KIT_EASSERT;                                                                                                                              \
+  }
+
 typedef enum kit_ecode {
   KIT_OK         = 0,
   KIT_EMALLOC    = -1,
@@ -34,8 +46,9 @@ typedef enum kit_ecode {
   KIT_EUNKNOWN   = -6, /* unknown error */
   KIT_EPANIC     = -7,
   KIT_EBADARG    = -8,  // Bad arguments to executor
-  KIT_ERANGE     = -9,  //  Out of range. JMP, etc.
+  KIT_ERANGE     = -9,  //  Out of range, index > len(list), JMP, etc.
   KIT_EASSERT    = -10, // Assertion failed
+  KIT_ETYPE      = -11, // Expected a different type
 } kit_ecode;
 
 static inline const char*
@@ -50,9 +63,9 @@ kit_ecode_str(kit_ecode e)
     case KIT_EUNKNOWN: return "Unknown error";
     case KIT_EPANIC: return "PANIC was called";
     case KIT_EBADARG: return "Invalid arguments passed to executor";
-    case KIT_ERANGE: return "JMP out of range";
+    case KIT_ERANGE: return "Jump or index out of range";
     case KIT_EASSERT: return "Assertion failed";
-    default: break;
+    case KIT_ETYPE: return "Type differs from expected type";
   }
   return "Unknown error code";
 }
